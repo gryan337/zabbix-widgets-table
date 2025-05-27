@@ -59,7 +59,6 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	setContents(response) {
-		var start = Date.now();
 		super.setContents(response);
 
 		this.#values_table = this._target.getElementsByClassName('list-table').item(0);
