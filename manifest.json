@@ -1,0 +1,49 @@
+{
+	"manifest_version": 2.0,
+	"id": "tablemodulerme",
+	"type": "widget",
+	"name": "Table",
+	"namespace": "TableModuleRME",
+	"version": "1.0",
+	"author": "",
+	"description": "A flexible table widget for the Zabbix Dashboards",
+	"widget": {
+		"in": {
+			"hostids": {
+				"type": "_hostids"
+			},
+			"groupids": {
+				"type": "_hostgroupids"
+			}
+		},
+		"js_class": "CWidgetTableModuleRME",
+		"out": [
+			{
+				"type": "_itemid"
+			},
+			{
+				"type": "_itemids"
+			},
+			{
+				"type": "_hostid"
+			},
+			{
+				"type": "_hostids"
+			}
+		]
+	},
+	"actions": {
+		"widget.tablemodulerme.view": {
+			"class": "WidgetViewTableRme"
+		},
+		"widget.tablemodulerme.column.edit": {
+			"class": "ColumnEditTableRme",
+			"view": "column.edit",
+			"layout": "layout.json"
+		}
+	},
+	"assets": {
+		"js": ["class.widget.js", "class.widget-field.item-grouping.js"],
+		"css": ["widget.css"]
+	}
+}

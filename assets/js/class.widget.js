@@ -1,0 +1,1476 @@
+
+class CWidgetTableModuleRME extends CWidget {
+
+	#seconds_per_day = 86400;
+	#seconds_per_hour = 3600;
+	#seconds_per_min = 60;
+
+	#Multiplier = new Map([
+		['Y', 1000**8],
+		['Z', 1000**7],
+		['E', 1000**6],
+		['P', 1000**5],
+		['T', 1000**4],
+		['G', 1000**3],
+		['M', 1000**2],
+		['K', 1000],
+		['B', 1]
+	]);
+
+	#sMultiplier = new Map([
+		['y', 86400 * 365],
+		['M', 86400 * 30],
+		['d', 86400],
+		['h', 3600],
+		['m', 60],
+		['s', 1],
+		['ms', 0.001]
+	]);
+
+	#menu_selector = '[data-menu]';
+
+	#dataset_item = 'item';
+	#dataset_host = 'host';
+
+	#selected_itemid = null;
+	#selected_hostid = null;
+	#selected_name = null;
+
+	#parent_container;
+	#values_table;
+	#th;
+	#timeout = 0;
+	#cssStyleMap = new Map();
+
+	#rowsPerPage = 75;
+	#currentPage = 1;
+	#totalRows = 0;
+	#paginationElement;
+
+	#filterState = {
+		type: 'contains',
+		search: '',
+		checked: [],
+		allSelected: false
+	};
+
+	processUpdateResponse(response) {
+		super.processUpdateResponse(response);
+	}
+
+	setContents(response) {
+		var start = Date.now();
+		super.setContents(response);
+
+		this.#values_table = this._target.getElementsByClassName('list-table').item(0);
+		this.#parent_container = this.#values_table.closest('.dashboard-grid-widget-container');
+		var colIndex = 0;
+
+		const allTds = this.#values_table.querySelectorAll('td');
+		const allThs = this.#values_table.querySelectorAll('th');
+		let id = 0;
+		allTds.forEach(td => {
+			td.setAttribute('id', id);
+			let key = td.innerText.trim();
+			let element = td.querySelector(this.#menu_selector);
+			if (element) {
+				if (this._isDoubleSpanColumn(td)) {
+					newTd = td.nextElementSibling;
+					element = newTd.querySelector(this.#menu_selector);
+				}
+				const dataset = JSON.parse(element.dataset.menu);
+				try {
+					if (dataset.itemid) {
+						key = dataset.itemid;
+					}
+					else if (dataset.hostid) {
+						key = dataset.hostid;
+					}
+				}
+				catch (error) {
+					console.log('Fail', td)
+				}
+			}
+			key = [key, td.getAttribute('id')].join("_");
+			let style = td.getAttribute('style') || '';
+			this.#cssStyleMap.set(key, style);
+			id++;
+		});
+
+		allThs.forEach((th) => {
+			th.innerHTML += `<span class="new-arrow" id="arrow"></span>`;
+			th.setAttribute('style', `color: #4796c4; font-weight: bold;`);
+			th.classList.add('cursor-pointer');
+
+			const colspan = th.hasAttribute('colspan') ? parseFloat(th.getAttribute('colspan')) : 1;
+			th.id = colIndex + colspan - 1;
+
+			colIndex = parseFloat(th.id) + 1;
+		});
+
+		/////////CHANGE!!
+		this.#values_table.addEventListener('click', (event) => {
+			if (event.target.closest('.filter-icon')) {
+				return;
+			}
+
+			const target = event.target.closest('th') || event.target.closest('td');
+
+			if (target && target.tagName === 'TH') {
+				this.#th = target;
+				const span = this.#getSetSpans(target);
+				const ascending = !('sort' in target.dataset) || target.dataset.sort != 'asc';
+				this.#sortTable(target, ascending, span);
+			}
+			else if (target && target.tagName === 'TD') {
+				this.#handleCellClick(target);
+			}
+		});
+
+		/////////CHANGE!!
+		this.#totalRows = this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)').length;
+
+		allThs.forEach((th) => {
+			if (this.#th !== undefined) {
+				if (th.getAttribute('id') === this.#th.getAttribute('id')) {
+					if (this.#totalRows <= this.#rowsPerPage) {
+						this.#parent_container.classList.add('is-loading');
+//						this.#parent_container.classList.toggle('widget-blue');
+						setTimeout(() => {
+							const span = this.#getSetSpans(th);
+							const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
+							this.#sortTable(th, ascending, span, true);
+							this.#th = th;
+//							this.#parent_container.classList.toggle('widget-blur');
+							this.#parent_container.classList.remove('is-loading');
+						}, this.#timeout);
+					}
+					else {
+						if (!this.#parent_container.classList.contains('widget-blur')) {
+							this.#parent_container.classList.add('is-loading');
+//							this.#parent_container.toggle('widget-blue');
+						}
+
+						const span = this.#getSetSpans(th);
+						const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
+						this.#sortTable(th, ascending, span, true);
+						this.#th = th;
+					}
+				}
+			}
+		});
+
+		this.#removePaginationControls();
+		if (this.#totalRows > this.#rowsPerPage) {
+			this.#displayPaginationControls();
+			this.#addPaginationCSS();
+		}
+
+		this.#updateDisplay();
+
+		/////////CHANGE!!
+		this.#addColumnFilterCSS();
+		const firstTh = this.#values_table.querySelector('thead th');
+		if (firstTh && !firstTh.querySelector('.filter-icon')) {
+			const filterIcon = document.createElement('span');
+			filterIcon.className = 'filter-icon';
+			filterIcon.style.cursor = 'pointer';
+			filterIcon.style.display = 'inline-flex';
+			filterIcon.style.alignItems = 'center';
+			filterIcon.style.justifyContent = 'center';
+			filterIcon.style.marginLeft = '2px';
+			filterIcon.style.width = '18px';
+			filterIcon.style.height = '18px';
+			filterIcon.style.verticalAlign = 'middle';
+			filterIcon.style.position = 'relative';
+			filterIcon.style.top = '0';
+			filterIcon.title = 'Filter';
+
+			filterIcon.innerHTML = `
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
+				</svg>
+			`;
+
+			const popup = document.createElement('div');
+			popup.style.display = 'none';
+			popup.className = 'filter-popup';
+
+			const header = document.createElement('div');
+			header.className = 'filter-popup-header';
+			const headerTitle = document.createElement('div');
+			headerTitle.className = 'filter-popup-header-title';
+			headerTitle.textContent = 'Filter column values';
+
+			const filterControls = document.createElement('div');
+			filterControls.className = 'filter-popup-controls';
+
+			const filterType = document.createElement('select');
+			['Contains', 'Equals', 'Starts with', 'Ends with', 'Wildcard', 'Does not contain', 'Regex'].forEach(opt => {
+				const option = document.createElement('option');
+				option.value = opt.toLowerCase();
+				option.textContent = opt;
+				filterType.appendChild(option);
+			});
+			filterType.value = this.#filterState?.type || 'contains';
+
+			const searchInput = document.createElement('input');
+			searchInput.type = 'text';
+			searchInput.placeholder = 'Search...';
+			searchInput.value = this.#filterState?.search || '';
+
+			const clearBtn = document.createElement('span');
+			clearBtn.className = 'clear-btn';
+			clearBtn.textContent = '✕ Clear';
+			clearBtn.addEventListener('click', () => {
+				searchInput.value = '';
+				searchInput.dispatchEvent(new Event('input'));
+			});
+
+			filterControls.appendChild(filterType);
+			filterControls.appendChild(searchInput);
+			filterControls.appendChild(clearBtn);
+
+			header.appendChild(headerTitle);
+			header.appendChild(filterControls);
+
+			const checkboxContainer = document.createElement('div');
+			checkboxContainer.className = 'filter-popup-checkboxes';
+
+			const footer = document.createElement('div');
+			footer.className = 'filter-popup-footer';
+
+			const summary = document.createElement('div');
+			summary.className = 'summary';
+			summary.textContent = '0 selected';
+			footer.appendChild(summary);
+
+			const toggleRow = document.createElement('div');
+			toggleRow.style.marginTop = '6px';
+
+			const toggleButton = document.createElement('button');
+			let isAllSelected = this.#filterState?.allSelected || false;
+			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+			toggleButton.style.background = '#666';
+			toggleButton.style.color = '#eee';
+			toggleButton.style.fontWeight = 'bold';
+
+			toggleButton.addEventListener('click', () => {
+				const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
+				isAllSelected = !isAllSelected;
+
+				visibleCheckboxes.forEach(cb => cb.checked = isAllSelected);
+
+				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+
+				updateSummary();
+				updateWarningIcon();
+			});
+
+			toggleRow.appendChild(toggleButton);
+			footer.appendChild(toggleRow);
+
+			const gap = document.createElement('div');
+			gap.style.height = '12px';
+			footer.appendChild(gap);
+
+			const buttonsRow = document.createElement('div');
+			buttonsRow.style.display = 'flex';
+			buttonsRow.style.justifyContent = 'flex-start';
+			buttonsRow.style.gap = '8px';
+
+			const applyButton = document.createElement('button');
+			applyButton.textContent = 'Ok';
+			applyButton.style.minWidth = '80px';
+
+			applyButton.addEventListener('click', () => {
+				popup.style.display = 'none';
+			
+				const checkedValues = Array.from(
+					checkboxContainer.querySelectorAll('input[type="checkbox"]:checked')
+				).map(cb => cb.value.toLowerCase());
+			
+				const hasCheckedValues = checkedValues.length > 0;
+				const query = searchInput.value.trim();
+				const type = filterType.value;
+			
+				this.#filterState = {
+					search: query,
+					type,
+					checked: hasCheckedValues ? checkedValues : null,
+					allSelected: isAllSelected
+				};
+			
+				this.#applyFilter();
+			});
+
+			const resetButton = document.createElement('button');
+			resetButton.textContent = 'Cancel';
+			resetButton.className = 'cancel';
+			resetButton.style.minWidth = '80px';
+			resetButton.addEventListener('click', () => {
+				popup.style.display = 'none';
+			});
+
+			const warningSvg = `
+				<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
+					<path d="M12 3C12.3 3 12.6 3.15 12.78 3.44L21.53 18.61C21.95 19.33 21.4 20.25 20.53 20.25H3.47C2.6 20.25 2.05 19.33 2.47 18.61L11.22 3.44C11.4 3.15 11.7 3 12 3Z" fill="#fef08a" stroke="#eab308" stroke-width="1.25"/>
+					<circle cx="12" cy="16" r="1.25" fill="#92400e"/>
+					<rect x="11.25" y="9" width="1.5" height="4.5" rx="0.75" fill="#92400e"/>
+				</svg>
+			`;
+
+			const warningIcon = document.createElement('div');
+			warningIcon.className = 'filter-warning-icon';
+			warningIcon.title = 'Checkbox selections will take precedence over text entered in the search box after clicking "Ok" button';
+			warningIcon.style.display = 'none';
+			warningIcon.innerHTML = warningSvg;
+				
+			buttonsRow.appendChild(applyButton);
+			buttonsRow.appendChild(resetButton);
+			buttonsRow.appendChild(warningIcon);
+			footer.appendChild(buttonsRow);
+
+			const filterValues = new Set();
+			const allRows = this.#values_table.querySelectorAll('tbody tr');
+			allRows.forEach(tr => {
+				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+				const td = tr.querySelector('td:first-child');
+				if (td) filterValues.add(td.textContent.trim());
+			});
+
+			filterValues.forEach(value => {
+				const id = `filter_${value.replace(/[^a-zA-Z0-9]/g, '_')}`;
+				const label = document.createElement('label');
+				label.innerHTML = `
+					<input type="checkbox" id="${id}" value="${value}">
+					<span>${value}</span>
+				`;
+
+				const checkbox = label.querySelector('input[type="checkbox"]');
+				if (this.#filterState?.checked?.includes(value.toLowerCase())) {
+					checkbox.checked = true;
+				}
+
+				checkboxContainer.appendChild(label);
+			});
+
+			searchInput.addEventListener('input', () => {
+				const query = searchInput.value.toLowerCase();
+				checkboxContainer.querySelectorAll('label').forEach(label => {
+					const text = label.textContent.toLowerCase();
+					const matches = this.#matchesFilter(text, query, filterType.value);
+					label.style.display = matches ? '' : 'none';
+
+					if (!matches) {
+						const cb = label.querySelector('input[type="checkbox"]');
+						if (cb) cb.checked = false;
+					}
+				});
+
+				const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
+				isAllSelected = Array.from(visibleCheckboxes).every(cb => cb.checked);
+				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+
+				updateSummary();
+				updateWarningIcon();
+			});
+
+			checkboxContainer.addEventListener('change', () => {
+				updateSummary();
+
+				const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
+				isAllSelected = Array.from(visibleCheckboxes).every(cb => cb.checked);
+				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+
+				updateWarningIcon();
+			});
+
+
+			function updateSummary() {
+				const checked = checkboxContainer.querySelectorAll('input[type="checkbox"]:checked').length;
+				summary.textContent = `${checked} selected`;
+			}
+
+			updateSummary();
+			popup.appendChild(header);
+			popup.appendChild(checkboxContainer);
+			popup.appendChild(footer);
+			document.body.appendChild(popup);
+
+			filterIcon.addEventListener('click', () => {
+				if (popup.style.display === 'flex') {
+					popup.style.display = 'none';
+					return;
+				}
+
+				popup.style.visibility = 'hidden';
+				popup.style.display = 'flex';
+				popup.style.left = '0px';
+				popup.style.top = '0px';
+
+				const rect = filterIcon.getBoundingClientRect();
+				const popupHeight = popup.offsetHeight;
+				const popupWidth = popup.offsetWidth;
+				const padding = 10;
+
+				let topPos = rect.bottom + 5;
+				if (topPos + popupHeight > window.innerHeight - padding) {
+					topPos = rect.top - popupHeight - 5;
+					if (topPos < padding) topPos = padding;
+				}
+
+				let leftPos = rect.left;
+				if (leftPos + popupWidth > window.innerWidth - padding) {
+					leftPos = window.innerWidth - popupWidth - padding;
+					if (leftPos < padding) leftPos = padding;
+				}
+
+				popup.style.left = `${leftPos}px`;
+				popup.style.top = `${topPos}px`;
+
+				popup.style.visibility = 'visible';
+				popup.style.display = 'flex';
+			});
+
+			document.addEventListener('click', (e) => {
+				if (!popup.contains(e.target) && !filterIcon.contains(e.target)) {
+					popup.style.display = 'none';
+				}
+			});
+
+			const arrowSpan = firstTh.querySelector('span#arrow');
+			if (arrowSpan) {
+				firstTh.insertBefore(filterIcon, arrowSpan);
+			}
+			else {
+				firstTh.insertBefore(filterIcon, firstTh.firstChild);
+			}
+
+			function updateWarningIcon() {
+				const checkboxes = popup.querySelectorAll('.filter-popup-checkboxes input[type="checkbox"]');
+				const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
+				const hasSearchText = searchInput.value.trim() !== '';
+				if (anyChecked && hasSearchText) {
+					warningIcon.style.display = 'flex';
+				}
+				else {
+					warningIcon.style.display = 'none';
+				}
+			}
+
+			filterType.addEventListener('change', () => {
+				searchInput.dispatchEvent(new Event('input'));
+				updateWarningIcon();
+			});
+
+			this.#applyFilter();
+
+			function makeDraggable(popup, handle) {
+				let isDragging = false;
+				let offsetX = 0;
+				let offsetY = 0;
+
+				handle.style.cursor = 'move';
+
+				handle.addEventListener('mousedown', (e) => {
+					if (
+						e.target.tagName === 'INPUT' ||
+						e.target.tagName === 'SELECT' ||
+						e.target.tagName === 'BUTTON' ||
+						e.target.classList.contains('clear-btn')
+					) {
+						return;
+					}
+
+					isDragging = true;
+					const rect = popup.getBoundingClientRect();
+					offsetX = e.clientX - rect.left;
+					offsetY = e.clientY - rect.top;
+					document.body.style.userSelect = 'none';
+				});
+
+				document.addEventListener('mousemove', (e) => {
+					if (isDragging) {
+						popup.style.left = `${e.clientX - offsetX}px`;
+						popup.style.top = `${e.clientY - offsetY}px`;
+					}
+				});
+
+				document.addEventListener('mouseup', () => {
+					isDragging = false;
+					document.body.style.userSelect = '';
+				});
+			}
+
+			makeDraggable(popup, header);
+
+		}
+
+
+		if (this.#selected_hostid !== null) {
+			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
+			this._markSelected(this.#dataset_host);
+		}
+
+		if (this.#selected_itemid !== null) {
+			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#selected_itemid);
+			this._markSelected(this.#dataset_item);
+		}
+
+	}
+
+	#applyFilter() {
+		if (!this.#filterState) return;
+
+		this.invalidRegex = false;
+		const isCaseSensitive = this.#filterState.caseSensitive || false;
+
+		const checkedValues = this.#filterState.checked || [];
+		const allowedValues = checkedValues.length > 0 ? new Set(checkedValues) : null;
+		const searchValue = (this.#filterState.search || '').trim().toLowerCase();
+		const filterMode = this.#filterState.type || 'contains';
+
+		this.#values_table.querySelectorAll('tbody tr').forEach(tr => {
+			const isResetRow = tr.querySelector('[reset-row]') !== null;
+			const isFooterRow = tr.querySelector('[footer-row]') !== null;
+			if (isResetRow || isFooterRow) {
+				tr.classList.remove('display-none-filtered');
+				return;
+			}
+
+			const td = tr.querySelector('td');
+			const text = td?.textContent.trim().toLowerCase() || '';
+
+			let showRow = true;
+	
+			if (allowedValues && allowedValues.size > 0) {
+				showRow = allowedValues.has(text);
+			}
+			else if (searchValue !== '') {
+				showRow = this.#matchesFilter(text, searchValue, filterMode, isCaseSensitive);
+			}
+
+			if (showRow) {
+				tr.classList.remove('display-none-filtered');
+			}
+			else {
+				tr.classList.add('display-none-filtered');
+			}
+		});
+
+		this.#totalRows = this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)').length;
+		this.#currentPage = 1;
+
+		this.#removePaginationControls();
+		if (this.#totalRows > this.#rowsPerPage) {
+			this.#displayPaginationControls();
+			this.#addPaginationCSS();
+		}
+
+		this.#updateDisplay(true);
+
+		const firstTh = this.#values_table.querySelector('thead th');
+		if (firstTh) {
+			const filterIcon = firstTh.querySelector('.filter-icon');
+			if (filterIcon) {
+				if (this.invalidRegex) {
+					filterIcon.classList.add('filter-error');
+					filterIcon.title = 'Invalid Regex pattern!';
+					filterIcon.classList.remove('active');
+				}
+				else if ((allowedValues && allowedValues.size > 0) || searchValue !== '') {
+					filterIcon.classList.add('active');
+					filterIcon.classList.remove('filter-error');
+					filterIcon.title = 'Filter Applied!';
+				}
+				else {
+					filterIcon.classList.remove('active');
+					filterIcon.classList.remove('filter-error');
+					filterIcon.title = '';
+				}
+			}
+		}
+	}
+
+
+	#matchesFilter(text, searchValue, filterMode, caseSensitive = false) {
+		text = text.trim();
+		searchValue = searchValue.trim();
+
+		if (!caseSensitive) {
+			text = text.toLowerCase();
+			searchValue = searchValue.toLowerCase();
+		}
+
+		switch (filterMode) {
+			case 'equals':
+				return text === searchValue;
+			case 'starts with':
+			case 'startswith':
+				return text.startsWith(searchValue);
+			case 'ends with':
+			case 'endswith':
+				return text.endsWith(searchValue);
+			case 'wildcard':
+				try {
+					const escaped = searchValue.replace(/[-[\]{}()+?.\\^$|]/g, '\\$&');
+					const pattern = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
+					const regex = new RegExp(`^.*${pattern}.*$`, caseSensitive ? '' : 'i');
+					return regex.test(text);
+				} catch {
+					return false;
+				}
+			case 'does not contain':
+				return !text.includes(searchValue);
+			case 'regex':
+				try {
+					const regex = new RegExp(searchValue, caseSensitive ? '' : 'i');
+					return regex.test(text);
+				} catch {
+					this.invalidRegex = true;
+					return false;
+				}
+			case 'contains':
+			default:
+				return text.includes(searchValue);
+		}
+	}
+
+
+	#recalculateCanvasSize() {
+		const barGauges = this.#values_table.querySelectorAll('tr td z-bar-gauge');
+		requestAnimationFrame(() => {
+			barGauges.forEach((barGauge) => {
+				barGauge._refresh_frame = null;
+				barGauge.unregisterEvents();
+				barGauge.registerEvents();
+			});
+		});
+
+		this.#refreshSparklines();
+
+	}
+
+	#refreshSparklines() {
+		const sparklines = this.#values_table.querySelectorAll('tr:not(.display-none-filtered) td z-sparkline');
+		requestAnimationFrame(() => {
+			sparklines.forEach((sparkline) => {
+				const value = sparkline.getAttribute('value');
+				const width = sparkline.getAttribute('width') || sparkline.offsetWidth
+				const height = sparkline.getAttribute('height') || sparkline.offsetHeight
+				if (value) {
+					// Force re-trigger by toggling attribute doesn't work...
+					sparkline.removeAttribute('value');
+					sparkline.setAttribute('value', value);
+				}
+			});
+		});
+	}
+
+
+
+	#handleCellClick(td) {
+		let tdClicked = td;
+		var nextTd = tdClicked.nextElementSibling;
+		var previousTd = tdClicked.previousElementSibling;
+		var element = td.querySelector(this.#menu_selector);
+
+		if (this._isDoubleSpanColumn(tdClicked)) {
+			element = nextTd.querySelector(this.#menu_selector);
+		}
+
+		if (element !== null) {
+			var dataset = JSON.parse(element.dataset.menu);
+			if (dataset?.type === this.#dataset_item) {
+				if (this.#selected_itemid === dataset.itemid) {
+					this.#selected_itemid = 0;
+					this.#selected_name = null;
+				}
+				else {
+					this.#selected_itemid = dataset.itemid;
+					this.#selected_name = dataset.name;
+				}
+				this._markSelected(this.#dataset_item);
+				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#selected_itemid);
+			}
+			else if (dataset?.type === this.#dataset_host) {
+				if (this.#selected_hostid === dataset.hostid) {
+					this.#selected_hostid = '000000';
+				}
+				else {
+					this.#selected_hostid = dataset.hostid;
+				}
+				this._markSelected(this.#dataset_host);
+				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
+			}
+		}
+	}
+
+	#removePaginationControls() {
+		const paginationElements = this.#parent_container.querySelectorAll('.pagination-controls');
+		paginationElements.forEach(element => {
+			element.remove();
+		});
+	}
+
+	#displayPaginationControls() {
+		this.#paginationElement = document.createElement('div');
+		this.#paginationElement.classList.add('pagination-controls');
+		const buttons = ['<<', '<'];
+		buttons.forEach(label => {
+			const button = document.createElement('button');
+			button.textContent = label;
+			button.addEventListener('click', () => this.#handlePaginationClick(label));
+			this.#paginationElement.appendChild(button);
+		});
+
+		const pageInfo = document.createElement('span');
+		this.#paginationElement.appendChild(pageInfo);
+		this.#updatePageInfo(pageInfo);
+
+		const buttons_b = ['>', '>>'];
+		buttons_b.forEach(label => {
+			const button_b = document.createElement('button');
+			button_b.textContent = label;
+			button_b.addEventListener('click', () => this.#handlePaginationClick(label));
+			this.#paginationElement.appendChild(button_b);
+		});
+
+		this.#parent_container.appendChild(this.#paginationElement);
+	}
+
+	#handlePaginationClick(label) {
+		switch (label) {
+			case '<<':
+				this.#currentPage = 1;
+				break;
+			case '<':
+				if (this.#currentPage > 1) {
+					this.#currentPage--;
+				}
+				break;
+			case '>':
+				if (this.#currentPage < Math.ceil(this.#totalRows / this.#rowsPerPage)) {
+					this.#currentPage++;
+				}
+				break;
+			case '>>':
+				this.#currentPage = Math.ceil(this.#totalRows / this.#rowsPerPage);
+				break;
+		}
+		this.#updateDisplay(true);
+	}
+
+	///////////CHANGE!!!!
+	#updateDisplay(scrollToTop = false) {
+		this.#recalculateCanvasSize();
+
+		if (this.#totalRows > this.#rowsPerPage) {
+			this.#parent_container.classList.add('is-loading');
+
+			const allTrs = Array.from(this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)'));
+
+			this.#values_table.querySelectorAll('tbody tr').forEach(tr => tr.classList.add('display-none'));
+
+			const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
+			const endIndex = Math.min(startIndex + this.#rowsPerPage, allTrs.length);
+
+			setTimeout(() => {
+				allTrs.forEach((tr, index) => {
+					if (index >= startIndex && index < endIndex) {
+						tr.classList.remove('display-none');
+					}
+				});
+
+				if (scrollToTop) {
+					this._contents.scrollTop = 0;
+				}
+
+				this.#updatePageInfo(this.#paginationElement.querySelector('span'));
+				this.#parent_container.classList.remove('is-loading');
+			}, this.#timeout);
+		}
+		else {
+			this.#values_table.querySelectorAll('tbody tr').forEach(tr => {
+				if (!tr.classList.contains('display-none-filtered')) {
+					tr.classList.remove('display-none');
+				}
+				else {
+					tr.classList.add('display-none');
+				}
+			});
+			this.#updatePageInfo(this.#paginationElement ? this.#paginationElement.querySelector('span') : null);
+		}
+	}
+
+	////////////CHANGE!!!!
+	#updatePageInfo(pageInfoElement) {
+		if (!pageInfoElement) return;
+		const totalPages = Math.ceil(this.#totalRows / this.#rowsPerPage);
+		pageInfoElement.textContent = `Page ${this.#currentPage} of ${totalPages}`;
+	}
+
+	////////////CHANGE!!!!
+	#sortTable(th, ascending, span, preserve = false) {
+		this._sortTableRowsByColumn(th.id, ascending);
+		th.dataset['sort'] = ascending ? 'asc' : 'desc';
+		span.className = ascending ? 'arrow-up' : 'arrow-down';
+		if (!preserve) {
+			this.#currentPage = 1;
+		}
+		this.#updateDisplay();
+	}
+
+	////////////CHANGE!!!!
+	#getSetSpans(th) {
+		const span = th.querySelector('span#arrow');
+		const allArrowSpans = this.#values_table.querySelectorAll('thead tr th span#arrow');
+		for (let eachSpan of allArrowSpans) {
+			eachSpan.className = 'new-arrow';
+		}
+
+		return span;
+	}
+
+
+	#broadcast(id_type, id_types, id) {
+		this.broadcast({
+			[id_type]: [id],
+			[id_types]: [id]
+		});
+	}
+
+	_markSelected(type) {
+		var theme = jQuery('html').attr('theme');
+		var host_bg_color;
+		var bg_color;
+		var font_color;
+		switch(theme) {
+			case 'dark-theme':
+			case 'hc-dark':
+				host_bg_color = '#67351d';
+				bg_color = '#2f280a';
+				font_color = '#f2f2f2';
+				break;
+			case 'blue-theme':
+			case 'hc-light':
+				host_bg_color = '#f7ae3e';
+				bg_color = '#fcf7c2';
+				font_color = '#1f2c33';
+				break;
+		}
+
+		const tds = this.#values_table.querySelectorAll('table td');
+		var prevTd = null;
+		let hasItemMarking = false;
+		var tdsToMark = [];
+		tds.forEach(td => {
+			var origStyle = td.style.cssText;
+			var element = td.querySelector(this.#menu_selector);
+			if (element !== null) {
+				const dataset = JSON.parse(element.dataset.menu);
+				const cell_key = dataset?.itemid + "_" + td.getAttribute('id');
+				if (dataset?.type === this.#dataset_host) {
+					if (type === this.#dataset_item) {
+					}
+					else if (dataset?.hostid === this.#selected_hostid) {
+						td.style.backgroundColor = host_bg_color;
+						td.style.color = font_color;
+					}
+					else {
+						td.style.backgroundColor = td.style.color = '';
+					}
+				}
+				else if (dataset?.type === this.#dataset_item) {
+					if (type === this.#dataset_host) {
+					}
+					else if (dataset?.itemid === this.#selected_itemid || dataset?.name === this.#selected_name) {
+						if (dataset?.itemid === this.#selected_itemid) {
+							if (this._isDoubleSpanColumn(prevTd)) {
+								td.style.backgroundColor = prevTd.style.backgroundColor = bg_color;
+								td.style.color = prevTd.style.color = font_color;
+							}
+							else {
+								td.style.backgroundColor = bg_color;
+								td.style.color = font_color;
+							}
+							hasItemMarking = true;
+						}
+						else {
+							if (this._isDoubleSpanColumn(prevTd)) {
+								if (this._isBarGauge(prevTd)) {
+									td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
+								}
+								else if (this._isSparkLine(prevTd)) {
+									td.style = this.#cssStyleMap.get(cell_key);
+									prevTd.style = ''
+								}
+								tdsToMark.push(td);
+								tdsToMark.push(prevTd);
+							}
+							else {
+								td.style = this.#cssStyleMap.get(cell_key);
+								tdsToMark.push(td);
+							}
+						}
+					}
+					else {
+						if (this._isDoubleSpanColumn(prevTd)) {
+							if (this._isBarGauge(prevTd)) {
+								td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
+							}
+							else if (this._isSparkLine(prevTd)) {
+								td.style = this.#cssStyleMap.get(cell_key);
+								prevTd.style = ''
+							}
+						}
+						else {
+							td.style = this.#cssStyleMap.get(cell_key);
+						}
+					}
+				}
+			}
+			prevTd = td;
+		});
+
+		if (!hasItemMarking && tdsToMark.length > 0) {
+			for (const tm of tdsToMark) {
+				this.#handleCellClick(tm);
+				return;
+			}
+		}
+	}
+
+	
+	_isDoubleSpanColumn(td) {
+		if (td === null) {
+			return null;
+		}
+
+		return (this._isBarGauge(td) || this._isSparkLine(td));
+	}
+
+	_isBarGauge(td) {
+		return td.querySelector('z-bar-gauge');
+	}
+
+	_isSparkLine(td) {
+		return td.querySelector('z-sparkline');
+	}
+
+	_handleDateStr(x, regex) {
+
+		var datematch = x.matchAll(regex);
+		for (const match of datematch) {
+			if (match.length > 0) {
+				var epoch = new Date(match.input);
+				return String(Math.floor(epoch.getTime() / 1000));
+			}
+		}
+
+		return x;
+
+	}
+
+	_checkIfDate(x) {
+
+		if (this._isNumeric(x)) {
+			return x;
+		}
+
+		var uptime_reone = /^([0-9]+)\s*(days?,)\s*([0-9]{2}):([0-9]{2}):([0-9]{2})/g;
+		var uptime_retwo = /^([0-9]{2}):([0-9]{2}):([0-9]{2})/g;
+		var uptime_matchone = x.matchAll(uptime_reone);
+		var uptime_matchtwo = x.matchAll(uptime_retwo);
+		for (const match of uptime_matchone) {
+			if (match.length > 0) {
+				var days = parseInt(match[1]) * this.#seconds_per_day;
+				var hours = parseInt(match[3]) * this.#seconds_per_hour;
+				var mins = parseInt(match[4]) * this.#seconds_per_min;
+				var uptime = days + hours + mins + parseInt(match[5]);
+				return String(uptime);
+			}
+		}
+
+		for (const match of uptime_matchtwo) {
+			if (match.length > 0) {
+				var hours = parseInt(match[1]) * this.#seconds_per_hour;
+				var mins = parseInt(match[2]) * this.#seconds_per_min;
+				var uptime = hours + mins + parseInt(match[3]);
+				return String(uptime);
+			}
+		}
+
+		if (x == 'Never') {
+			return '0';
+		}
+
+		var date_reone = /^(Mon|Tue|Wed|Thus|Fri|Sat|Sun)\s+([0-9]{2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*([0-9]{4})/g;
+		x = this._handleDateStr(x, date_reone);
+		if (this._isNumeric(x)) {
+			return x;
+		}
+
+		var date_retwo = /^([0-9]{4})-([0-9]{2})-([0-9]{2})\s{1,}([0-9]{2}):([0-9]{2}):([0-9]{2})\s*(AM|PM)?/g;
+		x = this._handleDateStr(x, date_retwo);
+		if (this._isNumeric(x)) {
+			return x;
+		}
+
+		var s_reone = /^(\-?\d*\.?\d*E?\-?\d*)(ms|y|M|d|h|m|s)\s{0,}(\d*\.?\d*)(ms|y|M|d|h|m|s){0,1}\s{0,}(\d*\.?\d*)(ms|y|M|d|h|m|s){0,1}/g;
+		var s_retwo = /^< 1 ms/g;
+		var s_matchone = x.matchAll(s_reone);
+		var s_matchtwo = x.matchAll(s_retwo);
+		for (const match of s_matchone) {
+			if (match.length > 0) {
+				var one = parseFloat(match[1]) * this.#sMultiplier.get(match[2]);
+				var two = 0;
+				if (match[3] && match[4]) {
+					var two = parseFloat(match[3]) * this.#sMultiplier.get(match[4]);
+				}
+
+				var three = 0;
+				if (match[5] && match[6]) {
+					var three = parseFloat(match[5]) * this.#sMultiplier.get(match[6]);
+				}
+
+				var s = one + two + three;
+				return String(s);
+			}
+		}
+
+		for (const match of s_matchtwo) {
+			if (match.length > 0) {
+				return '0';
+			}
+		}
+
+		return x;
+
+	}
+
+	_isNumeric(x) {
+
+		return !isNaN(parseFloat(x)) && isFinite(x);
+
+	}
+
+	_getNumValue(x, index, convert, allNumeric) {
+
+		try {
+			var x = x.cells[index].innerText;
+		}
+		catch(err) {
+			var x = '-1';
+		}
+
+		var obj = new Object();
+
+		x = this._checkIfDate(x);
+
+		if (x == '') {
+			if (convert) {
+				if (allNumeric) {
+					obj.type = 'number';
+					obj.value = '-1';
+				}
+				else {
+					obj.type = 'text';
+					obj.value = x;
+				}
+			}
+			else {
+				obj.type = 'empty';
+				obj.value = x;
+			}
+			return obj;
+		}
+
+		var splitx = x.split(' ');
+		if (splitx.length == 2) {
+			var numValue = splitx[0];
+			var units_in_display = splitx[1];
+
+			if (this._isNumeric(numValue)) {
+				obj.type = 'number';
+				if (units_in_display !== undefined) {
+					var multiplier = this.#Multiplier.get(units_in_display.charAt(0));
+
+					if (multiplier) {
+						obj.value = parseFloat(numValue) * multiplier;
+					}
+					else {
+						obj.value = numValue;
+					}
+				}
+				else {
+					obj.value = numValue;
+				}
+			}
+			else {
+				obj.type = 'text';
+				obj.value = x.toString();
+			}
+		}
+		else {
+			if (splitx.length == 1) {
+				var numValue = splitx[0];
+				if (this._isNumeric(numValue)) {
+					obj.type = 'number';
+					obj.value = numValue;
+				}
+				else {
+					obj.type = 'text';
+					obj.value = x.toString();
+				}
+			}
+			else {
+				obj.type = 'text';
+				obj.value = x.toString();
+			}
+		}
+
+		return obj;
+
+	}
+
+	_getTextValue(x, index) {
+
+		try {
+			return x.cells[index].innerText;
+		}
+		catch(err) {
+			return '';
+		}
+
+	}
+
+
+	///////CHANGE!!!
+	_sortTableRowsByColumn(columnIndex, ascending) {
+		const allRows = Array.from(this.#values_table.querySelectorAll(':scope > tbody > tr'));
+
+		const resetRows = [];
+		const footerRows = [];
+		const sortableRows = [];
+
+		for (const row of allRows) {
+			let isReset = false;
+			let isFooter = false;
+
+			const cells = row.getElementsByTagName('td');
+			for (let c = 0; c < cells.length; c++) {
+				if (cells[c].querySelector('[reset-row]')) {
+					isReset = true;
+					break;
+				}
+				if (cells[c].hasAttribute('footer-row')) {
+					isFooter = true;
+					break;
+				}
+			}
+
+			if (isReset) {
+				resetRows.push(row);
+			}
+			else if (isFooter) {
+				footerRows.push(row);
+			}
+			else {
+				sortableRows.push(row);
+			}
+		}
+
+		const prelimValues = sortableRows.map(row => this._getNumValue(row, columnIndex, false, true));
+		const allNumeric = !prelimValues.some(obj => obj.type === 'text');
+
+		const rowsWithValues = sortableRows.map(row => ({
+			row,
+			valueObj: this._getNumValue(row, columnIndex, true, allNumeric),
+			textValue: this._getTextValue(row, columnIndex)
+		}));
+
+		rowsWithValues.sort((a, b) => {
+			if (!allNumeric) {
+				return ascending
+					? a.textValue.localeCompare(b.textValue)
+					: b.textValue.localeCompare(a.textValue);
+			}
+
+			const aVal = a.valueObj.value;
+			const bVal = b.valueObj.value;
+
+			if (a.valueObj.type === 'number' && b.valueObj.type === 'number') {
+				return ascending ? aVal - bVal : bVal - aVal;
+			}
+
+			return ascending
+				? aVal.toString().localeCompare(bVal.toString())
+				: bVal.toString().localeCompare(aVal.toString());
+		});
+
+		const finalSortedRows = [...resetRows, ...rowsWithValues.map(obj => obj.row), ...footerRows];
+
+		const fragment = document.createDocumentFragment();
+		for (const row of finalSortedRows) {
+			fragment.appendChild(row);
+		}
+
+		this.#values_table.tBodies[0].appendChild(fragment);
+	}
+
+	#addColumnFilterCSS() {
+		if ($('style.column-filter-styles').length === 0) {
+			const styleColumnFilters = document.createElement('style');
+			styleColumnFilters.classList.add('column-filter-styles');
+			styleColumnFilters.innerHTML = `
+				.filter-popup {
+					position: absolute;
+					z-index: 999;
+					background: #1e1e1e;
+					border: 1px solid #333;
+					box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+					color: #e0e0e0;
+					font-family: sans-serif;
+					border-radius: 4px;
+					width: 400px;
+					max-height: 450px;
+					overflow: hidden;
+					display: flex;
+					flex-direction: column;
+					font-size: 13px;
+				}
+				.filter-popup-header {
+					display: flex;
+					flex-direction: column;
+					align-items: stretch;
+					gap: 6px;
+					padding: 8px;
+					border-bottom: 1px solid #333;
+					background: #2a2a2a;
+				}
+				.filter-popup-header select {
+					color: #fff;
+					background: #1e1e1e;
+					border: 1px solid #555;
+					border-radius: 3px;
+					padding: 4px 8px;
+					font-size: 12px;
+				}
+				
+				.filter-popup-header select option {
+					color: #fff;
+					background-color: #1e1e1e;
+				}
+
+				.filter-popup-header-title {
+					font-weight: bold;
+					color: #ccc;
+					font-size: 14px;
+					margin-bottom: 4px;
+				}
+				.filter-popup-controls {
+					display: flex;
+					align-items: center;
+					gap: 6px;
+				}
+				.filter-popup-controls select,
+				.filter-popup-controls input {
+					background: #1e1e1e;
+					color: #fff;
+					border: 1px solid #555;
+					border-radius: 3px;
+					padding: 4px 8px;
+					font-size: 12px;
+				}
+				.filter-popup-controls input {
+					flex: 1;
+				}
+				.filter-popup-controls .clear-btn {
+					cursor: pointer;
+					color: #aaa;
+					font-size: 11px;
+				}
+				.filter-popup-checkboxes {
+					padding: 8px;
+					overflow-y: auto;
+					flex: 1;
+				}
+				.filter-popup-checkboxes label {
+					display: block;
+					padding: 2px 0;
+					font-size: 13px;
+					color: #fff;
+				}
+				.filter-popup-footer {
+					border-top: 1px solid #333;
+					padding: 8px;
+					background: #2a2a2a;
+					display: flex;
+					flex-direction: column;
+					gap: 6px;
+					font-size: 12px;
+				}
+				.filter-popup-footer button {
+					background: #3a8fd1;
+					color: white;
+					border: none;
+					padding: 6px 12px;
+					font-size: 13px;
+					border-radius: 3px;
+					cursor: pointer;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					height: 30px;
+					min-width: 80px;
+				}
+				.filter-popup-footer button.cancel {
+					background: #f40b5e;
+				}
+				.filter-popup-footer button:hover {
+					opacity: 0.9;
+				}
+				.filter-popup-footer .footer-toggle-row,
+				.filter-popup-footer .footer-action-row {
+					display: flex;
+					justify-content: flex-start;
+					gap: 8px;
+				}
+				.filter-popup-footer .footer-toggle-row {
+					margin-top: 4px;
+				}
+				.filter-popup-footer .footer-action-row {
+					margin-top: 10px;
+				}
+				.filter-popup-footer .toggle-btn {
+					background: #666;
+					color: #fff;
+					border: none;
+					padding: 6px 12px;
+					font-size: 13px;
+					border-radius: 3px;
+					cursor: pointer;
+					transition: background 0.2s;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					height: 30px;
+					min-width: 100px;
+				}
+				.filter-popup-footer .toggle-btn:hover {
+					background: #888;
+				}
+				.display-none-filtered {
+					display: none !important;
+				}
+				.filter-icon.active svg path {
+					stroke: #4ade80;
+				}
+				.filter-icon.active {
+					border-radius: 2px;
+					box-shadow: 0 0 2px rgba(74, 222, 128, 0.5);
+				}
+				.filter-icon.filter-error svg path {
+					stroke: #f44336;
+				}
+				.filter-icon.filter-error {
+					border-radius: 1px;
+					box-shadow: 0 0 2px rgba(244, 67, 54, 0.8);
+				}
+				.filter-warning-icon {
+					cursor: help;
+					display: flex;
+					align-items: center;
+					margin-left: 12px;
+					user-select: none;
+				}
+				.filter-warning-icon svg {
+					display: block;
+				}
+			`;
+			document.head.appendChild(styleColumnFilters);
+		}
+	}
+
+
+	#addPaginationCSS() {
+		if ($('style.pagination-styles').length === 0) {
+			const stylePagination = document.createElement('style');
+			stylePagination.classList.add('pagination-styles');
+			stylePagination.innerHTML = `
+				:root {
+					--pagination-bg-dark: #2b2b2b;
+					--pagination-bg-hcdark: #000000;
+					--pagination-bg-light: #ffffff;
+					--page-num-dark: #f2f2f2;
+					--page-num-light: #000000;
+				}
+				.pagination-controls {
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					position: relative;
+					bottom: 0;
+					padding: 10px 0;
+					background-color: var(--pagination-bg);
+					z-index: 100;
+					width: 100%;
+					box-sizing: border-box;
+				}
+				.pagination-controls button {
+					margin: 0px 5px 0px;
+					padding: 1px 5px;
+					cursor: pointer;
+					border: 1px solid #d0d0d0;
+					border-radius: 5px;
+					font-weight: bold;
+					transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+				}
+				.pagination-controls button:hover {
+					border-color: #c0c0c0;
+				}
+				.pagination-controls span {
+					margin-left: 10px;
+					margin-right: 10px;
+					font-weight: bold;
+					color: var(--page-num);
+				}
+				.new-arrow {
+					display: inline-block;
+					width: 8px;
+					height: 6px;
+					margin-left: 4px;
+					vertical-align: middle;
+				}
+				tbody tr {
+					transition: visibility 0.2s ease-in-out, display 0.2s ease-in-out;
+				}
+			`;
+			document.head.appendChild(stylePagination);
+
+			var theme = jQuery('html').attr('theme');
+			const root = document.documentElement;
+			switch (theme) {
+				case 'dark-theme':
+					root.style.setProperty('--pagination-bg', 'var(--pagination-bg-dark)');
+					root.style.setProperty('--page-num', 'var(--page-num-dark)');
+					break;
+				case 'hc-dark':
+					root.style.setProperty('--pagination-bg', 'var(--pagination-bg-hcdark)');
+					root.style.setProperty('--page-num', 'var(--page-num-dark)');
+					break;
+				case 'hc-light':
+				case 'blue-theme':
+					root.style.setProperty('--pagination-bg', 'var(--pagination-bg-light)');
+					root.style.setProperty('--page-num', 'var(--page-num-light)');
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
+
+}
