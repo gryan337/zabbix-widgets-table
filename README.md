@@ -3,7 +3,7 @@ An table widget with advanced functionality for the Zabbix dashboard
 
 ## Overview
 
-<img src="screenshots/TableDemo.png" width="525" height="450" />
+<img src="screenshots/TableDemo.png" width="750" height="450" />
 
 ## Main Configuration Form
 
@@ -15,7 +15,7 @@ An table widget with advanced functionality for the Zabbix dashboard
 
 ## Column Filtering
 
-<img src="screenshots/ColumnFiltering.png" width="700" height="500" />
+<img src="screenshots/ColumnFiltering.png" width="500" height="500" />
 
 ## Required Zabbix version
 
