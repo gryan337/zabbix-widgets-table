@@ -61,9 +61,9 @@ An table widget with advanced functionality for the Zabbix dashboard
 
 ## Known Issues and Things I'd like to polish
 
- - The sparkline will disappear when performing the following actions: 1) sort a column 2) apply a column filter 3) force or wait for the widget to refresh 4) remove the column filter. This has to do with how SVG graphic are rendered on the page conflicting with my sorting logic. I was able to make a fix in the sparkline class itself, but this is not sustainable since modifications to that class would be undone once you upgrade your Zabbix version
- - Sometimes the bar gauge canvas' will be empty when navigating away from the browser tab for a while, then coming back. I included the the CSS loading spinner into the sorting and pagination clicks, but I'm not very satisfied with its lack of smoothness in the UI.
+ - Fix visual glitch where bar gauge canvas' are empty during various interactions.
  - Fix the sort direction arrows to prevent the columns from shifting when sorting.
  - Add more '?' help icons in the configuration form to describe how to use the field
+ - Add a help tooltip in the column filter for each dropdown element.
  - Polish the code.... a lot. Much of the work was done in javascript, but much of it could be moved to PHP classes/function and CSS. But again, the widget is highly useful today, so code cleanup can wait
  - Better documentation on this page.
