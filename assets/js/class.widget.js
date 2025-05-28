@@ -107,7 +107,6 @@ class CWidgetTableModuleRME extends CWidget {
 			colIndex = parseFloat(th.id) + 1;
 		});
 
-		/////////CHANGE!!
 		this.#values_table.addEventListener('click', (event) => {
 			if (event.target.closest('.filter-icon')) {
 				return;
@@ -126,7 +125,6 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		});
 
-		/////////CHANGE!!
 		this.#totalRows = this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)').length;
 
 		allThs.forEach((th) => {
@@ -167,7 +165,6 @@ class CWidgetTableModuleRME extends CWidget {
 
 		this.#updateDisplay();
 
-		/////////CHANGE!!
 		this.#addColumnFilterCSS();
 		const firstTh = this.#values_table.querySelector('thead th');
 		if (firstTh && !firstTh.querySelector('.filter-icon')) {
@@ -224,7 +221,16 @@ class CWidgetTableModuleRME extends CWidget {
 			clearBtn.addEventListener('click', () => {
 				searchInput.value = '';
 				searchInput.dispatchEvent(new Event('input'));
+
+				checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+
+				isAllSelected = false;
+				toggleButton.textContent = 'Select All';
+
+				updateSummary();
+				updateWarningIcon();
 			});
+
 
 			filterControls.appendChild(filterType);
 			filterControls.appendChild(searchInput);
@@ -301,6 +307,13 @@ class CWidgetTableModuleRME extends CWidget {
 				};
 			
 				this.#applyFilter();
+			});
+
+			searchInput.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					applyButton.click();
+				}
 			});
 
 			const resetButton = document.createElement('button');
@@ -464,6 +477,9 @@ class CWidgetTableModuleRME extends CWidget {
 			});
 
 			this.#applyFilter();
+			if (this.#filterState.search !== '') {
+				searchInput.dispatchEvent(new Event('input'));
+			}
 
 			function makeDraggable(popup, handle) {
 				let isDragging = false;
@@ -647,26 +663,7 @@ class CWidgetTableModuleRME extends CWidget {
 			});
 		});
 
-		this.#refreshSparklines();
-
 	}
-
-	#refreshSparklines() {
-		const sparklines = this.#values_table.querySelectorAll('tr:not(.display-none-filtered) td z-sparkline');
-		requestAnimationFrame(() => {
-			sparklines.forEach((sparkline) => {
-				const value = sparkline.getAttribute('value');
-				const width = sparkline.getAttribute('width') || sparkline.offsetWidth
-				const height = sparkline.getAttribute('height') || sparkline.offsetHeight
-				if (value) {
-					// Force re-trigger by toggling attribute doesn't work...
-					sparkline.removeAttribute('value');
-					sparkline.setAttribute('value', value);
-				}
-			});
-		});
-	}
-
 
 
 	#handleCellClick(td) {
@@ -761,7 +758,6 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#updateDisplay(true);
 	}
 
-	///////////CHANGE!!!!
 	#updateDisplay(scrollToTop = false) {
 		this.#recalculateCanvasSize();
 
@@ -801,16 +797,16 @@ class CWidgetTableModuleRME extends CWidget {
 			});
 			this.#updatePageInfo(this.#paginationElement ? this.#paginationElement.querySelector('span') : null);
 		}
+
+
 	}
 
-	////////////CHANGE!!!!
 	#updatePageInfo(pageInfoElement) {
 		if (!pageInfoElement) return;
 		const totalPages = Math.ceil(this.#totalRows / this.#rowsPerPage);
 		pageInfoElement.textContent = `Page ${this.#currentPage} of ${totalPages}`;
 	}
 
-	////////////CHANGE!!!!
 	#sortTable(th, ascending, span, preserve = false) {
 		this._sortTableRowsByColumn(th.id, ascending);
 		th.dataset['sort'] = ascending ? 'asc' : 'desc';
@@ -821,7 +817,6 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#updateDisplay();
 	}
 
-	////////////CHANGE!!!!
 	#getSetSpans(th) {
 		const span = th.querySelector('span#arrow');
 		const allArrowSpans = this.#values_table.querySelectorAll('thead tr th span#arrow');
@@ -1146,7 +1141,6 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 
-	///////CHANGE!!!
 	_sortTableRowsByColumn(columnIndex, ascending) {
 		const allRows = Array.from(this.#values_table.querySelectorAll(':scope > tbody > tr'));
 
@@ -1217,6 +1211,14 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		this.#values_table.tBodies[0].appendChild(fragment);
+
+		requestAnimationFrame(() => {
+			this.#values_table.querySelectorAll('z-sparkline').forEach(el => {
+				const clone = el.cloneNode(true);
+				el.replaceWith(clone);
+			});
+		});
+
 	}
 
 	#addColumnFilterCSS() {
@@ -1297,10 +1299,42 @@ class CWidgetTableModuleRME extends CWidget {
 					flex: 1;
 				}
 				.filter-popup-checkboxes label {
-					display: block;
+					display: flex;
+					align-items: center;
+					gap: 6px;
+					line-height: 1.2;
 					padding: 2px 0;
-					font-size: 13px;
-					color: #fff;
+				}
+				.filter-popup-checkboxes input[type="checkbox"] {
+					appearance: none;
+					-webkit-appearance: none;
+					-moz-appearance: none;
+					width: 16px;
+					height: 16px;
+					border: 2px solid #9ca3af;
+					border-radius: 4px;
+					background-color: white;
+					cursor: pointer;
+					position: relative;
+					flex-shrink: 0;
+					transition: all 0.15s ease-in-out;
+					margin-top: 1px; /* tweak to lower the box slightly */
+				}
+				.filter-popup-checkboxes input[type="checkbox"]:checked {
+					background-color: #3b82f6;
+					border-color: #3b82f6;
+				}
+				.filter-popup-checkboxes input[type="checkbox"]:checked::after {
+					content: '';
+					position: absolute;
+					top: 1px;
+					left: 4px;
+					width: 5px;
+					height: 9px;
+					border: solid white;
+					border-width: 0 2px 2px 0;
+					transform: rotate(45deg);
+					pointer-events: none;
 				}
 				.filter-popup-footer {
 					border-top: 1px solid #333;
