@@ -63,6 +63,7 @@ An table widget with advanced functionality for the Zabbix dashboard
 
  - Fix visual glitch where bar gauge canvas' are empty during various interactions.
  - Fix the sort direction arrows to prevent the columns from shifting when sorting.
+ - Remove all pagination from DOM manipulation to an in memory approach. This will involve initiating a few arrays from the beginning, clearing the table, and only inserting the rows that should be visible. This should help clean up sluggishness due to very large datasets (Especially when using canvas')
  - Add more '?' help icons in the configuration form to describe how to use the field
  - Add a help tooltip in the column filter for each dropdown element.
  - Polish the code.... a lot. Much of the work was done in javascript, but much of it could be moved to PHP classes/function and CSS. But again, the widget is highly useful today, so code cleanup can wait
