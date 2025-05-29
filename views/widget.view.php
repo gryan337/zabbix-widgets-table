@@ -43,7 +43,7 @@ else {
 				['is_view_value_in_row' => $is_view_value] = $cell[Widget::CELL_METADATA];
 				$header[] = (new CColHeader(
 					($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
-						? (new CVertical($title))
+						? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
 						: (new CSpan($title))
 					)->setTitle($title)
 				))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
@@ -56,7 +56,7 @@ else {
 				['name' => $title, 'is_view_value_in_column' => $is_view_value] = $cell[Widget::CELL_METADATA];
 				$header[] = (new CColHeader(
 					($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
-						? (new CVertical($title))
+						? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
 						: (new CSpan($title))
 					)->setTitle($title)
 				))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
@@ -81,7 +81,7 @@ else {
 			
 			$header[] = (new CColHeader(
 				($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
-					? (new CVertical('Value'))
+					? (class_exists('CVertical') ? (new CVertical('Value')) : (new CSpan('Value'))->addClass(ZBX_STYLE_TEXT_VERTICAL))
 					: (new CSpan('Value'))
 				)->setTitle('Value')
 			))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
@@ -130,7 +130,7 @@ else {
 				$ivv = array_key_exists($index, $is_view_value) ? ($is_view_value[$index] ? 2 : 1) : 1;
 				$header[] = (new CColHeader(
 					($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
-						? (new CVertical($title))
+						? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
 						: (new CSpan($title))
 					)->setTitle($title)
 				))->setColSpan($ivv)->addClass($class);
