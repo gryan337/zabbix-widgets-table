@@ -1,5 +1,5 @@
 # Zabbix Custom Widget - Table
-An table widget with advanced functionality for the Zabbix dashboard
+A table widget with advanced functionality for the Zabbix dashboard
 
 ## Overview
 
