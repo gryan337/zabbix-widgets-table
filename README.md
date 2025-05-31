@@ -19,7 +19,7 @@ A table widget with advanced functionality for the Zabbix dashboard
 
 ## Required Zabbix version
 
- - Zabbix 7.2
+ - All versions of Zabbix 7.2
 
 ## Purpose
 
