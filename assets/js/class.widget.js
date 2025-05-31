@@ -132,20 +132,20 @@ class CWidgetTableModuleRME extends CWidget {
 				if (th.getAttribute('id') === this.#th.getAttribute('id')) {
 					if (this.#totalRows <= this.#rowsPerPage) {
 						this.#parent_container.classList.add('is-loading');
-//						this.#parent_container.classList.toggle('widget-blue');
+						this.#parent_container.classList.toggle('widget-blur');
 						setTimeout(() => {
 							const span = this.#getSetSpans(th);
 							const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
 							this.#sortTable(th, ascending, span, true);
 							this.#th = th;
-//							this.#parent_container.classList.toggle('widget-blur');
+							this.#parent_container.classList.toggle('widget-blur');
 							this.#parent_container.classList.remove('is-loading');
 						}, this.#timeout);
 					}
 					else {
 						if (!this.#parent_container.classList.contains('widget-blur')) {
 							this.#parent_container.classList.add('is-loading');
-//							this.#parent_container.toggle('widget-blue');
+							this.#parent_container.classList.toggle('widget-blur');
 						}
 
 						const span = this.#getSetSpans(th);
@@ -351,7 +351,46 @@ class CWidgetTableModuleRME extends CWidget {
 				if (td) filterValues.add(td.textContent.trim());
 			});
 
-			filterValues.forEach(value => {
+			const valuesArray = Array.from(filterValues);
+
+			const isNumeric = val => /^-?\d+(\.\d+)?$/.test(val.trim());
+			const isIPv4 = val => /^(\d{1,3}\.){3}\d{1,3}$/.test(val.trim());
+			const isAll = (arr, testFn) => arr.every(testFn);
+
+			const ipToNum = ip => {
+				const octets = ip.trim().split('.');
+				if (octets.length !== 4) return NaN;
+
+				const nums = octets.map(octet => parseInt(octet, 10));
+				if (nums.some(num => isNaN(num) || num < 0 || num > 255)) return NaN;
+
+				return (nums[0] * 256 ** 3) + (nums[1] * 256 ** 2) + (nums[2] * 256) + nums[3];
+			};
+
+			let sortedValues;
+			if (isAll(valuesArray, isNumeric)) {
+				sortedValues = valuesArray.sort((a, b) => parseFloat(a) - parseFloat(b));
+			}
+			else if (isAll(valuesArray, isIPv4)) {
+				sortedValues = valuesArray.sort((a, b) => ipToNum(a) - ipToNum(b));
+			}
+			else if (isAll(valuesArray, val => typeof val === 'string')) {
+				sortedValues = valuesArray.sort((a, b) => a.localeCompare(b));
+			}
+			else {
+				sortedValues = valuesArray.sort((a, b) => {
+					const getTypeRank = v => isNumeric(v) ? 0 : isIPv4(v) ? 1 : 2;
+					const rankA = getTypeRank(a);
+					const rankB = getTypeRank(b);
+					if (rankA !== rankB) return rankA - rankB;
+					if (rankA === 0) return parseFloat(a) - parseFloat(b);
+					if (rankA === 1) return ipToNum(a) - ipToNum(b);
+					return a.localeCompare(b);
+				});
+			}
+
+
+			sortedValues.forEach(value => {
 				const id = `filter_${value.replace(/[^a-zA-Z0-9]/g, '_')}`;
 				const label = document.createElement('label');
 				label.innerHTML = `
@@ -366,6 +405,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				checkboxContainer.appendChild(label);
 			});
+
 
 			searchInput.addEventListener('input', () => {
 				const query = searchInput.value.toLowerCase();
@@ -763,6 +803,9 @@ class CWidgetTableModuleRME extends CWidget {
 
 		if (this.#totalRows > this.#rowsPerPage) {
 			this.#parent_container.classList.add('is-loading');
+			if (!this.#parent_container.classList.contains('widget-blur')) {
+				this.#parent_container.classList.toggle('widget-blur');
+			}
 
 			const allTrs = Array.from(this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)'));
 
@@ -783,6 +826,7 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 
 				this.#updatePageInfo(this.#paginationElement.querySelector('span'));
+				this.#parent_container.classList.toggle('widget-blur');
 				this.#parent_container.classList.remove('is-loading');
 			}, this.#timeout);
 		}
@@ -1470,12 +1514,19 @@ class CWidgetTableModuleRME extends CWidget {
 					font-weight: bold;
 					color: var(--page-num);
 				}
-				.new-arrow {
-					display: inline-block;
-					width: 8px;
-					height: 6px;
-					margin-left: 4px;
-					vertical-align: middle;
+				.is-loading.widget-blur::before,
+				.is-loading.widget-blur::after {
+					background-color: rgba(43, 43, 43, 1.0);
+				}
+				html[theme="blue-theme"] .is-loading.widget-blur::before,
+				html[theme="blue-theme"] .is-loading.widget-blur::after,
+				html[theme="hc-light"] .is-loading.widget-blur::before,
+				html[theme="hc-light"] .is-loading.widget-blur::after {
+					background-color: rgba(140, 140, 140, 1.0);
+				}
+				html[theme="hc-dark"] .is-loading.widget-blur::before,
+				html[theme="hc-dark"] .is-loading.widget-blur::after {
+					background-color: rgba(0, 0, 0, 1.0);
 				}
 				tbody tr {
 					transition: visibility 0.2s ease-in-out, display 0.2s ease-in-out;
