@@ -1265,6 +1265,144 @@ class CWidgetTableModuleRME extends CWidget {
 
 	}
 
+	updateTableFooter() {
+		const rows = Array.from(this.#values_table.querySelectorAll("tbody tr:not([footer-row])"));
+		const footerRow = this.#values_table.querySelector("td[footer-row]").parentElement;
+		const footerCells = Array.from(footerRow.querySelectorAll("td"));
+		const visibleRows = rows.filter(row => !row.classList.contains("display-none-filtered"));
+
+		footerCells.forEach((cell, colIndex) => {
+			if (!cell.innerText.trim()) return; // skip empty footer cells
+
+			// Determine mode: Total or Average
+			const label = cell.textContent.trim();
+			const isTotal = label === "Total";
+			const isAverage = label === "Average";
+
+			let overrideIcon = cell.querySelector(".override-icon");
+			let mode = isTotal ? "sum" : "average";
+			if (overrideIcon) {
+				const title = overrideIcon.getAttribute("title");
+				if (title === "Sum") mode = "sum";
+				else if (title === "Average") mode = "average";
+			}
+
+			// Skip columns with override <div><span></span></div>
+			if (cell.querySelector("span") && cell.querySelector("span").textContent.trim() === "") {
+				return;
+			}
+
+			// Gather values from this column
+			const values = [];
+			const unitsSet = new Set();
+			visibleRows.forEach(row => {
+				const td = row.querySelectorAll("td")[colIndex];
+				if (!td) return;
+				const rawHtml = td.getAttribute("data-hintbox-contents");
+				const unit = td.getAttribute("units") || "";
+				if (!rawHtml) return;
+
+				const match = rawHtml.match(/>([\d\.\-eE]+)</);
+				if (!match) return;
+				let rawValue = parseFloat(match[1]);
+				if (isNaN(rawValue)) {
+					if (mode === "sum") rawValue = 0;
+					else return; // average: skip
+				}
+
+				values.push(rawValue);
+				unitsSet.add(unit);
+			});
+
+			if (values.length === 0) return;
+
+			let result = 0;
+			if (mode === "sum") {
+				result = values.reduce((acc, val) => acc + val, 0);
+			}
+			else {
+				result = values.reduce((acc, val) => acc + val, 0) / values.length;
+			}
+
+			const unit = unitsSet.size === 1 ? [...unitsSet][0] : null;
+			const formatted = this.formatValueWithUnit(result, unit);
+
+			// Update the footer cell
+			const span = cell.querySelector("span");
+			if (span) {
+				span.textContent = formatted;
+			}
+			else {
+				cell.innerHTML = `<div><span>${formatted}</span></div>`;
+			}
+		});
+	}
+
+	formatValueWithUnit(value, unit) {
+		if (!unit || unit.startsWith("!")) return value.toFixed(2);
+
+		switch (unit) {
+			case "B":
+				return this.formatBytes(value);
+			case "s":
+				return this.formatSecondsDuration(value);
+			case "uptime":
+				return this.formatUptime(value);
+			case "pps":
+				return value.toFixed(2) + " pkts";
+			case "%":
+				return value.toFixed(2) + " %";
+			default:
+				return this.formatSIUnit(value, unit);
+		}
+	}
+
+	formatBytes(bytes) {
+		const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+		let i = 0;
+		while (bytes >= 1024 && i < units.length - 1) {
+			bytes /= 1024;
+			i++;
+		}
+		return `${bytes.toFixed(2)} ${units[i]}`;
+	}
+
+	formatSIUnit(val, unit) {
+		const units = ["", "K", "M", "G", "T", "P"];
+		let i = 0;
+		while (val >= 1000 && i < units.length - 1) {
+			val /= 1000;
+			i++;
+		}
+		return `${val.toFixed(2)} ${units[i]}${unit}`;
+	}
+
+	formatSecondsDuration(sec) {
+		if (sec < 0.001) return "< 1 ms";
+		const d = Math.floor(sec / (3600 * 24));
+		const h = Math.floor((sec % (3600 * 24)) / 3600);
+		const m = Math.floor((sec % 3600) / 60);
+		const s = Math.floor(sec % 60);
+		const parts = [];
+		if (d) parts.push(`${d}d`);
+		if (h) parts.push(`${h}h`);
+		if (m && parts.length < 3) parts.push(`${m}m`);
+		if (s && parts.length < 3) parts.push(`${s}s`);
+		return parts.slice(0, 3).join(" ");
+	}
+
+	formatUptime(sec) {
+		const days = Math.floor(sec / (3600 * 24));
+		const h = String(Math.floor((sec % (3600 * 24)) / 3600)).padStart(2, "0");
+		const m = String(Math.floor((sec % 3600) / 60)).padStart(2, "0");
+		const s = String(Math.floor(sec % 60)).padStart(2, "0");
+		if (days > 0) {
+			return `${days} days, ${h}:${m}:${s}`;
+		}
+		return `${h}:${m}:${s}`;
+	}
+
+
 	#addColumnFilterCSS() {
 		if ($('style.column-filter-styles').length === 0) {
 			const styleColumnFilters = document.createElement('style');
