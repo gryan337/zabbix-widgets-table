@@ -27,6 +27,7 @@ class ColumnEditTableRme extends CController {
 		// Validation is done by CWidgetFieldColumnsList
 		$fields = [
 			'column_title' =>			'string',
+			'broadcast_in_group_row' =>	'in 0,1',
 			'column_agg_method' =>		'int32',
 			'items' =>					'array',
 			'item_tags_evaltype' =>		'int32',
@@ -44,6 +45,7 @@ class ColumnEditTableRme extends CController {
 			'aggregate_function' =>		'int32',
 			'time_period' =>			'array',
 			'history' =>				'int32',
+			'include_itemids' =>		'in 0,1',
 			'edit' =>					'in 1',
 			'update' =>					'in 1',
 			'templateid' =>				'string'
@@ -178,6 +180,7 @@ class ColumnEditTableRme extends CController {
 		if ($column_defaults === null) {
 			$column_defaults = [
 				'column-title' => '',
+				'broadcast_in_group_row' => 0,
 				'column_agg_method' => AGGREGATE_NONE,
 				'items' => [],
 				'item_tags_evaltype' => TAG_EVAL_TYPE_AND_OR,
@@ -198,7 +201,8 @@ class ColumnEditTableRme extends CController {
 						CWidgetField::REFERENCE_DASHBOARD, CWidgetsData::DATA_TYPE_TIME_PERIOD
 					)
 				],
-				'history' => CWidgetFieldColumnsList::HISTORY_DATA_AUTO
+				'history' => CWidgetFieldColumnsList::HISTORY_DATA_AUTO,
+				'include_itemids' => 0
 			];
 		}
 

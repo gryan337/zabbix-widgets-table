@@ -28,13 +28,26 @@ if (array_key_exists('edit', $data)) {
 $form_grid->addItem([
 	(new CLabel([
 		_('Column title'),
-		makeHelpIcon(_('Only used when \'Layout\' is set to \'Column per PAttern\''))
+		makeHelpIcon(_('Only used when \'Layout\' is set to \'Column per Pattern\''))
 	]))->addClass('js-column-title'),
 	(new CFormField(
 		(new CTextBox('column_title', $data['column_title'], false))
 			->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
 	))->addClass('js-column-title')
 ]);
+
+#$form_grid->addItem([
+#	(new CLabel([
+#		_('Broadcast from grouped column'),
+#		makeHelpIcon([
+#			_('Checking this box means that the itemid will be broadcasted to listening widgets by clicking the cell in the column with the grouping value'), BR(),
+#			_('This is useful for when you have multiple columns and you want to broadcast multiple metrics to be plotted simultaneously')
+#		])
+#	]))->addClass('js-broadcast-in-group-cell'),
+#	(new CFormField(
+#		(new CCheckBox('broadcast_in_group_row'))->setChecked($data['broadcast_in_group_row'])
+#	))->addClass('js-broadcast-in-group-cell')
+#]);
 
 // Item patterns
 $item_items_field_view = (new CWidgetFieldPatternSelectItemView($data['item_items_field']))
@@ -302,6 +315,17 @@ $advanced_configuration
 				->setModern()
 		))->addClass('js-override-footer')
 	]);
+
+#$advanced_configuration
+#	->addItem([
+#		(new CLabel([
+#			_('Include itemids in cell'),
+#			makeHelpIcon(_('When using \'Column patterns aggregation\' include all itemids for broadcasting to other widgets'))
+#		]))->addClass('js-include-itemids'),
+#		(new CFormField(
+#			(new CCheckBox('include_itemids'))->setChecked($data['include_itemids'])
+#		))->addClass('js-include-itemids')
+#	]);
 
 $form_grid->addItem($advanced_configuration);
 

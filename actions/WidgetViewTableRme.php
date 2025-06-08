@@ -124,7 +124,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			if ($this->fields_values['layout'] == WidgetForm::LAYOUT_VERTICAL ||
 					$this->fields_values['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
 				$this->applyItemOrderingLimit($table);
-					}
+			}
 
 			$column_tables[$column_index] = $table;
 		}
@@ -218,9 +218,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 		}
 
-		self::calculateExtremes($columns, $table);
-		self::calculateValueViews($columns, $table);
-
 		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
 			$table = self::perColumnAggregation($columns, $table, $groupby_host);
 			if (!$groupby_host) {
@@ -228,8 +225,16 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 		}
 		
+		self::calculateExtremes($columns, $table);
+		self::calculateValueViews($columns, $table);
+
 		// Remove hostids.
-		$table = array_values($table);
+		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+			$table = [$table];
+		}
+		else {
+			$table = array_values($table);
+		}
 
 		$db_item_problem_triggers = [];
 		if ($this->fields_values['problems'] != WidgetForm::PROBLEMS_NONE) {
@@ -241,7 +246,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'layout' => $this->fields_values['layout'],
 			'show_column_header' => $this->fields_values['show_column_header'],
 			'configuration' => $columns,
-			'rows' => ($this->fields_values['layout'] == WidgetForm::LAYOUT_VERTICAL || $this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER)
+			'rows' => (
+					$this->fields_values['layout'] == WidgetForm::LAYOUT_VERTICAL ||
+					($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && !$this->fields_values['aggregate_all_hosts']))
 				? self::transposeTable($table)
 				: $table,
 			'db_hosts' => $db_hosts,
@@ -251,11 +258,13 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'item_order' => $this->fields_values['item_ordering_order'],
 			'item_grouping' => $this->fields_values['item_group_by'],
 			'row_reset' => $this->fields_values['reset_row'],
+			'no_broadcast_hostid' => $this->fields_values['no_broadcast_hostid'],
+			'aggregate_all_hosts' => $this->fields_values['aggregate_all_hosts'],
 			'footer' => $this->fields_values['footer'],
 			'num_hosts' => []
 		];
 		
-		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
+		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && !$this->fields_values['aggregate_all_hosts']) {
 			$num_hosts = [];
 			foreach ($table as $tindex => $stat) {
 				foreach ($stat as $smet) {
@@ -789,6 +798,15 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			return;
 		}
 
+		function shouldAddToRowsWithViewValues($cell, $columns) {
+			['column_index' => $column_index] = $cell[Widget::CELL_METADATA];
+			$column = $columns[$column_index];
+
+			return $column['display_value_as'] == CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC
+					&& $column['display'] != CWidgetFieldColumnsList::DISPLAY_AS_IS
+					&& $cell[Widget::CELL_VALUE] !== null;
+		}
+
 		$columns_with_view_values = [];
 		$width = count($table[array_key_first($table)]);
 		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
@@ -800,56 +818,60 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		}
 		
 		if ($this->fields_values['layout'] != WidgetForm::LAYOUT_THREE_COL) {
-			for ($i = 0; $i < $width; $i++) {
-				foreach ($table as [$i => $cell]) {
-					['column_index' => $column_index] = $cell[Widget::CELL_METADATA];
-					$column = $columns[$column_index];
-
-					if ($column['display_value_as'] == CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC
-							&& $column['display'] != CWidgetFieldColumnsList::DISPLAY_AS_IS
-							&& $cell[Widget::CELL_VALUE] !== null) {
-						$columns_with_view_values[] = $i;
+			if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+				foreach ($table as $grouping => $cell) {
+					if (shouldAddToRowsWithViewValues($cell, $columns)) {
+						$columns_with_view_values[] = $grouping;
+					}
+				}
+			}
+			else {
+				for ($i = 0; $i < $width; $i++) {
+					foreach ($table as [$i => $cell]) {
+						if (shouldAddToRowsWithViewValues($cell, $columns)) {
+							$columns_with_view_values[] = $i;
+						}
 					}
 				}
 			}
 		}
 
-		$rows_with_view_values = [];
-		foreach ($table as $hostid => $row) {
-			foreach ($row as $cell) {
-				['column_index' => $column_index] = $cell[Widget::CELL_METADATA];
-				$column = $columns[$column_index];
-
-				if ($column['display_value_as'] == CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC
-						&& $column['display'] != CWidgetFieldColumnsList::DISPLAY_AS_IS
-						&& $cell[Widget::CELL_VALUE] !== null) {
-					$rows_with_view_values[] = $hostid;
+		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+			foreach ($table as $grouping => $cell) {
+				if (shouldAddToRowsWithViewValues($cell, $columns)) {
+					$rows_with_view_values[] = $grouping;
+				}
+			}
+		}
+		else {
+			foreach ($table as $hostid => $row) {
+				foreach ($row as $cell) {
+					if (shouldAddToRowsWithViewValues($cell, $columns)) {
+						$rows_with_view_values[] = $hostid;
+					}
 				}
 			}
 		}
 
 		$rows_with_view_values = array_flip($rows_with_view_values);
 		$columns_with_view_values = array_flip($columns_with_view_values);
-		foreach ($table as $hostid => &$row) {
-			foreach ($row as $table_column_index => &$cell) {
+		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+			foreach ($table as $table_column_index => &$cell) {
 				$cell[Widget::CELL_METADATA]['is_view_value_in_column'] = array_key_exists($table_column_index, $columns_with_view_values);
-				$cell[Widget::CELL_METADATA]['is_view_value_in_row'] = array_key_exists($hostid, $rows_with_view_values);
+				$cell[Widget::CELL_METADATA]['is_view_value_in_row'] = array_key_exists($table_column_index, $rows_with_view_values);
+			}
+		}
+		else {
+			foreach ($table as $hostid => &$row) {
+				foreach ($row as $table_column_index => &$cell) {
+					$cell[Widget::CELL_METADATA]['is_view_value_in_column'] = array_key_exists($table_column_index, $columns_with_view_values);
+					$cell[Widget::CELL_METADATA]['is_view_value_in_row'] = array_key_exists($hostid, $rows_with_view_values);
+				}
 			}
 		}
 	}
 	
-	private static function perColumnOrdering(array $columns, array $table, array $fields): array {
-		$groupedData = [];
-		foreach ($table as $values) {
-			foreach ($values as $item) {
-				if (isset($item[Widget::CELL_VALUE]) && !is_null($item[Widget::CELL_VALUE]) && $item[Widget::CELL_VALUE] !== '') {
-					$columnIndex = $item[Widget::CELL_METADATA]['column_index'];
-					$groupedData[$columnIndex][] = $item;
-				}
-			}
-		}
-		
-		$filteredData = [];
+	private function perColumnOrdering(array $columns, array $table, array $fields): array {
 		$orderComparison = function ($a, $b) use ($fields) {
 			if ($fields['item_ordering_order_by'] == WidgetForm::ORDERBY_ITEM_NAME) {
 				$fieldA = $a[Widget::CELL_METADATA]['grouping_name'];
@@ -862,6 +884,23 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				return ($fields['item_ordering_order'] == WidgetForm::ORDER_BOTTOM_N) ? $fieldA <=> $fieldB : $fieldB <=> $fieldA;
 			}
 		};
+
+		if ($this->fields_values['aggregate_all_hosts']) {
+			uasort($table, $orderComparison);
+			return $table;
+		}
+
+		$groupedData = [];
+		foreach ($table as $values) {
+			foreach ($values as $item) {
+				if (isset($item[Widget::CELL_VALUE]) && !is_null($item[Widget::CELL_VALUE]) && $item[Widget::CELL_VALUE] !== '') {
+					$columnIndex = $item[Widget::CELL_METADATA]['column_index'];
+					$groupedData[$columnIndex][] = $item;
+				}
+			}
+		}
+		
+		$filteredData = [];
 		
 		foreach ($groupedData as $columnIndex => $items) {
 			usort($items, $orderComparison);
@@ -890,17 +929,21 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		return $table;
 	}
 	
-	private static function perColumnAggregation(array &$columns, array &$table, bool $groupby_host): array {
+	private function perColumnAggregation(array &$columns, array &$table, bool $groupby_host): array {
 		$final_table = [];
 		foreach ($columns as $column_index => $column_configs) {
 			if ($column_configs['column_agg_method'] !== AGGREGATE_NONE) {
 				foreach ($table as $hostid => $items) {
 					$values = [];
+					$itemids = [];
 					$my_cell = [];
 					if ($groupby_host) {
 						foreach ($items as $i => &$cell) {
 							if ($cell[Widget::CELL_METADATA]['column_index'] == $column_index) {
 								$values[] = $cell[Widget::CELL_VALUE];
+								if ($cell[Widget::CELL_ITEMID]) {
+									$itemids[] = $cell[Widget::CELL_ITEMID];
+								}
 								$my_cell = $cell;
 							}
 						}
@@ -908,27 +951,13 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 						if (!$my_cell) {
 							continue;
 						}
-						
-						switch ($column_configs['column_agg_method']) {
-							case AGGREGATE_SUM:
-								$final = array_sum($values);
-								break;
-							case AGGREGATE_MAX:
-								$final = max($values);
-								break;
-							case AGGREGATE_MIN:
-								$final = min($values);
-								break;
-							case AGGREGATE_COUNT:
-								$final = count($values);
-								break;
-							case AGGREGATE_AVG:
-								$final = CMathHelper::safeAvg($values);
-								break;
-							default:
-								break;
-						}
+
+						$final = $this->applyAggregation($column_configs['column_agg_method'], $values);
 						$my_cell[Widget::CELL_VALUE] = $final;
+						$my_cell[Widget::CELL_ITEMID] = null;
+						if ($itemids) {
+							$my_cell[Wdiget::CELL_ITEMID] = implode(',', $itemids);
+						}
 						$final_table[$hostid][] = $my_cell;
 					}
 					else {
@@ -937,6 +966,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 								$grouping = $cell[Widget::CELL_METADATA]['grouping_name'];
 								if (array_key_exists($grouping, $values)) {
 									$values[$grouping]['values'][] = $cell[Widget::CELL_VALUE];
+									$values[$grouping][Widget::CELL_ITEMID] .= ',' . $cell[Widget::CELL_ITEMID];
 								}
 								else {
 									$values[$grouping] = $cell;
@@ -947,25 +977,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 						
 						
 						foreach ($values as $group => &$value) {
-							switch ($column_configs['column_agg_method']) {
-								case AGGREGATE_SUM:
-									$value[Widget::CELL_VALUE] = array_sum($value['values']);
-									break;
-								case AGGREGATE_MAX:
-									$value[Widget::CELL_VALUE] = max($value['values']);
-									break;
-								case AGGREGATE_MIN:
-									$value[Widget::CELL_VALUE] = min($value['values']);
-									break;
-								case AGGREGATE_COUNT:
-									$value[Widget::CELL_VALUE] = count($value['values']);
-									break;
-								case AGGREGATE_AVG:
-									$value[Widget::CELL_VALUE] = CMathHelper::safeAvg($value['values']);
-									break;
-								default:
-									break;
-							}
+							$value[Widget::CELL_VALUE] = $this->applyAggregation($column_configs['column_agg_method'], $value['values']);
 							unset($value['values']);
 							$final_table[$hostid][] = $value;
 						}
@@ -987,28 +999,120 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				}
 			}
 		}
-		
+
+		if ($this->fields_values['aggregate_all_hosts']) {
+			$aggregatedArray = [];
+
+			foreach ($final_table as $hostid => $hostData) {
+				foreach ($hostData as $data) {
+					$groupingName = $data[Widget::CELL_METADATA]['grouping_name'];
+					$columnIndex = $data[Widget::CELL_METADATA]['column_index'];
+					$key = "${groupingName}".chr(31)."${columnIndex}";
+
+					if (!isset($aggregatedArray[$key])) {
+						$aggregatedArray[$key] = [
+							Widget::CELL_HOSTID => $hostid,
+							Widget::CELL_ITEMID => (string)$data[Widget::CELL_ITEMID],
+							Widget::CELL_VALUE => $data[Widget::CELL_VALUE],
+							Widget::CELL_SPARKLINE_VALUE => $data[Widget::CELL_SPARKLINE_VALUE] ?? null,
+							Widget::CELL_METADATA => $data[Widget::CELL_METADATA],
+						];
+					}
+					else {
+						$aggregatedArray[$key][Widget::CELL_HOSTID] .= ",${hostid}";
+						$aggregatedArray[$key][Widget::CELL_ITEMID] .= ",${data[Widget::CELL_ITEMID]}";
+
+						$method = $columns[$columnIndex]['column_agg_method'];
+						$currentValues = explode(',', $aggregatedArray[$key][Widget::CELL_VALUE]);
+						$currentValues[] = $data[Widget::CELL_VALUE];
+						$aggregatedArray[$key][Widget::CELL_VALUE] = $this->applyAggregation($method, $currentValues);
+
+						if (!empty($data[Widget::CELL_SPARKLINE_VALUE])) {
+							if ($aggregatedArray[$key][Widget::CELL_SPARKLINE_VALUE] === null) {
+								$aggregatedArray[$key][Widget::CELL_SPARKLINE_VALUE] = $data[Widget::CELL_SPARKLINE_VALUE];
+							}
+							else {
+								foreach ($data[Widget::CELL_SPARKLINE_VALUE] as $subArray) {
+									$timestamp = $subArray[Widget::CELL_HOSTID];
+									$value = $subArray[1];
+									$timestampExists = false;
+									foreach ($aggregatedArray[$key][Widget::CELL_SPARKLINE_VALUE] as &$existingSubArray) {
+										if ($existingSubArray[Widget::CELL_HOSTID] == $timestamp) {
+											$timestampExists = true;
+											$existingSubArray[1] = $this->applyAggregation($method, [$existingSubArray[1], $value]);
+											break;
+										}
+									}
+
+									if (!$timestampExists) {
+										$aggregatedArray[$key][Widget::CELL_SPARKLINE_VALUE][] = $subArray;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			foreach ($aggregatedArray as &$agg) {
+				if (is_array($agg[Widget::CELL_SPARKLINE_VALUE])) {
+					usort($agg[Widget::CELL_SPARKLINE_VALUE], function($a, $b) {
+						return $a[0] <=> $b[0];
+					});
+				}
+			}
+			$final_table = $aggregatedArray;
+		}
 		return $final_table;
 	}
-	
-	private static function calculateExtremes(array &$columns, array $table): void {
+
+	private function applyAggregation($method, $values) {
+		switch ($method) {
+			case AGGREGATE_SUM:
+				return array_sum($values);
+			case AGGREGATE_MAX:
+				return max($values);
+			case AGGREGATE_MIN:
+				return min($values);
+			case AGGREGATE_COUNT:
+				return count($values);
+			case AGGREGATE_AVG:
+				return CMathHelper::safeAvg($values);
+			default:
+				return null;
+		}
+	}
+
+
+	private function calculateExtremes(array &$columns, array $table): void {
 		$column_min = [];
 		$column_max = [];
 
-		foreach ($table as $row) {
-			foreach ($row as $cell) {
-				$column_index = $cell[Widget::CELL_METADATA]['column_index'];
-				$value = $cell[Widget::CELL_VALUE];
-				if ($value === null) {
-					continue;
-				}
+		function updateColumnMinMax($cell, &$column_min, &$column_max) {
+			$column_index = $cell[Widget::CELL_METADATA]['column_index'];
+			$value = $cell[Widget::CELL_VALUE];
+			if ($value === null) {
+				return;
+			}
 
-				if (!array_key_exists($column_index, $column_min) || $column_min[$column_index] > $value) {
-					$column_min[$column_index] = $value;
-				}
+			if (!array_key_exists($column_index, $column_min) || $column_min[$column_index] > $value) {
+				$column_min[$column_index] = $value;
+			}
 
-				if (!array_key_exists($column_index, $column_max) || $column_max[$column_index] < $value) {
-					$column_max[$column_index] = $value;
+			if (!array_key_exists($column_index, $column_max) || $column_max[$column_index] > $value) {
+				$column_max[$column_index] = $value;
+			}
+		}
+
+		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+			foreach ($table as $cell) {
+				updateColumnMinMax($cell, $column_min, $column_max);
+			}
+		}
+		else {
+			foreach ($table as $row) {
+				foreach ($row as $cell) {
+					updateColumnMinMax($cell, $column_min, $column_max);
 				}
 			}
 		}

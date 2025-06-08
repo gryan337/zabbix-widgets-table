@@ -33,6 +33,7 @@ window.tablemodulerme_column_edit_form = new class {
 	#highlights_table;
 
 	init({form_id, thresholds, highlights, colors}) {
+		this.aggregation_error = false;
 		this.#overlay = overlays_stack.getById('tablemodulerme-column-edit-overlay');
 		this.#dialogue = this.#overlay.$dialogue[0];
 		this.#form = document.getElementById(form_id);
@@ -50,8 +51,9 @@ window.tablemodulerme_column_edit_form = new class {
 
 		colorPalette.setThemeColors(colors);
 		
-		var parentForm = document.getElementsByClassName('modal-widget-configuration').item(0);
+		const parentForm = document.getElementsByClassName('modal-widget-configuration').item(0);
 		this.tgt = this.#findRecurse(parentForm, 'field_item_group_by');
+		this.all_hosts_aggregated = this.#findRecurse(parentForm, 'field_aggregate_all_hosts');
 
 		// Initialize thresholds table.
 		$(this.#thresholds_table)
@@ -167,6 +169,10 @@ window.tablemodulerme_column_edit_form = new class {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
 
+		for (const element of this.#form.querySelectorAll('.js-broadcast-in-group-cell')) {
+			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
+		}
+
 		// Display.
 		const display_show = display_value_as == <?= CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC ?>;
 		for (const element of this.#form.querySelectorAll('.js-display-row')) {
@@ -270,9 +276,39 @@ window.tablemodulerme_column_edit_form = new class {
 		for (const element of this.#form.querySelectorAll('.js-override-footer')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
+
+		const column_pattern_selection = this.#form.querySelector('button[id=column_patterns_aggregation]');
+		for (const element of this.#form.querySelectorAll('.js-include-itemids')) {
+			if (column_pattern_selection.innerText === 'not used' || this.tgt.style.display == 'none') {
+				element.style.display = 'none';
+				for (const input of element.querySelectorAll('input')) {
+					input.disabled = 1;
+				}
+			}
+			else {
+				element.style.display = '';
+				for (const input of element.querySelectorAll('input')) {
+					input.disabled = 0;
+				}
+			}
+		}
 	}
 
 	submit() {
+		if (this.all_hosts_aggregated.nextElementSibling.querySelector('[id="aggregate_all_hosts"]').checked &&
+				$('#column_agg_method input[type="hidden"]').val() === '0') {
+			if (!this.aggregation_error) {
+				const title = 'Form configuration error';
+				const message = ['A \'Column patterns aggregation\' (under Advanced configuration) is required when using \'Aggregate All Hosts\' from the main form'];
+				const message_box = makeMessageBox('bad', messages, title)[0];
+				this.#form.parentNode.insertBefore(message_box, this.#form);
+				this.aggregation_error = true;
+			}
+
+			this.#overlay.unsetLoading();
+			return;
+		}
+
 		const curl = new Curl(this.#form.getAttribute('action'));
 		const fields = getFormFields(this.#form);
 

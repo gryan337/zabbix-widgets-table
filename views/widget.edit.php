@@ -36,10 +36,25 @@ $form
 		: null
 	)
 	->addField(
-		new CWidgetFieldRadioButtonListView($data['fields']['layout'])
+		(new CWidgetFieldRadioButtonListView($data['fields']['layout']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Horizontal - Host in first column. Values per item/metrics in subsequent columns'), BR(),
+					_('Vertical - Item/Metric name in first column. Values per host in subsequent columns'), BR(),
+					_('3 Column - Item/Metric name in first column. Host in second column. Values per item/metrics in third column'), BR(),
+					_('Column Per Pattern - Each item pattern specified receives its own column')
+				])
+			)
 	)
 	->addField(
 		(new CWidgetFieldTableModuleItemGroupingView($data['fields']['item_group_by']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('The tags chosen will be displayed in first column of the table.'), BR(),
+					_('Alternatively, you can just group the metrics by host, which will omit the first column, '),
+					_('by specifying a grouping of \'{HOST.HOST}\'')
+				])
+			)
 			->addRowClass('field_item_group_by')
 	)
 	->addField(
@@ -49,16 +64,65 @@ $form
 		(new CWidgetFieldColumnsListView($data['fields']['columns']))->addClass(ZBX_STYLE_TABLE_FORMS_SEPARATOR)
 	)
 	->addField(
-		new CWidgetFieldRadioButtonListView($data['fields']['footer'])
+		(new CWidgetFieldCheckBoxView($data['fields']['no_broadcast_hostid']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Turns off the ability to broadcast the hostid to other widgets when hosts are visible in the table')
+				])
+			)
+			->addRowClass('field_no_broadcast_hostid')
 	)
 	->addField(
-		new CWidgetFieldTextBoxView($data['fields']['item_header'])
+		(new CWidgetFieldCheckBoxView($data['fields']['aggregate_all_hosts']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Checking this box will aggregate all values, by the item grouping specified, across all hosts'), BR(), BR(),
+					_('NOTE: Checking this box requires a \'Column Patterns Aggregation\' to be set in the \'Items\' '), BR(),
+					_('configuration popup under the \'Advanced Configuration\' section')
+				])
+			)
+			->addRowClass('field_aggregate_all_hosts')
 	)
 	->addField(
-		new CWidgetFieldTextBoxView($data['fields']['reset_row'])
+		(new CWidgetFieldRadioButtonListView($data['fields']['footer']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('If set, a footer row will be added at the bottom of the table')
+				])
+			)
 	)
 	->addField(
-		new CWidgetFieldTextAreaView($data['fields']['item_name_strip'])
+		(new CWidgetFieldTextBoxView($data['fields']['item_header']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Changes the header name from the default of \'Items\' to this value')
+				])
+			)
+	)
+	->addField(
+		(new CWidgetFieldTextBoxView($data['fields']['reset_row']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('By typing a value into this box you will add a reset row to the widget with the value you entered.'), BR(),
+					_('A reset row is used with layouts of \'Horizontal\', \'3 Column\', and \'Column per Pattern\'.'), BR(),
+					_('After a click on the reset row value, connected widgets will reset back to their base configurations.')
+				])
+			)
+	)
+	->addField(
+		(new CWidgetFieldTextAreaView($data['fields']['item_name_strip']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Set the row (Vertical) or column (Horizontal/3 Column) label for the metric name'), BR(),
+					_('Supported macros:'),
+					(new CList([
+						'{HOST.*}',
+						'{ITEM.*}',
+						'{INVENTORY.*}',
+						_('User macros'),
+					]))->addClass(ZBX_STYLE_LIST_DASHED)
+				])
+			)
 	)
 	->addFieldset(
 		(new CWidgetFormFieldsetCollapsibleView(_('Advanced configuration')))

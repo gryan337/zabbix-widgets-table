@@ -153,6 +153,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 	public function toApi(array &$widget_fields = []): void {
 		$fields = [
 			'column_title' => ZBX_WIDGET_FIELD_TYPE_STR,
+			'broadcast_in_group_row' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'column_agg_method' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'item_tags_evaltype' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'override_footer' => ZBX_WIDGET_FIELD_TYPE_INT32,
@@ -163,11 +164,13 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'max' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'decimal_places' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'aggregate_function' => ZBX_WIDGET_FIELD_TYPE_INT32,
-			'history' => ZBX_WIDGET_FIELD_TYPE_INT32
+			'history' => ZBX_WIDGET_FIELD_TYPE_INT32,
+			'include_itemids' => ZBX_WIDGET_FIELD_TYPE_INT32
 		];
 
 		$column_defaults = [
 			'column_title' => '',
+			'broadcast_in_group_row' => 0,
 			'column_agg_method' => AGGREGATE_NONE,
 			'items' => [],
 			'item_tags_evaltype' => TAG_EVAL_TYPE_AND_OR,
@@ -187,7 +190,8 @@ class CWidgetFieldColumnsList extends CWidgetField {
 					CWidgetField::REFERENCE_DASHBOARD, CWidgetsData::DATA_TYPE_TIME_PERIOD
 				)
 			],
-			'history' => CWidgetFieldColumnsList::HISTORY_DATA_AUTO
+			'history' => CWidgetFieldColumnsList::HISTORY_DATA_AUTO,
+			'include_itemids' => 0
 		];
 
 		foreach ($this->getValue() as $column_index => $value) {
@@ -278,6 +282,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 	protected function getValidationRules(bool $strict = false): array {
 		$validation_rules = ['type' => API_OBJECTS, 'fields' => [
 			'column_title'			=> ['type' => API_STRING_UTF8, 'default' => ''],
+			'broadcast_in_group_row'	=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'column_agg_method'		=> ['type' => API_INT32, 'in' => implode(',', [AGGREGATE_NONE, AGGREGATE_MIN, AGGREGATE_MAX, AGGREGATE_AVG, AGGREGATE_COUNT, AGGREGATE_SUM]), 'default' => AGGREGATE_NONE],
 			'items'					=> ['type' => API_STRINGS_UTF8, 'default' => [], 'flags' => API_NOT_EMPTY],
 			'item_tags_evaltype'	=> ['type' => API_INT32, 'in' => implode(',', [TAG_EVAL_TYPE_AND_OR, TAG_EVAL_TYPE_OR]), 'default' => TAG_EVAL_TYPE_AND_OR],
@@ -297,6 +302,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 												'type' => API_INT32]
 			]],
 			'history'				=> ['type' => API_INT32, 'default' => self::HISTORY_DATA_AUTO, 'in' => implode(',', [self::HISTORY_DATA_AUTO, self::HISTORY_DATA_HISTORY, self::HISTORY_DATA_TRENDS])],
+			'include_itemids'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'sparkline'				=> ['type' => API_ANY],
 			'base_color'			=> ['type' => API_COLOR, 'default' => ''],
 			'min'					=> ['type' => API_NUMERIC, 'default' => ''],

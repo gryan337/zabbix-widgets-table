@@ -28,6 +28,7 @@ class CWidgetTableModuleRME extends CWidget {
 	]);
 
 	#menu_selector = '[data-menu]';
+	#theme = null;
 
 	#dataset_item = 'item';
 	#dataset_host = 'host';
@@ -47,6 +48,8 @@ class CWidgetTableModuleRME extends CWidget {
 	#totalRows = 0;
 	#paginationElement;
 
+	#popupId = null;
+	#filterApplied = false;
 	#filterState = {
 		type: 'contains',
 		search: '',
@@ -58,8 +61,20 @@ class CWidgetTableModuleRME extends CWidget {
 		super.processUpdateResponse(response);
 	}
 
+	getUpdateRequestData() {
+		const request_data = super.getUpdateRequestData();
+		if (request_data?.fields?.groupids?.length === 1 && request_data.fields.groupids.include('000000')) {
+			request_data.fields.groupids = [];
+		}
+		return request_data;
+	}
+
 	setContents(response) {
 		super.setContents(response);
+
+		if (this.#theme === null) {
+			this.getTheme();
+		}
 
 		this.#values_table = this._target.getElementsByClassName('list-table').item(0);
 		this.#parent_container = this.#values_table.closest('.dashboard-grid-widget-container');
@@ -67,6 +82,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		const allTds = this.#values_table.querySelectorAll('td');
 		const allThs = this.#values_table.querySelectorAll('th');
+
 		let id = 0;
 		allTds.forEach(td => {
 			td.setAttribute('id', id);
@@ -180,7 +196,7 @@ class CWidgetTableModuleRME extends CWidget {
 			filterIcon.style.verticalAlign = 'middle';
 			filterIcon.style.position = 'relative';
 			filterIcon.style.top = '0';
-			filterIcon.title = 'Filter';
+			filterIcon.title = 'Click to filter this column';
 
 			filterIcon.innerHTML = `
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -191,6 +207,7 @@ class CWidgetTableModuleRME extends CWidget {
 			const popup = document.createElement('div');
 			popup.style.display = 'none';
 			popup.className = 'filter-popup';
+			popup.id = this.#values_table.id + '-' + this._widgetid;
 
 			const header = document.createElement('div');
 			header.className = 'filter-popup-header';
@@ -229,6 +246,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				updateSummary();
 				updateWarningIcon();
+				updateClearFiltersButton();
 			});
 
 
@@ -241,24 +259,30 @@ class CWidgetTableModuleRME extends CWidget {
 
 			const checkboxContainer = document.createElement('div');
 			checkboxContainer.className = 'filter-popup-checkboxes';
+			let lastCheckedCheckbox = null;
 
 			const footer = document.createElement('div');
 			footer.className = 'filter-popup-footer';
 
+			const sectionContainer = document.createElement('div');
+			sectionContainer.className = 'section-container';
+
 			const summary = document.createElement('div');
 			summary.className = 'summary';
 			summary.textContent = '0 selected';
-			footer.appendChild(summary);
+			sectionContainer.appendChild(summary);
 
 			const toggleRow = document.createElement('div');
 			toggleRow.style.marginTop = '6px';
+			toggleRow.className = 'toggle-row';
 
 			const toggleButton = document.createElement('button');
 			let isAllSelected = this.#filterState?.allSelected || false;
 			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
-			toggleButton.style.background = '#666';
+			toggleButton.style.background = '#455a64';
 			toggleButton.style.color = '#eee';
 			toggleButton.style.fontWeight = 'bold';
+			toggleButton.className = 'toggle-button';
 
 			toggleButton.addEventListener('click', () => {
 				const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
@@ -270,23 +294,27 @@ class CWidgetTableModuleRME extends CWidget {
 
 				updateSummary();
 				updateWarningIcon();
+				updateClearFiltersButton();
 			});
 
 			toggleRow.appendChild(toggleButton);
-			footer.appendChild(toggleRow);
+			sectionContainer.appendChild(toggleRow);
+			footer.appendChild(sectionContainer);
 
 			const gap = document.createElement('div');
-			gap.style.height = '12px';
+			gap.style.height = '2px';
 			footer.appendChild(gap);
 
 			const buttonsRow = document.createElement('div');
 			buttonsRow.style.display = 'flex';
 			buttonsRow.style.justifyContent = 'flex-start';
 			buttonsRow.style.gap = '8px';
+			buttonsRow.style.paddingLeft = '10px';
 
 			const applyButton = document.createElement('button');
-			applyButton.textContent = 'Ok';
+			applyButton.textContent = 'Apply';
 			applyButton.style.minWidth = '80px';
+			applyButton.style.padding = '6px 12px';
 
 			applyButton.addEventListener('click', () => {
 				popup.style.display = 'none';
@@ -320,8 +348,28 @@ class CWidgetTableModuleRME extends CWidget {
 			resetButton.textContent = 'Cancel';
 			resetButton.className = 'cancel';
 			resetButton.style.minWidth = '80px';
+			resetButton.style.padding = '6px 12px';
 			resetButton.addEventListener('click', () => {
 				popup.style.display = 'none';
+			});
+
+			const clearFiltersButton = document.createElement('button');
+			clearFiltersButton.textContent = 'Clear Filters';
+			clearFiltersButton.className = 'clear-filters';
+			clearFiltersButton.style.padding = '6px 12px';
+
+			clearFiltersButton.addEventListener('click', () => {
+				searchInput.value = '';
+				searchInput.dispatchEvent(new Event('input'));
+
+				checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+
+				isAllSelected = false;
+				toggleButton.textContent = 'Select All';
+
+				updateSummary();
+				updateWarningIcon();
+				updateClearFiltersButton();
 			});
 
 			const warningSvg = `
@@ -334,12 +382,13 @@ class CWidgetTableModuleRME extends CWidget {
 
 			const warningIcon = document.createElement('div');
 			warningIcon.className = 'filter-warning-icon';
-			warningIcon.title = 'Checkbox selections will take precedence over text entered in the search box after clicking "Ok" button';
+			warningIcon.title = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
 			warningIcon.style.display = 'none';
 			warningIcon.innerHTML = warningSvg;
 				
 			buttonsRow.appendChild(applyButton);
 			buttonsRow.appendChild(resetButton);
+			buttonsRow.appendChild(clearFiltersButton);
 			buttonsRow.appendChild(warningIcon);
 			footer.appendChild(buttonsRow);
 
@@ -391,15 +440,46 @@ class CWidgetTableModuleRME extends CWidget {
 
 
 			sortedValues.forEach(value => {
-				const id = `filter_${value.replace(/[^a-zA-Z0-9]/g, '_')}`;
+				const id = `filter_${String(value).replace(/[^a-zA-Z0-9]/g, '_')}`;
 				const label = document.createElement('label');
+				label.classList.add('custom-checkbox');
 				label.innerHTML = `
 					<input type="checkbox" id="${id}" value="${value}">
 					<span>${value}</span>
 				`;
 
 				const checkbox = label.querySelector('input[type="checkbox"]');
-				if (this.#filterState?.checked?.includes(value.toLowerCase())) {
+
+				checkbox.addEventListener('click', (e) => {
+					if (!lastCheckedCheckbox) {
+						lastCheckedCheckbox = checkbox;
+						return;
+					}
+
+					if (e.shiftKey) {
+						const checkboxes = Array.from(checkboxContainer.querySelectorAll('input[type="checkbox"]'));
+						const start = checkboxes.indexOf(lastCheckedCheckbox);
+						const end = checkboxes.indexOf(checkbox);
+
+						if (start > -1 && end > -1) {
+							const [from, to] = [Math.min(start, end), Math.max(start, end)];
+							for (let i = from; i <= to; i++) {
+								checkboxes[i].checked = true;
+							}
+						}
+					}
+
+					lastCheckedCheckbox = checkbox;
+
+					updateSummary();
+					const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
+					isAllSelected = Array.from(visibleCheckboxes).every(cb => cb.checked);
+					toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+					updateWarningIcon();
+					updateClearFiltersButton();
+				});
+
+				if (this.#filterState?.checked?.includes(String(value).toLowerCase())) {
 					checkbox.checked = true;
 				}
 
@@ -426,6 +506,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				updateSummary();
 				updateWarningIcon();
+				updateClearFiltersButton();
 			});
 
 			checkboxContainer.addEventListener('change', () => {
@@ -436,6 +517,7 @@ class CWidgetTableModuleRME extends CWidget {
 				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 
 				updateWarningIcon();
+				updateClearFiltersButton();
 			});
 
 
@@ -449,6 +531,13 @@ class CWidgetTableModuleRME extends CWidget {
 			popup.appendChild(checkboxContainer);
 			popup.appendChild(footer);
 			document.body.appendChild(popup);
+			if (this.#popupId !== null) {
+				const oldPopup = document.getElementById(this.#popupId);
+				if (oldPopup) {
+					oldPopup.remove();
+				}
+			}
+			this.#popupId = popup.id;
 
 			filterIcon.addEventListener('click', () => {
 				if (popup.style.display === 'flex') {
@@ -514,10 +603,29 @@ class CWidgetTableModuleRME extends CWidget {
 			filterType.addEventListener('change', () => {
 				searchInput.dispatchEvent(new Event('input'));
 				updateWarningIcon();
+				updateClearFiltersButton();
 			});
 
-			this.#applyFilter();
-			if (this.#filterState.search !== '') {
+			function updateClearFiltersButton() {
+				const hasChecked = Array.from(
+					checkboxContainer.querySelectorAll('input[type="checkbox"]:checked')
+				).length > 0;
+				const hasSearch = searchInput.value.trim() !== '';
+
+				if (hasChecked || hasSearch) {
+					clearFiltersButton.style.visibility = 'visible';
+				}
+				else {
+					clearFiltersButton.style.visibility = 'hidden';
+				}
+			}
+
+			if (this.#filterApplied) {
+				this.#applyFilter();
+				updateClearFiltersButton();
+			}
+
+			if (searchInput.value !== '') {
 				searchInput.dispatchEvent(new Event('input'));
 			}
 
@@ -573,6 +681,24 @@ class CWidgetTableModuleRME extends CWidget {
 			this._markSelected(this.#dataset_item);
 		}
 
+	}
+
+	getTheme() {
+		this.#theme = jQuery('html').attr('theme');
+		switch(this.#theme) {
+			case 'dark-theme':
+			case 'hc-dark':
+				this.host_bg_color = '#67351d';
+				this.bg_color = '#2f280a';
+				this.font_color = '#f2f2f2';
+				break;
+			case 'blue-theme':
+			case 'hc-light':
+				this.host_bg_color = '#f7ae3e';
+				this.bg_color = '#fcf7c2';
+				this.font_color = '#1f2c33';
+				break;
+		}
 	}
 
 	#applyFilter() {
@@ -633,19 +759,24 @@ class CWidgetTableModuleRME extends CWidget {
 					filterIcon.classList.add('filter-error');
 					filterIcon.title = 'Invalid Regex pattern!';
 					filterIcon.classList.remove('active');
+					this.#filterApplied = true;
 				}
 				else if ((allowedValues && allowedValues.size > 0) || searchValue !== '') {
 					filterIcon.classList.add('active');
 					filterIcon.classList.remove('filter-error');
 					filterIcon.title = 'Filter Applied!';
+					this.#filterApplied = true;
 				}
 				else {
 					filterIcon.classList.remove('active');
 					filterIcon.classList.remove('filter-error');
 					filterIcon.title = '';
+					this.#filterApplied = false;
 				}
 			}
 		}
+
+		this.updateTableFooter();
 	}
 
 
@@ -673,7 +804,8 @@ class CWidgetTableModuleRME extends CWidget {
 					const pattern = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
 					const regex = new RegExp(`^.*${pattern}.*$`, caseSensitive ? '' : 'i');
 					return regex.test(text);
-				} catch {
+				}
+				catch {
 					return false;
 				}
 			case 'does not contain':
@@ -682,7 +814,8 @@ class CWidgetTableModuleRME extends CWidget {
 				try {
 					const regex = new RegExp(searchValue, caseSensitive ? '' : 'i');
 					return regex.test(text);
-				} catch {
+				}
+				catch {
 					this.invalidRegex = true;
 					return false;
 				}
@@ -753,6 +886,7 @@ class CWidgetTableModuleRME extends CWidget {
 	#displayPaginationControls() {
 		this.#paginationElement = document.createElement('div');
 		this.#paginationElement.classList.add('pagination-controls');
+
 		const buttons = ['<<', '<'];
 		buttons.forEach(label => {
 			const button = document.createElement('button');
@@ -800,13 +934,12 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#updateDisplay(scrollToTop = false) {
 		this.#recalculateCanvasSize();
+		this.#parent_container.classList.add('is-loading');
+		if (!this.#parent_container.classList.contains('widget-blur')) {
+			this.#parent_container.classList.toggle('widget-blur');
+		}
 
 		if (this.#totalRows > this.#rowsPerPage) {
-			this.#parent_container.classList.add('is-loading');
-			if (!this.#parent_container.classList.contains('widget-blur')) {
-				this.#parent_container.classList.toggle('widget-blur');
-			}
-
 			const allTrs = Array.from(this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)'));
 
 			this.#values_table.querySelectorAll('tbody tr').forEach(tr => tr.classList.add('display-none'));
@@ -831,18 +964,20 @@ class CWidgetTableModuleRME extends CWidget {
 			}, this.#timeout);
 		}
 		else {
-			this.#values_table.querySelectorAll('tbody tr').forEach(tr => {
-				if (!tr.classList.contains('display-none-filtered')) {
-					tr.classList.remove('display-none');
-				}
-				else {
-					tr.classList.add('display-none');
-				}
-			});
-			this.#updatePageInfo(this.#paginationElement ? this.#paginationElement.querySelector('span') : null);
+			setTimeout(() => {
+				this.#values_table.querySelectorAll('tbody tr').forEach(tr => {
+					if (!tr.classList.contains('display-none-filtered')) {
+						tr.classList.remove('display-none');
+					}
+					else {
+						tr.classList.add('display-none');
+					}
+				});
+				this.#updatePageInfo(this.#paginationElement ? this.#paginationElement.querySelector('span') : null);
+				this.#parent_container.classList.toggle('widget-blur');
+				this.#parent_container.classList.remove('is-loading');
+			}, this.#timeout);
 		}
-
-
 	}
 
 	#updatePageInfo(pageInfoElement) {
@@ -880,25 +1015,6 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	_markSelected(type) {
-		var theme = jQuery('html').attr('theme');
-		var host_bg_color;
-		var bg_color;
-		var font_color;
-		switch(theme) {
-			case 'dark-theme':
-			case 'hc-dark':
-				host_bg_color = '#67351d';
-				bg_color = '#2f280a';
-				font_color = '#f2f2f2';
-				break;
-			case 'blue-theme':
-			case 'hc-light':
-				host_bg_color = '#f7ae3e';
-				bg_color = '#fcf7c2';
-				font_color = '#1f2c33';
-				break;
-		}
-
 		const tds = this.#values_table.querySelectorAll('table td');
 		var prevTd = null;
 		let hasItemMarking = false;
@@ -913,8 +1029,8 @@ class CWidgetTableModuleRME extends CWidget {
 					if (type === this.#dataset_item) {
 					}
 					else if (dataset?.hostid === this.#selected_hostid) {
-						td.style.backgroundColor = host_bg_color;
-						td.style.color = font_color;
+						td.style.backgroundColor = this.host_bg_color;
+						td.style.color = this.font_color;
 					}
 					else {
 						td.style.backgroundColor = td.style.color = '';
@@ -926,12 +1042,12 @@ class CWidgetTableModuleRME extends CWidget {
 					else if (dataset?.itemid === this.#selected_itemid || dataset?.name === this.#selected_name) {
 						if (dataset?.itemid === this.#selected_itemid) {
 							if (this._isDoubleSpanColumn(prevTd)) {
-								td.style.backgroundColor = prevTd.style.backgroundColor = bg_color;
-								td.style.color = prevTd.style.color = font_color;
+								td.style.backgroundColor = prevTd.style.backgroundColor = this.bg_color;
+								td.style.color = prevTd.style.color = this.font_color;
 							}
 							else {
-								td.style.backgroundColor = bg_color;
-								td.style.color = font_color;
+								td.style.backgroundColor = this.bg_color;
+								td.style.color = this.font_color;
 							}
 							hasItemMarking = true;
 						}
@@ -1266,48 +1382,45 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	updateTableFooter() {
-		const rows = Array.from(this.#values_table.querySelectorAll("tbody tr:not([footer-row])"));
-		const footerRow = this.#values_table.querySelector("td[footer-row]").parentElement;
-		const footerCells = Array.from(footerRow.querySelectorAll("td"));
-		const visibleRows = rows.filter(row => !row.classList.contains("display-none-filtered"));
+		const rows = Array.from(this.#values_table.querySelectorAll('tbody tr:not([footer-row])'));
+		const footerRow = this.#values_table.querySelector('td[footer-row]')?.parentElement;
+		if (!footerRow) return;
+		const footerCells = Array.from(footerRow.querySelectorAll('td'));
+		const visibleRows = rows.filter(row => !row.classList.contains('display-none-filtered') && row !== footerRow);
+
+		const defaultLabel = footerCells[0].textContent.trim();
+		const defaultMode = defaultLabel === 'Total' ? 'sum' : 'average';
 
 		footerCells.forEach((cell, colIndex) => {
-			if (!cell.innerText.trim()) return; // skip empty footer cells
+			const label = cell.innerText.trim();
 
-			// Determine mode: Total or Average
-			const label = cell.textContent.trim();
-			const isTotal = label === "Total";
-			const isAverage = label === "Average";
-
-			let overrideIcon = cell.querySelector(".override-icon");
-			let mode = isTotal ? "sum" : "average";
+			let overrideIcon = cell.querySelector('.override-icon');
+			let mode = defaultMode;
 			if (overrideIcon) {
-				const title = overrideIcon.getAttribute("title");
-				if (title === "Sum") mode = "sum";
-				else if (title === "Average") mode = "average";
+				const title = overrideIcon.getAttribute('title');
+				if (title === 'Sum') mode = 'sum';
+				else if (title === 'Average') mode = 'average';
 			}
 
-			// Skip columns with override <div><span></span></div>
-			if (cell.querySelector("span") && cell.querySelector("span").textContent.trim() === "") {
+			if ((cell.querySelector('span') && cell.querySelector('span').textContent.trim() === '') || cell.querySelector('span') === null) {
 				return;
 			}
 
-			// Gather values from this column
 			const values = [];
 			const unitsSet = new Set();
 			visibleRows.forEach(row => {
-				const td = row.querySelectorAll("td")[colIndex];
+				const td = row.querySelectorAll('td')[colIndex];
 				if (!td) return;
-				const rawHtml = td.getAttribute("data-hintbox-contents");
-				const unit = td.getAttribute("units") || "";
+				const rawHtml = td.getAttribute('data-hintbox-contents');
+				const unit = td.getAttribute('units') || '';
 				if (!rawHtml) return;
 
 				const match = rawHtml.match(/>([\d\.\-eE]+)</);
 				if (!match) return;
 				let rawValue = parseFloat(match[1]);
 				if (isNaN(rawValue)) {
-					if (mode === "sum") rawValue = 0;
-					else return; // average: skip
+					if (mode === 'sum') rawValue = 0;
+					else return;
 				}
 
 				values.push(rawValue);
@@ -1317,7 +1430,7 @@ class CWidgetTableModuleRME extends CWidget {
 			if (values.length === 0) return;
 
 			let result = 0;
-			if (mode === "sum") {
+			if (mode === 'sum') {
 				result = values.reduce((acc, val) => acc + val, 0);
 			}
 			else {
@@ -1325,32 +1438,40 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			const unit = unitsSet.size === 1 ? [...unitsSet][0] : null;
-			const formatted = this.formatValueWithUnit(result, unit);
+			const formatted = this.formatValuesWithUnit(result, unit);
 
-			// Update the footer cell
-			const span = cell.querySelector("span");
+			const span = cell.querySelector('span');
 			if (span) {
 				span.textContent = formatted;
 			}
 			else {
-				cell.innerHTML = `<div><span>${formatted}</span></div>`;
+				const content = `<div><span>${formatted}${overrideIcon ? overrideIcon.outerHTML : ''}</span></div>`;
+				cell.innerHTML = content;
+			}
+
+			const overrideIconSpan = span?.querySelector('.override-icon');
+			if (overrideIcon && !overrideIconSpan) {
+				span.innerHTML += overrideIcon.outerHTML;
 			}
 		});
 	}
 
-	formatValueWithUnit(value, unit) {
-		if (!unit || unit.startsWith("!")) return value.toFixed(2);
+	formatValuesWithUnit(value, unit) {
+		if (!unit || unit.startsWith('!')) {
+			if (Number.isInteger(value) || Number.isInteger(Math.round((value + Number.EPSILON) * 100) / 100)) {
+				return unit ? value.toFixed(0) + ' ' + unit.slice(1) : value.toFixed(0);
+			}
+			return unit ? value.toFixed(2) + ' ' + unit.slice(1) : value.toFixed(2);
+		}
 
 		switch (unit) {
-			case "B":
+			case 'B':
 				return this.formatBytes(value);
-			case "s":
+			case 's':
 				return this.formatSecondsDuration(value);
-			case "uptime":
+			case 'uptime':
 				return this.formatUptime(value);
-			case "pps":
-				return value.toFixed(2) + " pkts";
-			case "%":
+			case '%':
 				return value.toFixed(2) + " %";
 			default:
 				return this.formatSIUnit(value, unit);
@@ -1358,7 +1479,7 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	formatBytes(bytes) {
-		const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+		const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
 		let i = 0;
 		while (bytes >= 1024 && i < units.length - 1) {
 			bytes /= 1024;
@@ -1368,7 +1489,7 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	formatSIUnit(val, unit) {
-		const units = ["", "K", "M", "G", "T", "P"];
+		const units = ['', 'K', 'M', 'G', 'T', 'P', 'E'];
 		let i = 0;
 		while (val >= 1000 && i < units.length - 1) {
 			val /= 1000;
@@ -1415,9 +1536,10 @@ class CWidgetTableModuleRME extends CWidget {
 					border: 1px solid #333;
 					box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
 					color: #e0e0e0;
-					font-family: sans-serif;
+					font-family: Sans serif;
 					border-radius: 4px;
-					width: 400px;
+					min-width: 400px;
+					max-width: 800px;
 					max-height: 450px;
 					overflow: hidden;
 					display: flex;
@@ -1443,6 +1565,7 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 				
 				.filter-popup-header select option {
+					font-family: Sans serif;
 					color: #fff;
 					background-color: #1e1e1e;
 				}
@@ -1460,6 +1583,7 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 				.filter-popup-controls select,
 				.filter-popup-controls input {
+					font-family: Sans serif;
 					background: #1e1e1e;
 					color: #fff;
 					border: 1px solid #555;
@@ -1540,9 +1664,17 @@ class CWidgetTableModuleRME extends CWidget {
 					justify-content: center;
 					height: 30px;
 					min-width: 80px;
+					top: 1px;
 				}
 				.filter-popup-footer button.cancel {
-					background: #f40b5e;
+					background: #666;
+				}
+				.filter-popup-footer button.clear-filters {
+					min-width: 100px;
+					font-weight: bold;
+					visibility: hidden;
+					background-color: #f06292;
+					color: #fff;
 				}
 				.filter-popup-footer button:hover {
 					opacity: 0.9;
@@ -1559,24 +1691,6 @@ class CWidgetTableModuleRME extends CWidget {
 				.filter-popup-footer .footer-action-row {
 					margin-top: 10px;
 				}
-				.filter-popup-footer .toggle-btn {
-					background: #666;
-					color: #fff;
-					border: none;
-					padding: 6px 12px;
-					font-size: 13px;
-					border-radius: 3px;
-					cursor: pointer;
-					transition: background 0.2s;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					height: 30px;
-					min-width: 100px;
-				}
-				.filter-popup-footer .toggle-btn:hover {
-					background: #888;
-				}
 				.display-none-filtered {
 					display: none !important;
 				}
@@ -1591,7 +1705,7 @@ class CWidgetTableModuleRME extends CWidget {
 					stroke: #f44336;
 				}
 				.filter-icon.filter-error {
-					border-radius: 1px;
+					border-radius: 2px;
 					box-shadow: 0 0 2px rgba(244, 67, 54, 0.8);
 				}
 				.filter-warning-icon {
@@ -1603,6 +1717,26 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 				.filter-warning-icon svg {
 					display: block;
+				}
+				.section-container {
+					border: 0.5px solid #4e4e4e;
+					border-radius: 8px;
+					padding: 8px;
+					background-color: #2b2b2b;
+					display: flex;
+					flex-direction: column;
+					gap: 6px;
+				}
+				.toggle-row {
+					display: flex;
+					justify-content: space-between;
+					align-items: center;
+				}
+				.toggle-button {
+					background-color: #455a64;
+					color: #eee;
+					font-weight: bold;
+					padding: 6px 12px;
 				}
 			`;
 			document.head.appendChild(styleColumnFilters);

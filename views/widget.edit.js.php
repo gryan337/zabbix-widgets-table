@@ -61,6 +61,7 @@ window.widget_tablemodulerme_form = new class {
 	 */
 	#updateForm() {
 		const column_per_pattern = this.#form.querySelector('#layout_3').checked;
+		const vertical_layout = this.#form.querySelector('#layout_1').checked;
 		const item_grouping_table = this.#form.querySelector('[id=item_group_by-table]');
 		const item_grouping_table_rows = item_grouping_table.querySelectorAll(':scope > tbody > tr');
 		for (const grouping_field of this.#form.querySelectorAll('.field_item_group_by')) {
@@ -69,6 +70,24 @@ window.widget_tablemodulerme_form = new class {
 			}
 			else {
 				grouping_field.style.display = '';
+			}
+		}
+
+		for (const aggregate_all_field of this.#form.querySelectorAll('.field_aggregate_all_hosts')) {
+			if (!column_per_pattern) {
+				aggregate_all_field.style.display = 'none';
+			}
+			else {
+				aggregate_all_field.style.display = '';
+			}
+		}
+		
+		for (const bc_hostid_field of this.#form.querySelectorAll('.field_no_broadcast_hostid')) {
+			if (vertical_layout) {
+				bc_hostid_field.style.display = 'none';
+			}
+			else {
+				bc_hostid_field.style.display = '';
 			}
 		}
 		

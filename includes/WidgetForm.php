@@ -9,6 +9,7 @@ use Zabbix\Widgets\{
 };
 
 use Zabbix\Widgets\Fields\{
+	CWidgetFieldCheckBox,
 	CWidgetFieldIntegerBox,
 	CWidgetFieldMultiSelectGroup,
 	CWidgetFieldMultiSelectHost,
@@ -103,6 +104,14 @@ class WidgetForm extends CWidgetForm {
 				(new CWidgetFieldColumnsList('columns', _('Items')))
 					->setFlags(CWidgetField::FLAG_NOT_EMPTY | CWidgetField::FLAG_LABEL_ASTERISK)
 			)
+			->addField($this->isTemplateDashboard()
+				? null
+				: new CWidgetFieldCheckBox('no_broadcast_hostid', _('Disallow Host Broadcasting'))
+			)
+			->addField($this->isTemplateDashboard()
+				? null
+				: new CWidgetFieldCheckBox('aggregate_all_hosts', _('Aggregate All Hosts'))
+			)
 			->addField(
 				(new CWidgetFieldRadioButtonList('footer', _('Show Footer Row'), [
 					self::FOOTER_NONE => _('No Footer'),
@@ -190,6 +199,21 @@ class WidgetForm extends CWidgetForm {
 			$this->getField('item_ordering_host')->setFlags(CWidgetField::FLAG_NOT_EMPTY);
 		}
 
-		return parent::validate($strict);
+		$errors = parent::validate($strict);
+
+		$aggregate_hosts = $this->getField('aggregate_all_hosts')->getValue();
+		if ($aggregate_hosts) {
+			$columns = $this->getField('columns')->getValue();
+			foreach ($columns as $column) {
+				if ($column['column_agg_method'] === AGGREGATE_NONE) {
+					$key = $column['items'][0];
+					$errors[] = _s('Form validation failure: When using \'Aggregate All Hosts\' a \'Column Patterns Aggregation\' choice is required in the \'Items\' form');
+					$errors[] = _s('Column with failure: "%1$s"', $key);
+					break;
+				}
+			}
+		}
+
+		return $errors;
 	}
 }

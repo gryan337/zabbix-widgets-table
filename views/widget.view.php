@@ -152,6 +152,7 @@ else {
 				$three_column_layout[] = $data_row;
 			}
 			$column_index = $data_row[Widget::CELL_METADATA]['column_index'];
+
 			if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL) {
 				$column_index = 0;
 				$key = $data_row[Widget::CELL_HOSTID];
@@ -270,7 +271,7 @@ else {
 			}
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER &&
-				(count($data['num_hosts']) > 1 || $groupby_host)) {
+				(count($data['num_hosts']) > 1 || $groupby_host || $data['aggregate_all_hosts'])) {
 			if (!$groupby_host) {
 				$reset_row = [(new CCol()), (new CCol($host_cell_values))];
 			}
@@ -321,14 +322,35 @@ else {
 			['name' => $title] = $data_row[Widget::CELL_METADATA];
 			$table_row[] = new CCol($title);
 			$host_attributes['hostid'] = $data_row[Widget::CELL_HOSTID];
-			$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']))
-				->addClass(ZBX_STYLE_CURSOR_POINTER)
-				->addStyle('text-decoration: underline;')
-				->setAttribute('data-menu', json_encode($host_attributes));
+			$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']));
+			if (!$data['no_broadcast_hostid']) {
+				$host_cell_values
+					->addClass(ZBX_STYLE_CURSOR_POINTER)
+					->addStyle('text-decoration: underline;')
+					->setAttribute('data-menu', json_encode($host_attributes));
+			}
 			$table_row[] = new CCol($host_cell_values);
 			$table_row = [...$table_row, ...makeTableCellViews($data_row, $data)];
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
+			$dmt = ['type' => 'item'];
+			$dm_itemids = [];
+			foreach ($data_row as $index => $cell) {
+				if ($cell && $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['broadcast_in_group_row'] && $cell[Widget::CELL_ITEMID]) {
+					$dmt['name'] = $cell[Widget::CELL_METADATA]['grouping_name'];
+					$temp_itemids = explode(',', $cell[Widget::CELL_ITEMID]);
+					foreach ($temp_itemids as $titemids) {
+						$dm_itemids[] = [
+							'itemid' => $titemids,
+							'color' => $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['display'] === CWidgetFieldColumnsList::DISPLAY_SPARKLINE
+								? $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['sparkline']['color']
+								: $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['base_color']
+						];
+					}
+				}
+			}
+			$dmt['itemid'] = json_encode($dm_itemids);
+
 			if ($data['footer']) {
 				$bottom_row['host_column'] = (count($data['num_hosts']) > 1) ? 1 : 0;
 				foreach ($data_row as $i => $r) {
@@ -338,7 +360,15 @@ else {
 
 			if (count($data['num_hosts']) > 1 || $groupby_host) {
 				if (!$groupby_host) {
-					$table_row[] = (new CCol(explode(chr(31), $row_index)[0]))->addStyle('word-break: break-word; max-width: 35ch;');
+					if ($dm_itemids) {
+						$dmt_items = (new CSpan(explode(chr(31), $row_index)[0]))
+							->addClass(ZBX_STYLE_CURSOR_POINTER)
+							->setAttribute('data-menu', json_encode($dmt));
+						$table_row[] = (new CCol($dmt_items))->addStyle('word-break: break-word; max-width: 35ch;');
+					}
+					else {
+						$table_row[] = (new CCol(explode(chr(31), $row_index)[0]))->addStyle('word-break: break-word; max-width: 35ch;');
+					}
 				}
 
 				foreach ($data_row as $row) {
@@ -347,20 +377,40 @@ else {
 						break;
 					}
 				}
-				if ($host_attributes['hostid']) {
-					$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']))
-						->addClass(ZBX_STYLE_CURSOR_POINTER)
-						->addStyle('text-decoration: underline;')
-						->setAttribute('data-menu', json_encode($host_attributes));
-					$table_row[] = new CCol($host_cell_values);
+
+				if (!$data['no_broadcast_hostid']) {
+					if ($host_attributes['hostid']) {
+						$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']))
+							->addClass(ZBX_STYLE_CURSOR_POINTER)
+							->addStyle('text-decoration: underline;')
+							->setAttribute('data-menu', json_encode($host_attributes));
+						$table_row[] = new CCol($host_cell_values);
+					}
+					else {
+						$table_row[] = new CCol('');
+					}
 				}
 				else {
-					$table_row[] = new CCol('');
+					if ($host_attributes['hostid']) {
+						$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']));
+						$table_row[] = new CCol($host_cell_values);
+					}
+					else {
+						$table_row[] = new CCol('');
+					}
 				}
 			}
 			else {
 				if (!$groupby_host) {
-					$table_row[] = (new CCol($row_index))->addStyle('word-break: break-word; max-width: 35ch;');
+					if ($dm_itemids) {
+						$dmt_items = (new CSpan($row_index))
+							->addClass(ZBX_STYLE_CURSOR_POINTER)
+							-setAttribute('data-menu', json_encode($dmt));
+						$table_row[] = (new CCol($dmt_items))->addStyle('word-break: break-word; max-width: 35ch;');
+					}
+					else {
+						$table_row[] = (new CCol($row_index))->addStyle('word-break: break-word; max-width: 35ch;');
+					}
 				}
 			}
 		}
@@ -373,10 +423,13 @@ else {
 			}
 
 			$host_attributes['hostid'] = $data_row[0][Widget::CELL_HOSTID];
-			$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']))
-				->addClass(ZBX_STYLE_CURSOR_POINTER)
-				->addStyle('text-decoration: underline;')
-				->setAttribute('data-menu', json_encode($host_attributes));
+			$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']));
+			if (!$data['no_broadcast_hostid']) {
+				$host_cell_values
+					->addClass(ZBX_STYLE_CURSOR_POINTER)
+					->addStyle('text-decoration: underline;')
+					->setAttribute('data-menu', json_encode($host_attributes));
+			}
 			$table_row[] = new CCol($host_cell_values);
 		}
 
@@ -432,8 +485,20 @@ else {
 	->show();
 
 function safeBcAdd($num1, $num2, $scale = 0) {
-	$num1 = $num1 ?? '0';
-	$num2 = $num2 ?? '0';
+	if ($num1 === null) {
+		$num1 = '0';
+	}
+	else {
+		$num1 = number_format($num1, 0, '.', '') ?? '0';
+	}
+
+	if ($num2 === null) {
+		$num2 = '0';
+	}
+	else {
+		$num2 = number_format($num2, 0, '.', '') ?? '0';
+	}
+
 	return bcadd((string)$num1, (string)$num2, $scale);
 }
 
@@ -542,7 +607,13 @@ function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false
 			$value = '';
 		}
 		else {
-			$if = floor($nbrvalues['values']) == $nbrvalues['values'] ? 0 : 2;
+			$if = (floor($nbrvalues['values']) == $nbrvalues['values'] &&
+					!empty($nbrvalues['units']) &&
+					$nbrvalues['units'][0] !== 'B' &&
+					$nbrvalues['units'][0] !== 'bps')
+				? 0
+				: 2;
+
 			if (count($nbrvalues['units']) === 1) {
 				$converted_value = convertUnitsRaw([
 					'value' => $nbrvalues['values'],
@@ -560,34 +631,28 @@ function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false
 
 		$value_span = new CSpan($value);
 
-		$override_footer = $data['configuration'][$nbrindex]['override_footer'] ?? CWidgetFieldColumnsList::FOOTER_DONT_OVERRIDE;
-		if ($override_footer !== CWidgetFieldColumnsList::FOOTER_DONT_OVERRIDE && $override_footer !== CWidgetFieldColumnsList::FOOTER_SHOW_NONE) {
-			$tooltip_text = '';
-			switch ($override_footer) {
-				case CWidgetFieldColumnsList::FOOTER_SHOW_SUM:
-					$tooltip_text = 'Sum';
-					break;
-				case CWidgetFieldColumnsList::FOOTER_SHOW_AVERAGE:
-					$tooltip_text = 'Average';
-					break;
+		if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
+			$override_footer = $data['configuration'][$nbrindex]['override_footer'] ?? CWidgetFieldColumnsList::FOOTER_DONT_OVERRIDE;
+			if ($override_footer !== CWidgetFieldColumnsList::FOOTER_DONT_OVERRIDE && $override_footer !== CWidgetFieldColumnsList::FOOTER_SHOW_NONE) {
+				$tooltip_text = '';
+				switch ($override_footer) {
+					case CWidgetFieldColumnsList::FOOTER_SHOW_SUM:
+						$tooltip_text = 'Sum';
+						break;
+					case CWidgetFieldColumnsList::FOOTER_SHOW_AVERAGE:
+						$tooltip_text = 'Average';
+						break;
+				}
+				$override_icon = (new CSpan(new CHtmlEntity('&#9432;')))
+					->addClass('override-icon')
+					->setTitle($tooltip_text)
+					->addStyle('background-color: blue; color: white; border-radius: 50%; padding: 0 4px; cursor: pointer; margin-left: 3px;');
+				$value_span->addItem($override_icon);
 			}
-			$override_icon = (new CSpan(new CHtmlEntity('&#9432;')))
-				->addClass('override-icon')
-				->setTitle($tooltip_text)
-				->addStyle('background-color: blue; color: white; border-radius: 50%; padding: 0 4px; cursor: pointer; margin-left: 3px;');
-			$value_span->addItem($override_icon);
 		}
 
 		$value_cell->addItem(new CDiv($value_span));
-
 		$value_cell->addClass(ZBX_STYLE_NOWRAP);
-
-		if ($value !== '') {
-			$value_cell->setHint(
-				(new CDiv($nbrvalues['values']))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false
-			);
-		}
-
 		$value_cell->addStyle($style);
 		$last_row[] = $value_cell;
 	}
@@ -647,6 +712,27 @@ function makeTableCellViews(array $cell, array $data): array {
 	$itemid = $cell[Widget::CELL_ITEMID];
 	$value = $cell[Widget::CELL_VALUE];
 
+	$units = [];
+	if ($itemid) {
+		$itemids = explode(',', $itemid);
+		foreach ($itemids as $id) {
+			$unit = $data['db_items'][$id]['units'];
+			if ($unit) {
+				$units[] = $unit;
+			}
+		}
+		$units = array_unique($units);
+		if (count($units) > 1) {
+			$final_unit = '!';
+		}
+		else if (count($units) === 0) {
+			$final_unit = '';
+		}
+		else {
+			$final_unit = $units[0];
+		}
+	}
+
 	if ($itemid === null || $value === null) {
 		if ($is_view_value) {
 			return [(new CCol()), (new CCol())];
@@ -657,15 +743,15 @@ function makeTableCellViews(array $cell, array $data): array {
 	$formatted_value = makeTableCellViewFormattedValue($cell, $data);
 	$trigger = $data['db_item_problem_triggers'][$itemid] ?? null;
 	if ($trigger !== null) {
-		return makeTableCellViewsTrigger($cell, $trigger, $formatted_value, $is_view_value);
+		return makeTableCellViewsTrigger($cell, $trigger, $formatted_value, $is_view_value, $final_unit);
 	}
 
 	if ($column['display_value_as'] == CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC) {
-		return makeTableCellViewsNumeric($cell, $data, $formatted_value, $is_view_value);
+		return makeTableCellViewsNumeric($cell, $data, $formatted_value, $is_view_value, $final_unit);
 	}
 
 	if ($column['display_value_as'] == CWidgetFieldColumnsList::DISPLAY_VALUE_AS_TEXT) {
-		return makeTableCellViewsText($cell, $data, $formatted_value, $is_view_value);
+		return makeTableCellViewsText($cell, $data, $formatted_value, $is_view_value, $final_unit);
 	}
 
 	if ($is_view_value) {
@@ -674,19 +760,30 @@ function makeTableCellViews(array $cell, array $data): array {
 	return [(new CCol())];
 }
 
-function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, bool $is_view_value): array {
+function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
 	global $min_and_max;
 	$column_index = $cell[Widget::CELL_METADATA]['column_index'];
-	$item = $data['db_items'][$cell[Widget::CELL_ITEMID]];
+	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
+	$item = $data['db_items'][$itemid];
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$column_index];
 	$color = $column['base_color'];
 
 	$value_cell = (new CCol(new CDiv($formatted_value)))
+		->setAttribute('units', $units)
 		->addClass(ZBX_STYLE_NOWRAP);
 
-	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER &&
-			$data['configuration'][$column_index]['column_agg_method'] !== AGGREGATE_NONE) {
+	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
+		if ($data['configuration'][$column_index]['column_agg_method'] !== AGGREGATE_NONE) {
+			if (!$data['configuration'][$column_index]['include_itemids']) {
+			}
+			else {
+				$value_cell->addClass(ZBX_STYLE_CURSOR_POINTER);
+			}
+		}
+		else {
+			$value_cell->addClass(ZBX_STYLE_CURSOR_POINTER);
+		}
 	}
 	else {
 		$value_cell->addClass(ZBX_STYLE_CURSOR_POINTER);
@@ -744,12 +841,14 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				->setTimePeriodFrom($column['sparkline']['time_period']['from_ts'])
 				->setTimePeriodTo($column['sparkline']['time_period']['to_ts']);
 
-			if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
-				return [new CCol($sparkline), $value_cell];
+			if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
+				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
+					if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
+						return [new CCol($sparkline), $value_cell];
+					}
+				}
 			}
-			else {
-				return [(new CCol($sparkline))->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
-			}
+			return [(new CCol($sparkline))->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
 
 		case CWidgetFieldColumnsList::DISPLAY_INDICATORS:
 		case CWidgetFieldColumnsList::DISPLAY_BAR:
@@ -810,18 +909,20 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				}
 			}
 
-			if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER && $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
-				return [(new CCol($bar_gauge)), $value_cell];
+			if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
+				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
+					if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
+						return [(new CCol($bar_gauge)), $value_cell];
+					}
+				}
 			}
-			else {
-				return [(new CCol($bar_gauge))->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
-			}
+			return [(new CCol($bar_gauge))->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
 	}
 }
 
 function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 	$original_name = $cell[Widget::CELL_METADATA]['original_name'];
-	$itemid = $cell[Widget::CELL_ITEMID];
+	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
 	$color = $column['base_color'];
@@ -845,21 +946,43 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 		);
 	}
 
-	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER && $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
-		return (new CSpan($formatted_value));
+	$is_multiple_itemids = false;
+	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
+		if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
+			if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
+				return (new CSpan($formatted_value));
+			}
+			else {
+				$is_multiple_itemids = true;
+			}
+		}
 	}
 
 	$dmp = [
 		'type' => 'item',
-		'itemid' => $itemid,
 		'name' => $original_name
 	];
+
+	if ($is_multiple_itemids) {
+		$temp_itemids = explode(',', $cell[Widget::CELL_ITEMID]);
+		$dm_itemids = [];
+		foreach ($temp_itemids as $titemids) {
+			$dm_itemids[] = [
+				'itemid' => $titemids,
+				'color' => $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['base_color']
+			];
+		}
+		$dmp['itemid'] = json_encode($dm_itemids);
+	}
+	else {
+		$dmp['itemid'] = $cell[Widget::CELL_ITEMID];
+	}			
 
 	return (new CSpan($formatted_value))
 		->setAttribute('data-menu', json_encode($dmp));
 }
 
-function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool $is_view_value): array {
+function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
 
@@ -877,6 +1000,7 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 	$style .= '; text-align: center';
 	$value_cell = (new CCol(new CDiv($formatted_value)))
 		->addStyle($style)
+		->setAttribute('units', $units)
 		->addClass(ZBX_STYLE_CURSOR_POINTER)
 		->addClass(ZBX_STYLE_NOWRAP);
 
@@ -891,7 +1015,7 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 	return [$value_cell];
 }
 
-function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value, bool $is_view_value): array {
+function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value, bool $is_view_value, string $units): array {
 	$value = $cell[Widget::CELL_VALUE];
 
 	if ($trigger['problem']['acknowledged'] == EVENT_ACKNOWLEDGED) {
@@ -901,6 +1025,7 @@ function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value
 	$class = CSeverityHelper::getStyle((int) $trigger['priority']);
 	$value_cell = (new CCol(new CDiv($formatted_value)))
 		->addClass($class)
+		->setAttribute('units', $units)
 		->addClass(ZBX_STYLE_CURSOR_POINTER)
 		->addClass(ZBX_STYLE_NOWRAP);
 
