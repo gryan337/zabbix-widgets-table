@@ -63,7 +63,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 	getUpdateRequestData() {
 		const request_data = super.getUpdateRequestData();
-		if (request_data?.fields?.groupids?.length === 1 && request_data.fields.groupids.include('000000')) {
+		if (request_data?.fields?.groupids?.length === 1 && request_data.fields.groupids.includes('000000')) {
 			request_data.fields.groupids = [];
 		}
 		return request_data;
