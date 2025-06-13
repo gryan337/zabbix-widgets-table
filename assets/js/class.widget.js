@@ -217,6 +217,14 @@ class CWidgetTableModuleRME extends CWidget {
 			popup.style.display = 'none';
 			popup.className = 'filter-popup';
 			popup.id = this.#values_table.id + '-' + this._widgetid;
+			
+			if (this.#popupId !== null) {
+				const oldPopup = document.getElementById(this.#popupId);
+				if (oldPopup) {
+					oldPopup.remove();
+				}
+			}
+			this.#popupId = popup.id;
 
 			const header = document.createElement('div');
 			header.className = 'filter-popup-header';
@@ -540,13 +548,6 @@ class CWidgetTableModuleRME extends CWidget {
 			popup.appendChild(checkboxContainer);
 			popup.appendChild(footer);
 			document.body.appendChild(popup);
-			if (this.#popupId !== null) {
-				const oldPopup = document.getElementById(this.#popupId);
-				if (oldPopup) {
-					oldPopup.remove();
-				}
-			}
-			this.#popupId = popup.id;
 
 			filterIcon.addEventListener('click', () => {
 				if (popup.style.display === 'flex') {
