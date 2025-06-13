@@ -457,12 +457,7 @@ else {
 			}
 		}
 
-		if (count($data['rows']) > WidgetForm::ROWS_PER_PAGE) {
-			$table->addRow($table_row, ZBX_STYLE_DISPLAY_NONE);
-		}
-		else {
-			$table->addRow($table_row);
-		}
+		$table->addRow($table_row, ZBX_STYLE_DISPLAY_NONE);
         }
 
 	if ($data['footer']) {

@@ -27,8 +27,6 @@ use Zabbix\Widgets\Fields\{
  */
 class WidgetForm extends CWidgetForm {
 	
-	public const ROWS_PER_PAGE = 75;
-
 	public const LAYOUT_HORIZONTAL = 0;
 	public const LAYOUT_VERTICAL = 1;
 	public const LAYOUT_THREE_COL = 50;

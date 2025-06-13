@@ -47,6 +47,7 @@ class CWidgetTableModuleRME extends CWidget {
 	#currentPage = 1;
 	#totalRows = 0;
 	#paginationElement;
+	#rowsArray = [];
 
 	#popupId = null;
 	#filterApplied = false;
@@ -78,6 +79,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		this.#values_table = this._target.getElementsByClassName('list-table').item(0);
 		this.#parent_container = this.#values_table.closest('.dashboard-grid-widget-container');
+		const allRows = Array.from(this.#values_table.querySelectorAll('tbody tr'));
 		var colIndex = 0;
 
 		const allTds = this.#values_table.querySelectorAll('td');
@@ -123,6 +125,13 @@ class CWidgetTableModuleRME extends CWidget {
 			colIndex = parseFloat(th.id) + 1;
 		});
 
+		this.#rowsArray = allRows.map(row => {
+			return {
+				row,
+				status: 'display'
+			};
+		});
+
 		this.#values_table.addEventListener('click', (event) => {
 			if (event.target.closest('.filter-icon')) {
 				return;
@@ -141,7 +150,7 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		});
 
-		this.#totalRows = this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)').length;
+		this.#totalRows = this.#rowsArray.length;
 
 		allThs.forEach((th) => {
 			if (this.#th !== undefined) {
@@ -179,7 +188,7 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#addPaginationCSS();
 		}
 
-		this.#updateDisplay();
+		this.#updateDisplay(false, true, true);
 
 		this.#addColumnFilterCSS();
 		const firstTh = this.#values_table.querySelector('thead th');
@@ -393,8 +402,8 @@ class CWidgetTableModuleRME extends CWidget {
 			footer.appendChild(buttonsRow);
 
 			const filterValues = new Set();
-			const allRows = this.#values_table.querySelectorAll('tbody tr');
-			allRows.forEach(tr => {
+			this.#rowsArray.forEach(rowObj => {
+				const tr = rowObj.row;
 				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
 				const td = tr.querySelector('td:first-child');
 				if (td) filterValues.add(td.textContent.trim());
@@ -712,11 +721,12 @@ class CWidgetTableModuleRME extends CWidget {
 		const searchValue = (this.#filterState.search || '').trim().toLowerCase();
 		const filterMode = this.#filterState.type || 'contains';
 
-		this.#values_table.querySelectorAll('tbody tr').forEach(tr => {
+		this.#rowsArray.forEach(rowObj => {
+			const tr = rowObj.row
 			const isResetRow = tr.querySelector('[reset-row]') !== null;
 			const isFooterRow = tr.querySelector('[footer-row]') !== null;
 			if (isResetRow || isFooterRow) {
-				tr.classList.remove('display-none-filtered');
+				rowObj.status = 'display';
 				return;
 			}
 
@@ -732,24 +742,18 @@ class CWidgetTableModuleRME extends CWidget {
 				showRow = this.#matchesFilter(text, searchValue, filterMode, isCaseSensitive);
 			}
 
-			if (showRow) {
-				tr.classList.remove('display-none-filtered');
-			}
-			else {
-				tr.classList.add('display-none-filtered');
-			}
+			rowObj.status = showRow ? 'display' : 'hidden';
 		});
 
-		this.#totalRows = this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)').length;
+		this.#totalRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display').length;
 		this.#currentPage = 1;
 
 		this.#removePaginationControls();
 		if (this.#totalRows > this.#rowsPerPage) {
 			this.#displayPaginationControls();
-			this.#addPaginationCSS();
 		}
 
-		this.#updateDisplay(true);
+		this.#updateDisplay(true, true, false);
 
 		const firstTh = this.#values_table.querySelector('thead th');
 		if (firstTh) {
@@ -775,8 +779,6 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 			}
 		}
-
-		this.updateTableFooter();
 	}
 
 
@@ -929,55 +931,58 @@ class CWidgetTableModuleRME extends CWidget {
 				this.#currentPage = Math.ceil(this.#totalRows / this.#rowsPerPage);
 				break;
 		}
-		this.#updateDisplay(true);
+		this.#updateDisplay(true, false, false);
 	}
 
-	#updateDisplay(scrollToTop = false) {
-		this.#recalculateCanvasSize();
+	#updateDisplay(scrollToTop = false, updateFooter = false, firstRun = false) {
 		this.#parent_container.classList.add('is-loading');
 		if (!this.#parent_container.classList.contains('widget-blur')) {
 			this.#parent_container.classList.toggle('widget-blur');
 		}
 
-		if (this.#totalRows > this.#rowsPerPage) {
-			const allTrs = Array.from(this.#values_table.querySelectorAll('tbody tr:not(.display-none-filtered)'));
+		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
+		const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
+		const endIndex = Math.min(startIndex + this.#rowsPerPage, visibleRows.length);
+		const displayedRows = visibleRows.slice(startIndex, endIndex);
 
-			this.#values_table.querySelectorAll('tbody tr').forEach(tr => tr.classList.add('display-none'));
+		setTimeout(() => {
+			while (this.#values_table.tBodies[0].firstChild) {
+				this.#values_table.tBodies[0].removeChild(this.#values_table.tBodies[0].firstChild);
+			}
 
-			const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
-			const endIndex = Math.min(startIndex + this.#rowsPerPage, allTrs.length);
+			if (firstRun) {
+				this.#rowsArray.forEach(({ row }) => {
+					row.classList.remove('display-none');
+				});
+			}
+
+			displayedRows.forEach(({ row }) => {
+				this.#values_table.tBodies[0].appendChild(row);
+			});
+
+			this.#recalculateCanvasSize();
+
+			requestAnimationFrame(() => {
+				this.#values_table.querySelectorAll('z-sparkline').forEach(el => {
+					const clone = el.cloneNode(true);
+					el.replaceWith(clone);
+				});
+			});
+
+			if (scrollToTop) {
+				this._contents.scrollTop = 0;
+			}
+
+			this.#updatePageInfo(this.#paginationElement?.querySelector('span'));
+			if (updateFooter) {
+				this.updateTableFooter();
+			}
 
 			setTimeout(() => {
-				allTrs.forEach((tr, index) => {
-					if (index >= startIndex && index < endIndex) {
-						tr.classList.remove('display-none');
-					}
-				});
-
-				if (scrollToTop) {
-					this._contents.scrollTop = 0;
-				}
-
-				this.#updatePageInfo(this.#paginationElement.querySelector('span'));
 				this.#parent_container.classList.toggle('widget-blur');
 				this.#parent_container.classList.remove('is-loading');
-			}, this.#timeout);
-		}
-		else {
-			setTimeout(() => {
-				this.#values_table.querySelectorAll('tbody tr').forEach(tr => {
-					if (!tr.classList.contains('display-none-filtered')) {
-						tr.classList.remove('display-none');
-					}
-					else {
-						tr.classList.add('display-none');
-					}
-				});
-				this.#updatePageInfo(this.#paginationElement ? this.#paginationElement.querySelector('span') : null);
-				this.#parent_container.classList.toggle('widget-blur');
-				this.#parent_container.classList.remove('is-loading');
-			}, this.#timeout);
-		}
+			}, 0);
+		}, 0);
 	}
 
 	#updatePageInfo(pageInfoElement) {
@@ -1015,7 +1020,14 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	_markSelected(type) {
-		const tds = this.#values_table.querySelectorAll('table td');
+		const tds = [];
+		this.#rowsArray.forEach(rowObj => {
+			const tr = rowObj.row;
+			const allTdElements = tr.querySelectorAll('td');
+			allTdElements.forEach(td => {
+				tds.push(td);
+			});
+		});
 		var prevTd = null;
 		let hasItemMarking = false;
 		var tdsToMark = [];
@@ -1302,13 +1314,14 @@ class CWidgetTableModuleRME extends CWidget {
 
 
 	_sortTableRowsByColumn(columnIndex, ascending) {
-		const allRows = Array.from(this.#values_table.querySelectorAll(':scope > tbody > tr'));
+		const allRows = this.#rowsArray;
 
 		const resetRows = [];
 		const footerRows = [];
 		const sortableRows = [];
 
-		for (const row of allRows) {
+		for (const rowObj of allRows) {
+			const row = rowObj.row;
 			let isReset = false;
 			let isFooter = false;
 
@@ -1325,23 +1338,23 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			if (isReset) {
-				resetRows.push(row);
+				resetRows.push(rowObj);
 			}
 			else if (isFooter) {
-				footerRows.push(row);
+				footerRows.push(rowObj);
 			}
 			else {
-				sortableRows.push(row);
+				sortableRows.push(rowObj);
 			}
 		}
 
-		const prelimValues = sortableRows.map(row => this._getNumValue(row, columnIndex, false, true));
+		const prelimValues = sortableRows.map(rowObj => this._getNumValue(rowObj, columnIndex, false, true));
 		const allNumeric = !prelimValues.some(obj => obj.type === 'text');
 
-		const rowsWithValues = sortableRows.map(row => ({
-			row,
-			valueObj: this._getNumValue(row, columnIndex, true, allNumeric),
-			textValue: this._getTextValue(row, columnIndex)
+		const rowsWithValues = sortableRows.map(rowObj => ({
+			rowObj,
+			valueObj: this._getNumValue(rowObj.row, columnIndex, true, allNumeric),
+			textValue: this._getTextValue(rowObj.row, columnIndex)
 		}));
 
 		rowsWithValues.sort((a, b) => {
@@ -1363,30 +1376,22 @@ class CWidgetTableModuleRME extends CWidget {
 				: bVal.toString().localeCompare(aVal.toString());
 		});
 
-		const finalSortedRows = [...resetRows, ...rowsWithValues.map(obj => obj.row), ...footerRows];
-
-		const fragment = document.createDocumentFragment();
-		for (const row of finalSortedRows) {
-			fragment.appendChild(row);
-		}
-
-		this.#values_table.tBodies[0].appendChild(fragment);
-
-		requestAnimationFrame(() => {
-			this.#values_table.querySelectorAll('z-sparkline').forEach(el => {
-				const clone = el.cloneNode(true);
-				el.replaceWith(clone);
-			});
-		});
+		this.#rowsArray = [...resetRows, ...rowsWithValues.map(obj => obj.rowObj), ...footerRows];
 
 	}
 
 	updateTableFooter() {
-		const rows = Array.from(this.#values_table.querySelectorAll('tbody tr:not([footer-row])'));
-		const footerRow = this.#values_table.querySelector('td[footer-row]')?.parentElement;
-		if (!footerRow) return;
+		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
+		const footerRowObj = this.#rowsArray.find(({ row }) =>
+			row.querySelector('td[footer-row]')
+		);
+
+		if (!footerRowObj || !visibleRows.some(obj => obj.row === footerRowObj.row)) {
+			return;
+		}
+
+		const footerRow = footerRowObj.row;
 		const footerCells = Array.from(footerRow.querySelectorAll('td'));
-		const visibleRows = rows.filter(row => !row.classList.contains('display-none-filtered') && row !== footerRow);
 
 		const defaultLabel = footerCells[0].textContent.trim();
 		const defaultMode = defaultLabel === 'Total' ? 'sum' : 'average';
@@ -1408,8 +1413,8 @@ class CWidgetTableModuleRME extends CWidget {
 
 			const values = [];
 			const unitsSet = new Set();
-			visibleRows.forEach(row => {
-				const td = row.querySelectorAll('td')[colIndex];
+			visibleRows.forEach(rowObj => {
+				const td = rowObj.row.querySelectorAll('td')[colIndex];
 				if (!td) return;
 				const rawHtml = td.getAttribute('data-hintbox-contents');
 				const unit = td.getAttribute('units') || '';
@@ -1690,9 +1695,6 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 				.filter-popup-footer .footer-action-row {
 					margin-top: 10px;
-				}
-				.display-none-filtered {
-					display: none !important;
 				}
 				.filter-icon.active svg path {
 					stroke: #4ade80;
