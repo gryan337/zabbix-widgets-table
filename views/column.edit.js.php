@@ -300,7 +300,7 @@ window.tablemodulerme_column_edit_form = new class {
 			if (!this.aggregation_error) {
 				const title = 'Form configuration error';
 				const message = ['A \'Column patterns aggregation\' (under Advanced configuration) is required when using \'Aggregate All Hosts\' from the main form'];
-				const message_box = makeMessageBox('bad', messages, title)[0];
+				const message_box = makeMessageBox('bad', message, title)[0];
 				this.#form.parentNode.insertBefore(message_box, this.#form);
 				this.aggregation_error = true;
 			}

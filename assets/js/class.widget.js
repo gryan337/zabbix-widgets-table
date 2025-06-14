@@ -58,6 +58,13 @@ class CWidgetTableModuleRME extends CWidget {
 		allSelected: false
 	};
 
+	onResize() {
+		if (this._state === WIDGET_STATE_ACTIVE) {
+			this.#recalculateSvgSparklines();
+		}
+	}
+
+
 	processUpdateResponse(response) {
 		super.processUpdateResponse(response);
 	}
@@ -841,6 +848,14 @@ class CWidgetTableModuleRME extends CWidget {
 
 	}
 
+	#recalculateSvgSparklines() {
+		requestAnimationFrame(() => {
+			this.#values_table.querySelectorAll('z-sparkline').forEach(el => {
+				el.attributeChangedCallback('width', null, el.offsetWidth);
+			});
+		});
+	}
+
 
 	#handleCellClick(td) {
 		let tdClicked = td;
@@ -962,13 +977,7 @@ class CWidgetTableModuleRME extends CWidget {
 			});
 
 			this.#recalculateCanvasSize();
-
-			requestAnimationFrame(() => {
-				this.#values_table.querySelectorAll('z-sparkline').forEach(el => {
-					const clone = el.cloneNode(true);
-					el.replaceWith(clone);
-				});
-			});
+			this.#recalculateSvgSparklines();
 
 			if (scrollToTop) {
 				this._contents.scrollTop = 0;
