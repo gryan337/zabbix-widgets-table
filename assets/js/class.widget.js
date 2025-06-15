@@ -1391,15 +1391,15 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	updateTableFooter() {
-		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
 		const footerRowObj = this.#rowsArray.find(({ row }) =>
 			row.querySelector('td[footer-row]')
 		);
 
-		if (!footerRowObj || !visibleRows.some(obj => obj.row === footerRowObj.row)) {
+		if (!footerRowObj) {
 			return;
 		}
 
+		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
 		const footerRow = footerRowObj.row;
 		const footerCells = Array.from(footerRow.querySelectorAll('td'));
 
@@ -1442,14 +1442,14 @@ class CWidgetTableModuleRME extends CWidget {
 				unitsSet.add(unit);
 			});
 
-			if (values.length === 0) return;
-
 			let result = 0;
-			if (mode === 'sum') {
-				result = values.reduce((acc, val) => acc + val, 0);
-			}
-			else {
-				result = values.reduce((acc, val) => acc + val, 0) / values.length;
+			if (values.length > 0) {
+				if (mode === 'sum') {
+					result = values.reduce((acc, val) => acc + val, 0);
+				}
+				else {
+					result = values.reduce((acc, val) => acc + val, 0) / values.length;
+				}
 			}
 
 			const unit = unitsSet.size === 1 ? [...unitsSet][0] : null;
