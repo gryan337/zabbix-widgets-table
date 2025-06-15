@@ -147,10 +147,13 @@ class CWidgetTableModuleRME extends CWidget {
 			const target = event.target.closest('th') || event.target.closest('td');
 
 			if (target && target.tagName === 'TH') {
-				this.#th = target;
-				const span = this.#getSetSpans(target);
-				const ascending = !('sort' in target.dataset) || target.dataset.sort != 'asc';
-				this.#sortTable(target, ascending, span);
+				this.#parent_container.classList.add('is-loading');
+				setTimeout(() => {
+					this.#th = target;
+					const span = this.#getSetSpans(target);
+					const ascending = !('sort' in target.dataset) || target.dataset.sort != 'asc';
+					this.#sortTable(target, ascending, span);
+				}, 0);
 			}
 			else if (target && target.tagName === 'TD') {
 				this.#handleCellClick(target);
@@ -158,33 +161,22 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 
 		this.#totalRows = this.#rowsArray.length;
+		this.#updateDisplay(false, true, true);
 
 		allThs.forEach((th) => {
 			if (this.#th !== undefined) {
 				if (th.getAttribute('id') === this.#th.getAttribute('id')) {
-					if (this.#totalRows <= this.#rowsPerPage) {
-						this.#parent_container.classList.add('is-loading');
+					this.#parent_container.classList.add('is-loading');
+					if (!this.#parent_container.classList.contains('widget-blur')) {
 						this.#parent_container.classList.toggle('widget-blur');
-						setTimeout(() => {
-							const span = this.#getSetSpans(th);
-							const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
-							this.#sortTable(th, ascending, span, true);
-							this.#th = th;
-							this.#parent_container.classList.toggle('widget-blur');
-							this.#parent_container.classList.remove('is-loading');
-						}, this.#timeout);
 					}
-					else {
-						if (!this.#parent_container.classList.contains('widget-blur')) {
-							this.#parent_container.classList.add('is-loading');
-							this.#parent_container.classList.toggle('widget-blur');
-						}
 
+					setTimeout(() => {
 						const span = this.#getSetSpans(th);
 						const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
 						this.#sortTable(th, ascending, span, true);
 						this.#th = th;
-					}
+					}, this.#timeout);
 				}
 			}
 		});
@@ -194,8 +186,6 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#displayPaginationControls();
 			this.#addPaginationCSS();
 		}
-
-		this.#updateDisplay(false, true, true);
 
 		this.#addColumnFilterCSS();
 		const firstTh = this.#values_table.querySelector('thead th');
@@ -989,7 +979,9 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			setTimeout(() => {
-				this.#parent_container.classList.toggle('widget-blur');
+				if (this.#parent_container.classList.contains('widget-blur')) {
+					this.#parent_container.classList.toggle('widget-blur');
+				}
 				this.#parent_container.classList.remove('is-loading');
 			}, 0);
 		}, 0);
