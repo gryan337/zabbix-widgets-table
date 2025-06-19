@@ -58,13 +58,6 @@ class CWidgetTableModuleRME extends CWidget {
 		allSelected: false
 	};
 
-	onResize() {
-		if (this._state === WIDGET_STATE_ACTIVE) {
-			this.#recalculateSvgSparklines();
-		}
-	}
-
-
 	processUpdateResponse(response) {
 		super.processUpdateResponse(response);
 	}
@@ -74,11 +67,16 @@ class CWidgetTableModuleRME extends CWidget {
 		if (request_data?.fields?.groupids?.length === 1 && request_data.fields.groupids.includes('000000')) {
 			request_data.fields.groupids = [];
 		}
+		if (request_data?.fields?.hostids?.length === 1 && request_data.fields.hostids.includes('000000')) {
+			request_data.fields.hostids = [];
+		}
 		return request_data;
 	}
 
 	setContents(response) {
 		super.setContents(response);
+
+		this.detachListeners();
 
 		if (this.#theme === null) {
 			this.getTheme();
@@ -166,11 +164,6 @@ class CWidgetTableModuleRME extends CWidget {
 		allThs.forEach((th) => {
 			if (this.#th !== undefined) {
 				if (th.getAttribute('id') === this.#th.getAttribute('id')) {
-					this.#parent_container.classList.add('is-loading');
-					if (!this.#parent_container.classList.contains('widget-blur')) {
-						this.#parent_container.classList.toggle('widget-blur');
-					}
-
 					setTimeout(() => {
 						const span = this.#getSetSpans(th);
 						const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
@@ -190,6 +183,54 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#addColumnFilterCSS();
 		const firstTh = this.#values_table.querySelector('thead th');
 		if (firstTh && !firstTh.querySelector('.filter-icon')) {
+			let lastCheckedCheckbox = null;
+			const filterValues = new Set();
+			this.#rowsArray.forEach(rowObj => {
+				const tr = rowObj.row;
+				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+				const td = tr.querySelector('td:first-child');
+				if (td) filterValues.add(td.textContent.trim());
+			});
+
+			const valuesArray = Array.from(filterValues);
+
+			const isNumeric = val => /^-?\d+(\.\d+)?$/.test(val.trim());
+			const isIPv4 = val => /^(\d{1,3}\.){3}\d{1,3}$/.test(val.trim());
+			const isAll = (arr, testFn) => arr.every(testFn);
+
+			const ipToNum = ip => {
+				const octets = ip.trim().split('.');
+				if (octets.length !== 4) return NaN;
+
+				const nums = octets.map(octet => parseInt(octet, 10));
+				if (nums.some(num => isNaN(num) || num < 0 || num > 255)) return NaN;
+
+				return (nums[0] * 256 ** 3) + (nums[1] * 256 ** 2) + (nums[2] * 256) + nums[3];
+			};
+
+			let sortedValues;
+			if (isAll(valuesArray, isNumeric)) {
+				sortedValues = valuesArray.sort((a, b) => parseFloat(a) - parseFloat(b));
+			}
+			else if (isAll(valuesArray, isIPv4)) {
+				sortedValues = valuesArray.sort((a, b) => ipToNum(a) - ipToNum(b));
+			}
+			else if (isAll(valuesArray, val => typeof val === 'string')) {
+				sortedValues = valuesArray.sort((a, b) => a.localeCompare(b));
+			}
+			else {
+				sortedValues = valuesArray.sort((a, b) => {
+					const getTypeRank = v => isNumeric(v) ? 0 : isIPv4(v) ? 1 : 2;
+					const rankA = getTypeRank(a);
+					const rankB = getTypeRank(b);
+					if (rankA !== rankB) return rankA - rankB;
+					if (rankA === 0) return parseFloat(a) - parseFloat(b);
+					if (rankA === 1) return ipToNum(a) - ipToNum(b);
+					return a.localeCompare(b);
+				});
+			}
+			let filteredValues = sortedValues;
+
 			const filterIcon = document.createElement('span');
 			filterIcon.className = 'filter-icon';
 			filterIcon.style.cursor = 'pointer';
@@ -253,14 +294,15 @@ class CWidgetTableModuleRME extends CWidget {
 				searchInput.value = '';
 				searchInput.dispatchEvent(new Event('input'));
 
-				checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-
+				this.#filterState.checked = [];
 				isAllSelected = false;
 				toggleButton.textContent = 'Select All';
 
+				renderVisibleCheckboxes();
 				updateSummary();
 				updateWarningIcon();
 				updateClearFiltersButton();
+				lastCheckedCheckbox = null;
 			});
 
 
@@ -273,7 +315,6 @@ class CWidgetTableModuleRME extends CWidget {
 
 			const checkboxContainer = document.createElement('div');
 			checkboxContainer.className = 'filter-popup-checkboxes';
-			let lastCheckedCheckbox = null;
 
 			const footer = document.createElement('div');
 			footer.className = 'filter-popup-footer';
@@ -299,13 +340,31 @@ class CWidgetTableModuleRME extends CWidget {
 			toggleButton.className = 'toggle-button';
 
 			toggleButton.addEventListener('click', () => {
-				const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
-				isAllSelected = !isAllSelected;
+				let valuesToCheck;
 
-				visibleCheckboxes.forEach(cb => cb.checked = isAllSelected);
+				if (filterValues.length !== sortedValues.length || filteredValues.some((v, i) => v !== sortedValues[i])) {
+					valuesToCheck = filteredValues;
+				}
+				else {
+					valuesToCheck = sortedValues;
+				}
 
-				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+				isAllSelected = valuesToCheck.length > 0 && valuesToCheck.every(value => {
+					return this.#filterState.checked?.includes(String(value).toLowerCase());
+				});;
 
+				if (isAllSelected) {
+					this.#filterState.checked = [];
+					isAllSelected = false;
+					toggleButton.textContent = 'Select All';
+				}
+				else {
+					this.#filterState.checked = valuesToCheck.map(value => String(value).toLowerCase());
+					isAllSelected = true;
+					toggleButton.textContent = 'Uncheck All';
+				}
+
+				renderVisibleCheckboxes();
 				updateSummary();
 				updateWarningIcon();
 				updateClearFiltersButton();
@@ -333,9 +392,7 @@ class CWidgetTableModuleRME extends CWidget {
 			applyButton.addEventListener('click', () => {
 				popup.style.display = 'none';
 			
-				const checkedValues = Array.from(
-					checkboxContainer.querySelectorAll('input[type="checkbox"]:checked')
-				).map(cb => cb.value.toLowerCase());
+				const checkedValues = this.#filterState?.checked || [];
 			
 				const hasCheckedValues = checkedValues.length > 0;
 				const query = searchInput.value.trim();
@@ -344,11 +401,12 @@ class CWidgetTableModuleRME extends CWidget {
 				this.#filterState = {
 					search: query,
 					type,
-					checked: hasCheckedValues ? checkedValues : null,
+					checked: hasCheckedValues ? checkedValues : [],
 					allSelected: isAllSelected
 				};
 			
 				this.#applyFilter();
+				this._resumeUpdating();
 			});
 
 			searchInput.addEventListener('keydown', (e) => {
@@ -365,6 +423,7 @@ class CWidgetTableModuleRME extends CWidget {
 			resetButton.style.padding = '6px 12px';
 			resetButton.addEventListener('click', () => {
 				popup.style.display = 'none';
+				this._resumeUpdating();
 			});
 
 			const clearFiltersButton = document.createElement('button');
@@ -376,14 +435,16 @@ class CWidgetTableModuleRME extends CWidget {
 				searchInput.value = '';
 				searchInput.dispatchEvent(new Event('input'));
 
-				checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+				this.#filterState.checked = [];
 
 				isAllSelected = false;
 				toggleButton.textContent = 'Select All';
 
+				renderVisibleCheckboxes();
 				updateSummary();
 				updateWarningIcon();
 				updateClearFiltersButton();
+				lastCheckedCheckbox = null;
 			});
 
 			const warningSvg = `
@@ -406,116 +467,126 @@ class CWidgetTableModuleRME extends CWidget {
 			buttonsRow.appendChild(warningIcon);
 			footer.appendChild(buttonsRow);
 
-			const filterValues = new Set();
-			this.#rowsArray.forEach(rowObj => {
-				const tr = rowObj.row;
-				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
-				const td = tr.querySelector('td:first-child');
-				if (td) filterValues.add(td.textContent.trim());
-			});
-
-			const valuesArray = Array.from(filterValues);
-
-			const isNumeric = val => /^-?\d+(\.\d+)?$/.test(val.trim());
-			const isIPv4 = val => /^(\d{1,3}\.){3}\d{1,3}$/.test(val.trim());
-			const isAll = (arr, testFn) => arr.every(testFn);
-
-			const ipToNum = ip => {
-				const octets = ip.trim().split('.');
-				if (octets.length !== 4) return NaN;
-
-				const nums = octets.map(octet => parseInt(octet, 10));
-				if (nums.some(num => isNaN(num) || num < 0 || num > 255)) return NaN;
-
-				return (nums[0] * 256 ** 3) + (nums[1] * 256 ** 2) + (nums[2] * 256) + nums[3];
-			};
-
-			let sortedValues;
-			if (isAll(valuesArray, isNumeric)) {
-				sortedValues = valuesArray.sort((a, b) => parseFloat(a) - parseFloat(b));
+			const tempSpan = document.createElement('span');
+			tempSpan.style.visibility = 'hidden';
+			tempSpan.style.position = 'absolute';
+			tempSpan.style.whiteSpace = 'nowrap';
+			tempSpan.style.font = '13px Sans serif';
+			document.body.appendChild(tempSpan);
+			let maxWidth = 0;
+			for (const value of sortedValues) {
+				tempSpan.textContent = value;
+				maxWidth = Math.max(maxWidth, tempSpan.offsetWidth);
 			}
-			else if (isAll(valuesArray, isIPv4)) {
-				sortedValues = valuesArray.sort((a, b) => ipToNum(a) - ipToNum(b));
-			}
-			else if (isAll(valuesArray, val => typeof val === 'string')) {
-				sortedValues = valuesArray.sort((a, b) => a.localeCompare(b));
-			}
-			else {
-				sortedValues = valuesArray.sort((a, b) => {
-					const getTypeRank = v => isNumeric(v) ? 0 : isIPv4(v) ? 1 : 2;
-					const rankA = getTypeRank(a);
-					const rankB = getTypeRank(b);
-					if (rankA !== rankB) return rankA - rankB;
-					if (rankA === 0) return parseFloat(a) - parseFloat(b);
-					if (rankA === 1) return ipToNum(a) - ipToNum(b);
-					return a.localeCompare(b);
-				});
-			}
+			document.body.removeChild(tempSpan);
+			const calculatedWidth = Math.min(Math.max(maxWidth + 150, 400), 800);
+			popup.style.width = `${calculatedWidth}px`;
 
-
-			sortedValues.forEach(value => {
-				const id = `filter_${String(value).replace(/[^a-zA-Z0-9]/g, '_')}`;
-				const label = document.createElement('label');
-				label.classList.add('custom-checkbox');
-				label.innerHTML = `
-					<input type="checkbox" id="${id}" value="${value}">
-					<span>${value}</span>
-				`;
-
-				const checkbox = label.querySelector('input[type="checkbox"]');
-
-				checkbox.addEventListener('click', (e) => {
-					if (!lastCheckedCheckbox) {
-						lastCheckedCheckbox = checkbox;
-						return;
-					}
-
-					if (e.shiftKey) {
-						const checkboxes = Array.from(checkboxContainer.querySelectorAll('input[type="checkbox"]'));
-						const start = checkboxes.indexOf(lastCheckedCheckbox);
-						const end = checkboxes.indexOf(checkbox);
-
-						if (start > -1 && end > -1) {
-							const [from, to] = [Math.min(start, end), Math.max(start, end)];
-							for (let i = from; i <= to; i++) {
-								checkboxes[i].checked = true;
-							}
-						}
-					}
-
-					lastCheckedCheckbox = checkbox;
-
-					updateSummary();
-					const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
-					isAllSelected = Array.from(visibleCheckboxes).every(cb => cb.checked);
-					toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
-					updateWarningIcon();
-					updateClearFiltersButton();
-				});
-
-				if (this.#filterState?.checked?.includes(String(value).toLowerCase())) {
-					checkbox.checked = true;
-				}
-
-				checkboxContainer.appendChild(label);
-			});
-
+			const visibleCount = 50;
+			let startIndex = 0;
+			const scrollContainer = document.createElement('div');
+			scrollContainer.style.maxHeight = '300px';
+			scrollContainer.style.minHeight = '100px';
+			scrollContainer.style.overflowY = 'auto';
+			scrollContainer.style.overflowX = 'hidden';
+			scrollContainer.style.position = 'relative';
+			scrollContainer.style.paddingRight = '6px';
+			scrollContainer.style.boxSizing = 'border-box';
+			const spacer = document.createElement('div');
+			spacer.style.height = `${sortedValues.length * 30}px`;
+			spacer.style.position = 'relative';
+			checkboxContainer.style.position = 'absolute';
+			checkboxContainer.style.width = '100%';
+			checkboxContainer.style.top = '0';
+			checkboxContainer.style.left = '0';
+			checkboxContainer.style.right = '0';
+			checkboxContainer.style.display = 'block';
+			scrollContainer.appendChild(spacer);
+			spacer.appendChild(checkboxContainer);
+			popup.appendChild(header);
+			popup.appendChild(scrollContainer);
+			popup.appendChild(footer);
 
 			searchInput.addEventListener('input', () => {
 				const query = searchInput.value.toLowerCase();
-				checkboxContainer.querySelectorAll('label').forEach(label => {
-					const text = label.textContent.toLowerCase();
-					const matches = this.#matchesFilter(text, query, filterType.value);
-					label.style.display = matches ? '' : 'none';
 
-					if (!matches) {
-						const cb = label.querySelector('input[type="checkbox"]');
-						if (cb) cb.checked = false;
-					}
+				filteredValues = sortedValues.filter(v => {
+					const text = String(v).toLowerCase();
+					return this.#matchesFilter(text, query, filterType.value);
 				});
 
-				const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
-				isAllSelected = Array.from(visibleCheckboxes).every(cb => cb.checked);
+				this.#filterState.checked = this.#filterState.checked?.filter(v => filteredValues.includes(v));
+
+				isAllSelected = filteredValues.length > 0 && filteredValues.every(v => this.#filterState.checked?.includes(String(v).toLowerCase()));
+
+				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+
+				renderVisibleCheckboxes()
+				updateSummary();
+				updateWarningIcon();
+				updateClearFiltersButton();
+				spacer.style.height = `${filteredValues.length * 30}px`
+			});
+
+			const renderVisibleCheckboxes = () => {
+				const scrollTop = scrollContainer.scrollTop;
+				startIndex = Math.floor(scrollTop / 30);
+				checkboxContainer.style.top = `${startIndex * 30}px`;
+				const endIndex = Math.min(startIndex + visibleCount, filteredValues.length);
+
+				checkboxContainer.innerHTML = '';
+
+				for (let i = startIndex; i < endIndex; i++) {
+					const value = filteredValues[i];
+					const id = `filter_${String(value).replace(/[^a-zA-Z0-9]/g, '_')}`;
+					const label = document.createElement('label');
+					label.classList.add('custom-checkbox');
+					label.innerHTML = `
+						<input type="checkbox" id="${id}" value="${value}">
+						<span>${value}</span>
+					`;
+
+					const checkbox = label.querySelector('input[type="checkbox"]');
+
+					checkbox.checked = this.#filterState?.checked?.includes(String(value).toLowerCase());
+
+					label.setAttribute('data-index', i);
+					checkboxContainer.appendChild(label);
+				}
+			};
+
+			function getIndexOfCheckbox(checkbox) {
+				const value = checkbox.value;
+				return filteredValues.indexOf(value);
+			}
+
+			function updateFilterState(cb, val, isChecked) {
+				if (isChecked) {
+					if (!this.#filterState.checked.includes(val)) {
+						this.#filterState.checked.push(val);
+					}
+				}
+				else {
+					this.#filterState.checked = this.#filterState.checked.filter(v => v !== val);
+				}
+			}
+
+			scrollContainer.addEventListener('scroll', () => {
+				renderVisibleCheckboxes();
+			});
+			renderVisibleCheckboxes();
+
+			checkboxContainer.addEventListener('change', (event) => {
+				const cb = event.target;
+				const val = cb.value.toLowerCase();
+				const isChecked = cb.checked;
+				const label = cb.closest('label');
+
+				updateFilterState.call(this, cb, val, isChecked);
+
+				lastCheckedCheckbox = cb;
+				isAllSelected = (this.#filterState.checked.length === sortedValues.length);
+
 				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 
 				updateSummary();
@@ -523,27 +594,50 @@ class CWidgetTableModuleRME extends CWidget {
 				updateClearFiltersButton();
 			});
 
-			checkboxContainer.addEventListener('change', () => {
-				updateSummary();
+			checkboxContainer.addEventListener('click', (event) => {
+				const cb = event.target;
+				if (cb.type !== 'checkbox') return;
 
-				const visibleCheckboxes = checkboxContainer.querySelectorAll('label:not([style*="display: none"]) input[type="checkbox"]');
-				isAllSelected = Array.from(visibleCheckboxes).every(cb => cb.checked);
+				const val = cb.value.toLowerCase();
+				const isChecked = cb.checked;
+				const label = cb.closest('label');
+				const checkboxIndex = parseInt(label.getAttribute('data-index'), 10);
+
+				if (event.shiftKey && lastCheckedCheckbox) {
+					event.preventDefault();
+					event.stopPropagation();
+					const lastCheckedIndex = getIndexOfCheckbox(lastCheckedCheckbox);
+					if (lastCheckedIndex !== -1) {
+						const [from, to] = [Math.min(lastCheckedIndex, checkboxIndex), Math.max(lastCheckedIndex, checkboxIndex)];
+
+						for (let j = from; j <= to; j++) {
+							const value = filteredValues[j];
+							const elementVal = String(value).toLowerCase();
+							if (!this.#filterState.checked.includes(elementVal)) {
+								this.#filterState.checked.push(elementVal);
+							}
+						}
+
+						renderVisibleCheckboxes();
+					}
+				}
+
+				isAllSelected = (this.#filterState.checked?.length == sortedValues.length || 0 === sortedValues.length);
+
 				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 
+				updateSummary();
 				updateWarningIcon();
 				updateClearFiltersButton();
 			});
 
 
-			function updateSummary() {
-				const checked = checkboxContainer.querySelectorAll('input[type="checkbox"]:checked').length;
+			const updateSummary = () => {
+				const checked = this.#filterState.checked?.length || 0;
 				summary.textContent = `${checked} selected`;
 			}
 
 			updateSummary();
-			popup.appendChild(header);
-			popup.appendChild(checkboxContainer);
-			popup.appendChild(footer);
 			document.body.appendChild(popup);
 
 			filterIcon.addEventListener('click', () => {
@@ -579,12 +673,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				popup.style.visibility = 'visible';
 				popup.style.display = 'flex';
-			});
-
-			document.addEventListener('click', (e) => {
-				if (!popup.contains(e.target) && !filterIcon.contains(e.target)) {
-					popup.style.display = 'none';
-				}
+				this._pauseUpdating();
 			});
 
 			const arrowSpan = firstTh.querySelector('span#arrow');
@@ -636,47 +725,15 @@ class CWidgetTableModuleRME extends CWidget {
 				searchInput.dispatchEvent(new Event('input'));
 			}
 
-			function makeDraggable(popup, handle) {
-				let isDragging = false;
-				let offsetX = 0;
-				let offsetY = 0;
-
-				handle.style.cursor = 'move';
-
-				handle.addEventListener('mousedown', (e) => {
-					if (
-						e.target.tagName === 'INPUT' ||
-						e.target.tagName === 'SELECT' ||
-						e.target.tagName === 'BUTTON' ||
-						e.target.classList.contains('clear-btn')
-					) {
-						return;
-					}
-
-					isDragging = true;
-					const rect = popup.getBoundingClientRect();
-					offsetX = e.clientX - rect.left;
-					offsetY = e.clientY - rect.top;
-					document.body.style.userSelect = 'none';
-				});
-
-				document.addEventListener('mousemove', (e) => {
-					if (isDragging) {
-						popup.style.left = `${e.clientX - offsetX}px`;
-						popup.style.top = `${e.clientY - offsetY}px`;
-					}
-				});
-
-				document.addEventListener('mouseup', () => {
-					isDragging = false;
-					document.body.style.userSelect = '';
-				});
-			}
-
-			makeDraggable(popup, header);
+			this.makeDraggable(popup, header);
 
 		}
 
+		this.closeFilterPopupHandler = this.closeFilterPopup.bind(this);
+		this.boundMouseDown = this.handleMouseDownTi.bind(this);
+		this.boundMouseMove = this.handleMouseMoveTi.bind(this);
+		this.boundMouseUp = this.handleMouseUpTi.bind(this);
+		this.attachListeners();
 
 		if (this.#selected_hostid !== null) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
@@ -688,6 +745,80 @@ class CWidgetTableModuleRME extends CWidget {
 			this._markSelected(this.#dataset_item);
 		}
 
+	}
+
+	onResize() {
+		if (this._state === WIDGET_STATE_ACTIVE) {
+			this.#recalculateSvgSparklines();
+		}
+	}
+
+	closeFilterPopup(e) {
+		const popup = document.getElementById(this.#popupId);
+		const filterIcon = this._target.getElementsByClassName('filter-icon').item(0);
+		if (popup && filterIcon) {
+			if (!popup.contains(e.target) && !filterIcon.contains(e.target)) {
+				popup.style.display = 'none';
+				this._resumeUpdating();
+			}
+		}
+	}
+
+	attachListeners() {
+		document.addEventListener('click', this.closeFilterPopupHandler);
+		if (this.handle && this.popup) {
+			this.handle.addEventListener('mousedown', this.boundMouseDown);
+			document.addEventListener('mousemove', this.boundMouseMove);
+			document.addEventListener('mouseup', this.boundMouseUp);
+		}
+	}
+
+	detachListeners() {
+		document.removeEventListener('click', this.closeFilterPopupHandler);
+		if (this.handle && this.boundMouseDown) {
+			this.handle.removeEventListener('ousedown', this.boundMouseDown);
+		}
+		document.removeEventListener('mousemove', this.boundMouseMove);
+		document.removeEventListener('mouseup', this.boundMouseUp);
+	}
+
+	makeDraggable(popup, handle) {
+		this.popup = popup;
+		this.handle = handle
+		this.isDragging = false;
+		this.offsetX = 0;
+		this.offsetY = 0;
+
+		handle.style.cursor = 'move';
+	}
+
+	handleMouseDownTi(e) {
+		if (
+			e.target.tagName === 'INPUT' ||
+			e.target.tagName === 'SELECT' ||
+			e.target.tagName === 'BUTTON' ||
+			e.target.classList.contains('clear-btn')
+		) {
+			return;
+		}
+
+		this.isDragging = true;
+		const rect = this.popup.getBoundingClientRect();
+		this.offsetX = e.clientX - rect.left;
+		this.offsetY = e.clientY - rect.top;
+		document.body.style.userSelect = 'none';
+	}
+
+	handleMouseMoveTi(e) {
+		if (this.isDragging) {
+			this.popup.style.left = `${e.clientX - this.offsetX}px`;
+			this.popup.style.top = `${e.clientY - this.offsetY}px`;
+		}
+	}
+
+	handleMouseUpTi(e) {
+		this.isDragging = false;
+		document.body.style.userSelect = '';
 	}
 
 	getTheme() {
@@ -1570,13 +1701,11 @@ class CWidgetTableModuleRME extends CWidget {
 					padding: 4px 8px;
 					font-size: 12px;
 				}
-				
 				.filter-popup-header select option {
 					font-family: Sans serif;
 					color: #fff;
 					background-color: #1e1e1e;
 				}
-
 				.filter-popup-header-title {
 					font-weight: bold;
 					color: #ccc;
@@ -1631,7 +1760,7 @@ class CWidgetTableModuleRME extends CWidget {
 					position: relative;
 					flex-shrink: 0;
 					transition: all 0.15s ease-in-out;
-					margin-top: 1px; /* tweak to lower the box slightly */
+					margin-top: 1px;
 				}
 				.filter-popup-checkboxes input[type="checkbox"]:checked {
 					background-color: #3b82f6;
