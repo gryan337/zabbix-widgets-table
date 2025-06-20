@@ -907,11 +907,20 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
 				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
 					if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
-						return [(new CCol($bar_gauge)), $value_cell];
+						return [
+							(new CCol($bar_gauge))
+								->setAttribute('column-id', $column_index),
+							$value_cell
+						];
 					}
 				}
 			}
-			return [(new CCol($bar_gauge))->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
+			return [
+				(new CCol($bar_gauge))
+					->addClass(ZBX_STYLE_CURSOR_POINTER)
+					->setAttribute('column-id', $column_index),
+				$value_cell
+			];
 	}
 }
 

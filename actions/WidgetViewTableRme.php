@@ -808,6 +808,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		}
 
 		$columns_with_view_values = [];
+		$rows_with_view_values = [];
 		$width = count($table[array_key_first($table)]);
 		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
 			$width = [];

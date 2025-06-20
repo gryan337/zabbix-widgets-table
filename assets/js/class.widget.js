@@ -702,10 +702,8 @@ class CWidgetTableModuleRME extends CWidget {
 				updateClearFiltersButton();
 			});
 
-			function updateClearFiltersButton() {
-				const hasChecked = Array.from(
-					checkboxContainer.querySelectorAll('input[type="checkbox"]:checked')
-				).length > 0;
+			const updateClearFiltersButton = () => {
+				const hasChecked = this.#filterState.checked.length > 0;
 				const hasSearch = searchInput.value.trim() !== '';
 
 				if (hasChecked || hasSearch) {
@@ -725,6 +723,7 @@ class CWidgetTableModuleRME extends CWidget {
 				searchInput.dispatchEvent(new Event('input'));
 			}
 
+			updateClearFiltersButton();
 			this.makeDraggable(popup, header);
 
 		}
@@ -840,6 +839,29 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#applyFilter() {
+		function getColumnInfo(td, columns) {
+			const indexStr = td.getAttribute('column-id');
+			if (indexStr == null) return null;
+
+			const indexNum = parseInt(indexStr, 10);
+			if (isNaN(indexNum)) return null;
+
+			const columnDef = columns?.[indexNum];
+			if (!columnDef) return null;
+
+			return { indexNum, columnDef };
+		}
+
+		function resolveMinMax(columnDef, dynamicStats, indexNum) {
+			const staticMin = columnDef.min !== undefined && columnDef.min !== '' ? parseFloat(columnDef.min) : null;
+			const staticMax = columnDef.max !== undefined && columnDef.max !== '' ? parseFloat(columnDef.max) : null;
+
+			const min = staticMin !== null ? staticMin : dynamicStats[indexNum]?.min;
+			const max = staticMax !== null ? staticMax : dynamicStats[indexNum]?.max;
+
+			return { min, max };
+		}
+
 		if (!this.#filterState) return;
 
 		this.invalidRegex = false;
@@ -849,6 +871,9 @@ class CWidgetTableModuleRME extends CWidget {
 		const allowedValues = checkedValues.length > 0 ? new Set(checkedValues) : null;
 		const searchValue = (this.#filterState.search || '').trim().toLowerCase();
 		const filterMode = this.#filterState.type || 'contains';
+
+		let columnStats = [];
+		const columns = this._fields.columns;
 
 		this.#rowsArray.forEach(rowObj => {
 			const tr = rowObj.row
@@ -872,9 +897,60 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			rowObj.status = showRow ? 'display' : 'hidden';
+
+			if (rowObj.status === 'display') {
+				const allTdsInRow = tr.querySelectorAll('td');
+
+				allTdsInRow.forEach((td, index) => {
+					const gauge = td.querySelector('z-bar-gauge');
+					if (!gauge) return;
+
+					const info = getColumnInfo(td, columns);
+					if (!info) return;
+
+					const { indexNum, columnDef } = info;
+
+					const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
+					const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
+					if (hasStaticMin && hasStaticMax) return;
+
+					if (!this._isNumeric(gauge.value)) return;
+					const value = parseFloat(gauge.value);
+
+					if (!columnStats[indexNum]) {
+						columnStats[indexNum] = { min: value, max: value };
+					}
+					else {
+						columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
+						columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
+					}
+				});
+			}
 		});
 
-		this.#totalRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display').length;
+		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+
+		displayedRows.forEach(rowObj => {
+			const tr = rowObj.row;
+			const allTdsInRow = tr.querySelectorAll('td');
+
+			allTdsInRow.forEach((td, index) => {
+				const gauge = td.querySelector('z-bar-gauge');
+				if (!gauge) return;
+
+				const info = getColumnInfo(td, columns);
+				if (!info) return;
+
+				const { indexNum, columnDef } = info;
+				const { min, max } = resolveMinMax(columnDef, columnStats, indexNum);
+
+				if (min === undefined || max === undefined) return;
+				gauge.setAttribute('min', min);
+				gauge.setAttribute('max', max);
+			});
+		});
+
+		this.#totalRows = displayedRows.length;
 		this.#currentPage = 1;
 
 		this.#removePaginationControls();
