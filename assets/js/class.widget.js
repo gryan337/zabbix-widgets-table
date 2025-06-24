@@ -1629,7 +1629,7 @@ class CWidgetTableModuleRME extends CWidget {
 				const unit = td.getAttribute('units') || '';
 				if (!rawHtml) return;
 
-				const match = rawHtml.match(/>([\d\.\-eE]+)</);
+				const match = rawHtml.match(/>([\d\.\-eE]+\+?[\d]+)/);
 				if (!match) return;
 				let rawValue = parseFloat(match[1]);
 				if (isNaN(rawValue)) {
