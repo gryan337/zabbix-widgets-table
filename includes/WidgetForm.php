@@ -111,6 +111,9 @@ class WidgetForm extends CWidgetForm {
 				: new CWidgetFieldCheckBox('aggregate_all_hosts', _('Aggregate All Hosts'))
 			)
 			->addField(
+				new CWidgetFieldCheckBox('autoselect_first', _('Autoselect first cell'))
+			)
+			->addField(
 				(new CWidgetFieldRadioButtonList('footer', _('Show Footer Row'), [
 					self::FOOTER_NONE => _('No Footer'),
 					self::FOOTER_SUM => _('Sum'),
