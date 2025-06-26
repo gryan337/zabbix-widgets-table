@@ -37,6 +37,11 @@ class CWidgetTableModuleRME extends CWidget {
 	#selected_hostid = null;
 	#selected_name = null;
 
+	#null_id = '000000';
+
+	#first_td_host_cell = null;
+	#first_td_value_cell = null;
+
 	#parent_container;
 	#values_table;
 	#th;
@@ -64,17 +69,24 @@ class CWidgetTableModuleRME extends CWidget {
 
 	getUpdateRequestData() {
 		const request_data = super.getUpdateRequestData();
-		if (request_data?.fields?.groupids?.length === 1 && request_data.fields.groupids.includes('000000')) {
+		if (request_data?.fields?.groupids?.length === 1 && request_data.fields.groupids.includes(this.#null_id)) {
 			request_data.fields.groupids = [];
 		}
-		if (request_data?.fields?.hostids?.length === 1 && request_data.fields.hostids.includes('000000')) {
+		if (request_data?.fields?.hostids?.length === 1 && request_data.fields.hostids.includes(this.#null_id)) {
 			request_data.fields.hostids = [];
 		}
 		return request_data;
 	}
 
 	setContents(response) {
-		super.setContents(response);
+		if (response.body.includes('no-data-message')) {
+			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
+			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+			super.setContents(response);
+			return;
+		}
+
+		super.setContents(response)
 
 		this.detachListeners();
 
@@ -103,9 +115,15 @@ class CWidgetTableModuleRME extends CWidget {
 				const dataset = JSON.parse(element.dataset.menu);
 				try {
 					if (dataset.itemid) {
+						if (this.#first_td_value_cell === null) {
+							this.#first_td_value_cell = td;
+						}
 						key = dataset.itemid;
 					}
 					else if (dataset.hostid) {
+						if (this.#first_td_host_cell === null) {
+							this.#first_td_host_cell = td;
+						}
 						key = dataset.hostid;
 					}
 				}
@@ -738,10 +756,16 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
 			this._markSelected(this.#dataset_host);
 		}
+		else if (this.#first_td_host_cell !== null && this._fields.autoselect_first) {
+			this.#first_td_host_cell.click();
+		}
 
 		if (this.#selected_itemid !== null) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#selected_itemid);
 			this._markSelected(this.#dataset_item);
+		}
+		else if (this.#first_td_value_cell !== null && this._fields.autoselect_first) {
+			this.#first_td_value_cell.click();
 		}
 
 	}
@@ -1080,7 +1104,7 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 			else if (dataset?.type === this.#dataset_host) {
 				if (this.#selected_hostid === dataset.hostid) {
-					this.#selected_hostid = '000000';
+					this.#selected_hostid = this.#null_id;
 				}
 				else {
 					this.#selected_hostid = dataset.hostid;
@@ -1239,6 +1263,7 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 		var prevTd = null;
 		let hasItemMarking = false;
+		let hasHostMarking = false;
 		var tdsToMark = [];
 		tds.forEach(td => {
 			var origStyle = td.style.cssText;
@@ -1250,6 +1275,7 @@ class CWidgetTableModuleRME extends CWidget {
 					if (type === this.#dataset_item) {
 					}
 					else if (dataset?.hostid === this.#selected_hostid) {
+						hasHostMarking = true;
 						td.style.backgroundColor = this.host_bg_color;
 						td.style.color = this.font_color;
 					}
@@ -1309,11 +1335,19 @@ class CWidgetTableModuleRME extends CWidget {
 			prevTd = td;
 		});
 
+		if (!hasHostMarking && type === this.#dataset_host) {
+			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
+		}
+
 		if (!hasItemMarking && tdsToMark.length > 0) {
 			for (const tm of tdsToMark) {
 				this.#handleCellClick(tm);
 				return;
 			}
+		}
+
+		if (!hasItemMarking && type === this.#dataset_item) {
+			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
 		}
 	}
 
