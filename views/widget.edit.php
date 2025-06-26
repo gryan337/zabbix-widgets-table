@@ -84,6 +84,14 @@ $form
 			->addRowClass('field_aggregate_all_hosts')
 	)
 	->addField(
+		(new CWidgetFieldCheckBoxView($data['fields']['autoselect_first']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Checking this box will cause the first value and host cell to be automatically selected')
+				])
+			)
+	)
+	->addField(
 		(new CWidgetFieldRadioButtonListView($data['fields']['footer']))
 			->setFieldHint(
 				makeHelpIcon([
