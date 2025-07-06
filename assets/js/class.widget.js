@@ -525,7 +525,8 @@ class CWidgetTableModuleRME extends CWidget {
 			popup.appendChild(scrollContainer);
 			popup.appendChild(footer);
 
-			searchInput.addEventListener('input', () => {
+			this.handleInput = () => {
+				scrollContainer.scrollTop = 0;
 				const query = searchInput.value.toLowerCase();
 
 				filteredValues = sortedValues.filter(v => {
@@ -533,7 +534,9 @@ class CWidgetTableModuleRME extends CWidget {
 					return this.#matchesFilter(text, query, filterType.value);
 				});
 
-				this.#filterState.checked = this.#filterState.checked?.filter(v => filteredValues.includes(v));
+				const filteredValuesLowerCase = filteredValues.map(v => String(v).toLowerCase());
+
+				this.#filterState.checked = this.#filterState.checked?.filter(v => filteredValuesLowerCase.includes(v));
 
 				isAllSelected = filteredValues.length > 0 && filteredValues.every(v => this.#filterState.checked?.includes(String(v).toLowerCase()));
 
@@ -544,7 +547,13 @@ class CWidgetTableModuleRME extends CWidget {
 				updateWarningIcon();
 				updateClearFiltersButton();
 				spacer.style.height = `${filteredValues.length * 30}px`
-			});
+			};
+
+			const inputHandler = sortedValues.length > 250
+				? this.debounce(this.handleInput, 300)
+				: this.handleInput;
+
+			searchInput.addEventListener('input', inputHandler);
 
 			const renderVisibleCheckboxes = () => {
 				const scrollTop = scrollContainer.scrollTop;
@@ -768,6 +777,14 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#first_td_value_cell.click();
 		}
 
+	}
+
+	debounce(fn, delay) {
+		let timeoutId;
+		return (...args) => {
+			clearTimeout(timeoutId);
+			timeoutId = setTimeout(() => fn(...args), delay);
+		};
 	}
 
 	onResize() {
@@ -1663,7 +1680,7 @@ class CWidgetTableModuleRME extends CWidget {
 				const unit = td.getAttribute('units') || '';
 				if (!rawHtml) return;
 
-				const match = rawHtml.match(/>([\d\.\-eE]+\+?[\d]+)/);
+				const match = rawHtml.match(/>([\d.\-eE+]+)</);
 				if (!match) return;
 				let rawValue = parseFloat(match[1]);
 				if (isNaN(rawValue)) {
