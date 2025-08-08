@@ -19,7 +19,10 @@ A table widget with advanced functionality for the Zabbix dashboard
 
 ## Required Zabbix version
 
- - There is currently a main branch and 7.2 branch. The 7.2 branch works with all versions of Zabbix 7.2.x. a Branch for version 7.4 will be coming soon.
+ - The branches of this widget correspond to the matching Zabbix branch. Please clone the branch version that matches your Zabbix version.
+ - Available Versions:
+   - 7.4
+   - 7.2
 
 ## Purpose
 
