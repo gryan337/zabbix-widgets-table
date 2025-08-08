@@ -179,7 +179,7 @@ class ColumnEditTableRme extends CController {
 
 		if ($column_defaults === null) {
 			$column_defaults = [
-				'column-title' => '',
+				'column_title' => '',
 				'broadcast_in_group_row' => 0,
 				'column_agg_method' => AGGREGATE_NONE,
 				'items' => [],
