@@ -18,7 +18,7 @@ $table = (new CTableInfo())->addClass(ZBX_STYLE_LIST_TABLE_STICKY_HEADER);
 $groupby_host = false;
 
 if ($data['error'] !== null) {
-	$table->setNoDataMessage($data['error']);
+	$table->setNoDataMessage($data['error'], null, ZBX_ICON_SEARCH_LARGE);
 }
 else {
 	if ($data['show_column_header'] != WidgetForm::COLUMN_HEADER_OFF) {

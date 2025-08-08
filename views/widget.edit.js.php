@@ -5,7 +5,7 @@ use Modules\TableModuleRME\Includes\WidgetForm;
 ?>
 
 
-window.widget_tablemodulerme_form = new class {
+window.widget_tablemodulerme_form = new class extends CWidgetForm {
 
 	/**
 	 * Widget form.
@@ -36,7 +36,7 @@ window.widget_tablemodulerme_form = new class {
 	#list_column_tmpl;
 
 	init({templateid}) {
-		this.#form = document.getElementById('widget-dialogue-form');
+		this.#form = this.getForm();
 		this.#list_columns = document.getElementById('list_columns');
 		this.#list_column_tmpl = new Template(this.#list_columns.querySelector('template').innerHTML);
 		this.#templateid = templateid;
@@ -54,6 +54,8 @@ window.widget_tablemodulerme_form = new class {
 		jQuery(document.getElementById('hostids_')).on('change', () => this.#updateForm());
 		jQuery('[id^=layout_]').on('change', () => this.#updateForm());
 		this.#form.addEventListener('form_fields.changed', () => this.#updateForm());
+
+		this.ready();
 	}
 
 	/**
@@ -154,6 +156,8 @@ window.widget_tablemodulerme_form = new class {
 
 	#triggerUpdate() {
 		this.#form.dispatchEvent(new CustomEvent('form_fields.changed', {detail: {}}));
+
+		this.registerUpdateEvent();
 	}
 
 	#processColumnsAction(e) {
@@ -187,7 +191,6 @@ window.widget_tablemodulerme_form = new class {
 					this.#triggerUpdate();
 				});
 
-				column_popup.addEventListener('dialogue.close', this.#removeColorpicker);
 				break;
 
 			case 'edit':
@@ -212,7 +215,6 @@ window.widget_tablemodulerme_form = new class {
 					this.#triggerUpdate();
 				});
 
-				column_popup.addEventListener('dialogue.close', this.#removeColorpicker);
 				break;
 
 			case 'remove':
@@ -312,10 +314,5 @@ window.widget_tablemodulerme_form = new class {
 		input.setAttribute('value', value);
 
 		return input
-	}
-
-	// Need to remove function after sub-popups auto close.
-	#removeColorpicker() {
-		$('#color_picker').hide();
 	}
 };
