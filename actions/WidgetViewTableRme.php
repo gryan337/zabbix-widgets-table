@@ -957,7 +957,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 						$my_cell[Widget::CELL_VALUE] = $final;
 						$my_cell[Widget::CELL_ITEMID] = null;
 						if ($itemids) {
-							$my_cell[Wdiget::CELL_ITEMID] = implode(',', $itemids);
+							$my_cell[Widget::CELL_ITEMID] = implode(',', $itemids);
 						}
 						$final_table[$hostid][] = $my_cell;
 					}
@@ -1008,7 +1008,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				foreach ($hostData as $data) {
 					$groupingName = $data[Widget::CELL_METADATA]['grouping_name'];
 					$columnIndex = $data[Widget::CELL_METADATA]['column_index'];
-					$key = "${groupingName}".chr(31)."${columnIndex}";
+					$key = $groupingName.chr(31).$columnIndex;
 
 					if (!isset($aggregatedArray[$key])) {
 						$aggregatedArray[$key] = [
@@ -1020,8 +1020,8 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 						];
 					}
 					else {
-						$aggregatedArray[$key][Widget::CELL_HOSTID] .= ",${hostid}";
-						$aggregatedArray[$key][Widget::CELL_ITEMID] .= ",${data[Widget::CELL_ITEMID]}";
+						$aggregatedArray[$key][Widget::CELL_HOSTID] .= ','.$hostid;
+						$aggregatedArray[$key][Widget::CELL_ITEMID] .= ','.$data[Widget::CELL_ITEMID];
 
 						$method = $columns[$columnIndex]['column_agg_method'];
 						$currentValues = explode(',', $aggregatedArray[$key][Widget::CELL_VALUE]);
