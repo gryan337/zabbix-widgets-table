@@ -55,9 +55,10 @@ class CWidgetTableModuleRME extends CWidget {
 	#rowsArray = [];
 
 	#popupId = null;
+	#tooltipId = null;
 	#filterApplied = false;
 	#filterState = {
-		type: 'contains',
+		type: 'Contains',
 		search: '',
 		checked: [],
 		allSelected: false
@@ -291,14 +292,67 @@ class CWidgetTableModuleRME extends CWidget {
 			const filterControls = document.createElement('div');
 			filterControls.className = 'filter-popup-controls';
 
-			const filterType = document.createElement('select');
-			['Contains', 'Equals', 'Starts with', 'Ends with', 'Wildcard', 'Does not contain', 'Regex'].forEach(opt => {
-				const option = document.createElement('option');
-				option.value = opt.toLowerCase();
-				option.textContent = opt;
-				filterType.appendChild(option);
+			const filterTypeContainer = document.createElement('div');
+			filterTypeContainer.className = 'custom-select';
+
+			const hiddenInput = document.createElement('input');
+			hiddenInput.type = 'hidden';
+			filterTypeContainer.appendChild(hiddenInput);
+
+			const button = document.createElement('button');
+			button.type = 'button';
+			filterTypeContainer.appendChild(button);
+
+			const options = [
+				{ value: 'contains', label: 'Contains' },
+				{ value: 'equals', label: 'Equals' },
+				{ value: 'starts with', label: 'Starts with' },
+				{ value: 'ends with', label: 'Ends with' },
+				{ value: 'wildcard', label: 'Wildcard' },
+				{ value: 'does not contain', label: 'Does not contain' },
+				{ value: 'regex', label: 'Regex' }
+			];
+
+			const initialValue = this.#filterState?.type || 'contains';
+			const initialLabel = options.find(o => o.value === initialValue)?.label || 'Contains';
+
+			hiddenInput.value = initialValue;
+			button.textContent = initialLabel;
+
+			const list = document.createElement('ul');
+			list.className = 'list';
+			list.style.display = 'none';
+
+			options.forEach(opt => {
+				const li = document.createElement('li');
+				li.textContent = opt.label;
+				li.dataset.value = opt.value;
+				li.dataset.label = opt.label;
+				li.addEventListener('click', () => {
+					hiddenInput.value = li.dataset.value;
+					button.textContent = li.dataset.label;
+					list.style.display = 'none';
+					searchInput.dispatchEvent(new Event('input'));
+					updateWarningIcon();
+					updateClearFiltersButton();
+					this.#filterState.type = opt;
+				});
+				list.appendChild(li);
 			});
-			filterType.value = this.#filterState?.type || 'contains';
+
+			filterTypeContainer.appendChild(list);
+
+			button.addEventListener('click', () => {
+				list.style.display = list.style.display === 'none' ? 'block' : 'none';
+			});
+
+			this.dropdownOutsideClickHandler = (e) => {
+				if (!filterTypeContainer.contains(e.target)) {
+					list.style.display = 'none';
+				}
+			};
+
+			filterControls.appendChild(filterTypeContainer);
 
 			const searchInput = document.createElement('input');
 			searchInput.type = 'text';
@@ -323,8 +377,6 @@ class CWidgetTableModuleRME extends CWidget {
 				lastCheckedCheckbox = null;
 			});
 
-
-			filterControls.appendChild(filterType);
 			filterControls.appendChild(searchInput);
 			filterControls.appendChild(clearBtn);
 
@@ -414,7 +466,7 @@ class CWidgetTableModuleRME extends CWidget {
 			
 				const hasCheckedValues = checkedValues.length > 0;
 				const query = searchInput.value.trim();
-				const type = filterType.value;
+				const type = hiddenInput.value;
 			
 				this.#filterState = {
 					search: query,
@@ -473,17 +525,45 @@ class CWidgetTableModuleRME extends CWidget {
 				</svg>
 			`;
 
-			const warningIcon = document.createElement('div');
+			const tooltip = document.createElement('div');
+			tooltip.id = this.#values_table.id + '-' + this._widgetid;
+			tooltip.className = 'custom-tooltip';
+			tooltip.textContent = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
+			tooltip.style.position = 'absolute';
+			tooltip.style.display = 'none';
+			tooltip.style.pointerEvents = 'none';
+			document.body.appendChild(tooltip);
+
+			if (this.#tooltipId !== null) {
+				const oldTooltip = document.getElementById(this.#tooltipId);
+				if (oldTooltip) {
+					oldTooltip.remove();
+				}
+			}
+			this.#tooltipId = tooltip.id;
+
+			const warningIcon = document.createElement('span');
 			warningIcon.className = 'filter-warning-icon';
-			warningIcon.title = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
 			warningIcon.style.display = 'none';
 			warningIcon.innerHTML = warningSvg;
-				
+
 			buttonsRow.appendChild(applyButton);
 			buttonsRow.appendChild(resetButton);
 			buttonsRow.appendChild(clearFiltersButton);
 			buttonsRow.appendChild(warningIcon);
 			footer.appendChild(buttonsRow);
+
+			warningIcon.addEventListener('mouseenter', (e) => {
+				const rect = warningIcon.getBoundingClientRect();
+				tooltip.style.top = `${rect.top - rect.height - 8}px`;
+				tooltip.style.left = `${rect.left + rect.width / 2}px`;
+				tooltip.style.transform = 'translateX(-50%)';
+				tooltip.style.display = 'block';
+			});
+
+			warningIcon.addEventListener('mouseleave', () => {
+				tooltip.style.display = 'none';
+			});
 
 			const tempSpan = document.createElement('span');
 			tempSpan.style.visibility = 'hidden';
@@ -531,7 +611,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				filteredValues = sortedValues.filter(v => {
 					const text = String(v).toLowerCase();
-					return this.#matchesFilter(text, query, filterType.value);
+					return this.#matchesFilter(text, query, hiddenInput.value);
 				});
 
 				const filteredValuesLowerCase = filteredValues.map(v => String(v).toLowerCase());
@@ -723,12 +803,6 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 			}
 
-			filterType.addEventListener('change', () => {
-				searchInput.dispatchEvent(new Event('input'));
-				updateWarningIcon();
-				updateClearFiltersButton();
-			});
-
 			const updateClearFiltersButton = () => {
 				const hasChecked = this.#filterState.checked.length > 0;
 				const hasSearch = searchInput.value.trim() !== '';
@@ -806,6 +880,8 @@ class CWidgetTableModuleRME extends CWidget {
 
 	attachListeners() {
 		document.addEventListener('click', this.closeFilterPopupHandler);
+		document.addEventListener('click', this.dropdownOutsideClickHandler);
+
 		if (this.handle && this.popup) {
 			this.handle.addEventListener('mousedown', this.boundMouseDown);
 			document.addEventListener('mousemove', this.boundMouseMove);
@@ -815,8 +891,10 @@ class CWidgetTableModuleRME extends CWidget {
 
 	detachListeners() {
 		document.removeEventListener('click', this.closeFilterPopupHandler);
+		document.removeEventListener('click', this.dropdownOutsideClickHandler);
+
 		if (this.handle && this.boundMouseDown) {
-			this.handle.removeEventListener('ousedown', this.boundMouseDown);
+			this.handle.removeEventListener('mousedown', this.boundMouseDown);
 		}
 		document.removeEventListener('mousemove', this.boundMouseMove);
 		document.removeEventListener('mouseup', this.boundMouseUp);
@@ -1820,19 +1898,6 @@ class CWidgetTableModuleRME extends CWidget {
 					border-bottom: 1px solid #333;
 					background: #2a2a2a;
 				}
-				.filter-popup-header select {
-					color: #fff;
-					background: #1e1e1e;
-					border: 1px solid #555;
-					border-radius: 3px;
-					padding: 4px 8px;
-					font-size: 12px;
-				}
-				.filter-popup-header select option {
-					font-family: Sans serif;
-					color: #fff;
-					background-color: #1e1e1e;
-				}
 				.filter-popup-header-title {
 					font-weight: bold;
 					color: #ccc;
@@ -1844,7 +1909,6 @@ class CWidgetTableModuleRME extends CWidget {
 					align-items: center;
 					gap: 6px;
 				}
-				.filter-popup-controls select,
 				.filter-popup-controls input {
 					font-family: Sans serif;
 					background: #1e1e1e;
@@ -1973,10 +2037,20 @@ class CWidgetTableModuleRME extends CWidget {
 					display: flex;
 					align-items: center;
 					margin-left: 12px;
+					position: relative;
 					user-select: none;
 				}
 				.filter-warning-icon svg {
 					display: block;
+				}
+				.custom-tooltip {
+					background-color: #383838;
+					color: #f2f2f2;
+					padding: 4px 8px;
+					border-radius: 3px;
+					font-size: 12px;
+					white-space: nowrap;
+					z-index: 10000;
 				}
 				.section-container {
 					border: 0.5px solid #4e4e4e;
@@ -1997,6 +2071,85 @@ class CWidgetTableModuleRME extends CWidget {
 					color: #eee;
 					font-weight: bold;
 					padding: 6px 12px;
+				}
+				.custom-select {
+					position: relative;
+					display: inline-block;
+					font-family: Sans serif;
+					font-size: 12px;
+					width: 125px;
+				}
+				.custom-select input[type="hidden"] {
+					display: none;
+				}
+				.custom-select > button {
+					position: relative;
+					width: 100%;
+					text-align: left;
+					overflow: hidden;
+					text-overflow: ellipsis;
+					white-space: pre;
+					font-size: 12px;
+					line-height: initial;
+					color: #f2f2f2;
+					background-color: #1e1e1e;
+					border: 1px solid #4f4f4f;
+					cursor: pointer;
+					border-radius: 0;
+				}
+				.custom-select > button:hover,
+				.custom-select > button:focus,
+				.custom-select > button:active {
+					color: #f2f2f2;
+					background-color: #383838;
+					border-color: #4f4f4f;
+					outline: none;
+				}
+				.custom-select > button::after {
+					content: "";
+					font-family: 'zabbix-icons';
+					font-size: 10px;
+					position: absolute;
+					right: 4px;
+					top: 50%;
+					transform: translateY(-50%);
+					pointer-events: none;
+				}
+				.custom-select .list {
+					position: absolute;
+					top: 100%;
+					left: 0;
+					right: 0;
+					background-color: #1e1e1e;
+					border: 1px solid #4f4f4f;
+					max-height: 200px;
+					overflow-y: auto;
+					z-index: 10000;
+					margin: 0;
+					padding: 0;
+					list-style: none;
+					display: none;
+				}
+				.custom-select .list li {
+					padding: 4px 8px;
+					cursor: pointer;
+					color: #f2f2f2;
+				}
+				.custom-select .list li:hover,
+				.custom-select .list li.hover {
+					background-color: #01579B;
+					border-color: #4f4f4f;
+					color: #f2f2f2;
+				}
+				.custom-select .list::-webkit-scrollbar {
+					width: 9px;
+				}
+				.custom-select .list::-webkit-scrollbar-thumb {
+					background-color: #383838;
+					border: 1px solid #2b2b2b;
+				}
+				.custom-select .list::-webkit-scrollbar-track {
+					background-color: #1f1f1f;
 				}
 			`;
 			document.head.appendChild(styleColumnFilters);
