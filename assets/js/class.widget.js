@@ -273,7 +273,7 @@ class CWidgetTableModuleRME extends CWidget {
 			const popup = document.createElement('div');
 			popup.style.display = 'none';
 			popup.className = 'filter-popup';
-			popup.id = this.#values_table.id + '-' + this._widgetid;
+			popup.id = this.#values_table.id + '-' + this._widgetid + '-popup';
 			
 			if (this.#popupId !== null) {
 				const oldPopup = document.getElementById(this.#popupId);
@@ -329,9 +329,10 @@ class CWidgetTableModuleRME extends CWidget {
 				li.dataset.value = opt.value;
 				li.dataset.label = opt.label;
 				li.addEventListener('click', () => {
+					event.stopPropagation();
+					list.style.display = 'none';
 					hiddenInput.value = li.dataset.value;
 					button.textContent = li.dataset.label;
-					list.style.display = 'none';
 					searchInput.dispatchEvent(new Event('input'));
 					updateWarningIcon();
 					updateClearFiltersButton();
@@ -526,7 +527,7 @@ class CWidgetTableModuleRME extends CWidget {
 			`;
 
 			const tooltip = document.createElement('div');
-			tooltip.id = this.#values_table.id + '-' + this._widgetid;
+			tooltip.id = this.#values_table.id + '-' + this._widgetid + '-tooltip';
 			tooltip.className = 'custom-tooltip';
 			tooltip.textContent = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
 			tooltip.style.position = 'absolute';
