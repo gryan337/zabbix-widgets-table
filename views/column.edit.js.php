@@ -109,10 +109,6 @@ window.tablemodulerme_column_edit_form = new class {
 			.on('afteradd.dynamicRows', () => this.#updateForm())
 			.on('afterremove.dynamicRows', () => this.#updateForm());
 
-		for (const colorpicker of this.#highlights_table.querySelectorAll('tr.form_row input[name$="[color]"]')) {
-			$(colorpicker).colorpicker({appendTo: $(colorpicker).closest('.input-color-picker')});
-		}
-
 		// Initialize Advanced configuration collapsible.
 		const collapsible = this.#form.querySelector(`fieldset.<?= ZBX_STYLE_COLLAPSIBLE ?>`);
 		new CFormFieldsetCollapsible(collapsible);
