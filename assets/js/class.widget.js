@@ -33,9 +33,8 @@ class CWidgetTableModuleRME extends CWidget {
 	#dataset_item = 'item';
 	#dataset_host = 'host';
 
-	#selected_itemid = null;
 	#selected_hostid = null;
-	#selected_name = null;
+	#selected_items = [];
 
 	#null_id = '000000';
 
@@ -64,6 +63,8 @@ class CWidgetTableModuleRME extends CWidget {
 		allSelected: false
 	};
 
+	#lastClickedCell = null;
+
 	processUpdateResponse(response) {
 		super.processUpdateResponse(response);
 	}
@@ -84,6 +85,7 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
 			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
 			super.setContents(response);
+			this.#removePaginationControls();
 			return;
 		}
 
@@ -173,7 +175,14 @@ class CWidgetTableModuleRME extends CWidget {
 				}, 0);
 			}
 			else if (target && target.tagName === 'TD') {
-				this.#handleCellClick(target);
+				this.#handleCellClick(target, event);
+			}
+		});
+
+		this.#values_table.addEventListener('mousedown', (event) => {
+			if (event.shiftKey) {
+				event.preventDefault();
+				event.stopPropagation();
 			}
 		});
 
@@ -344,6 +353,7 @@ class CWidgetTableModuleRME extends CWidget {
 			filterTypeContainer.appendChild(list);
 
 			button.addEventListener('click', () => {
+				event.stopPropagation();
 				list.style.display = list.style.display === 'none' ? 'block' : 'none';
 			});
 
@@ -352,8 +362,6 @@ class CWidgetTableModuleRME extends CWidget {
 					list.style.display = 'none';
 				}
 			};
-
-			filterControls.appendChild(filterTypeContainer);
 
 			const searchInput = document.createElement('input');
 			searchInput.type = 'text';
@@ -378,6 +386,7 @@ class CWidgetTableModuleRME extends CWidget {
 				lastCheckedCheckbox = null;
 			});
 
+			filterControls.appendChild(filterTypeContainer);
 			filterControls.appendChild(searchInput);
 			filterControls.appendChild(clearBtn);
 
@@ -422,7 +431,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				isAllSelected = valuesToCheck.length > 0 && valuesToCheck.every(value => {
 					return this.#filterState.checked?.includes(String(value).toLowerCase());
-				});;
+				});
 
 				if (isAllSelected) {
 					this.#filterState.checked = [];
@@ -581,7 +590,7 @@ class CWidgetTableModuleRME extends CWidget {
 			const calculatedWidth = Math.min(Math.max(maxWidth + 150, 400), 800);
 			popup.style.width = `${calculatedWidth}px`;
 
-			const visibleCount = 50;
+			const visibleCount = 25;
 			let startIndex = 0;
 			const scrollContainer = document.createElement('div');
 			scrollContainer.style.maxHeight = '300px';
@@ -730,7 +739,7 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 				}
 
-				isAllSelected = (this.#filterState.checked?.length == sortedValues.length || 0 === sortedValues.length);
+				isAllSelected = (this.#filterState.checked?.length == filteredValues.length || 0 === sortedValues.length);
 
 				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 
@@ -738,7 +747,6 @@ class CWidgetTableModuleRME extends CWidget {
 				updateWarningIcon();
 				updateClearFiltersButton();
 			});
-
 
 			const updateSummary = () => {
 				const checked = this.#filterState.checked?.length || 0;
@@ -805,7 +813,7 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			const updateClearFiltersButton = () => {
-				const hasChecked = this.#filterState.checked.length > 0;
+				const hasChecked = Array.from(checkboxContainer.querySelectorAll('input[type="checkbox"]:checked')).length > 0;
 				const hasSearch = searchInput.value.trim() !== '';
 
 				if (hasChecked || hasSearch) {
@@ -844,14 +852,19 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#first_td_host_cell.click();
 		}
 
-		if (this.#selected_itemid !== null) {
-			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#selected_itemid);
-			this._markSelected(this.#dataset_item);
+		if (this.#selected_items.length > 0) {
+			this._markSelected(this.#dataset_item, true);
 		}
 		else if (this.#first_td_value_cell !== null && this._fields.autoselect_first) {
 			this.#first_td_value_cell.click();
 		}
 
+	}
+
+	onResize() {
+		if (this._state === WIDGET_STATE_ACTIVE) {
+			this.#recalculateSvgSparklines();
+		}
 	}
 
 	debounce(fn, delay) {
@@ -860,12 +873,6 @@ class CWidgetTableModuleRME extends CWidget {
 			clearTimeout(timeoutId);
 			timeoutId = setTimeout(() => fn(...args), delay);
 		};
-	}
-
-	onResize() {
-		if (this._state === WIDGET_STATE_ACTIVE) {
-			this.#recalculateSvgSparklines();
-		}
 	}
 
 	closeFilterPopup(e) {
@@ -1018,7 +1025,43 @@ class CWidgetTableModuleRME extends CWidget {
 
 			rowObj.status = showRow ? 'display' : 'hidden';
 
-			if (rowObj.status === 'display') {
+			if (this._fields.bar_gauge_layout === 0) {
+				if (rowObj.status === 'display') {
+					const allTdsInRow = tr.querySelectorAll('td');
+
+					allTdsInRow.forEach((td, index) => {
+						const gauge = td.querySelector('z-bar-gauge');
+						if (!gauge) return;
+
+						const info = getColumnInfo(td, columns);
+						if (!info) return;
+
+						const { indexNum, columnDef } = info;
+
+						const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
+						const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
+						if (hasStaticMin && hasStaticMax) return;
+
+						if (!this._isNumeric(gauge.value)) return;
+						const value = parseFloat(gauge.value);
+
+						if (!columnStats[indexNum]) {
+							columnStats[indexNum] = { min: value, max: value };
+						}
+						else {
+							columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
+							columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
+						}
+					});
+				}
+			}
+		});
+
+		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+
+		if (this._fields.bar_gauge_layout === 0) {
+			displayedRows.forEach(rowObj => {
+				const tr = rowObj.row;
 				const allTdsInRow = tr.querySelectorAll('td');
 
 				allTdsInRow.forEach((td, index) => {
@@ -1029,46 +1072,14 @@ class CWidgetTableModuleRME extends CWidget {
 					if (!info) return;
 
 					const { indexNum, columnDef } = info;
+					const { min, max } = resolveMinMax(columnDef, columnStats, indexNum);
 
-					const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
-					const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
-					if (hasStaticMin && hasStaticMax) return;
-
-					if (!this._isNumeric(gauge.value)) return;
-					const value = parseFloat(gauge.value);
-
-					if (!columnStats[indexNum]) {
-						columnStats[indexNum] = { min: value, max: value };
-					}
-					else {
-						columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
-						columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
-					}
+					if (min === undefined || max === undefined) return;
+					gauge.setAttribute('min', min);
+					gauge.setAttribute('max', max);
 				});
-			}
-		});
-
-		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
-
-		displayedRows.forEach(rowObj => {
-			const tr = rowObj.row;
-			const allTdsInRow = tr.querySelectorAll('td');
-
-			allTdsInRow.forEach((td, index) => {
-				const gauge = td.querySelector('z-bar-gauge');
-				if (!gauge) return;
-
-				const info = getColumnInfo(td, columns);
-				if (!info) return;
-
-				const { indexNum, columnDef } = info;
-				const { min, max } = resolveMinMax(columnDef, columnStats, indexNum);
-
-				if (min === undefined || max === undefined) return;
-				gauge.setAttribute('min', min);
-				gauge.setAttribute('max', max);
 			});
-		});
+		}
 
 		this.#totalRows = displayedRows.length;
 		this.#currentPage = 1;
@@ -1099,7 +1110,7 @@ class CWidgetTableModuleRME extends CWidget {
 				else {
 					filterIcon.classList.remove('active');
 					filterIcon.classList.remove('filter-error');
-					filterIcon.title = '';
+					filterIcon.title = 'Click to filter this column';
 					this.#filterApplied = false;
 				}
 			}
@@ -1173,46 +1184,141 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 	}
 
+	#processItemIds() {
+		if (this.#selected_items.length === 1) {
+			const item = this.#selected_items[0];
+			try {
+				const obj = JSON.parse(item.itemid);
+				obj[0].tags = item.tags;
+				return JSON.stringify(obj);
+			}
+			catch {
+				return item.itemid;
+			}
+		}
 
-	#handleCellClick(td) {
+		const uniqueItems = new Set();
+
+		this.#selected_items.forEach(item => {
+			if (typeof item.itemid === 'number') {
+				const itemKey = `${item.itemid}-`;
+				if (!uniqueItems.has(itemKey)) {
+					uniqueItems.add(itemKey);
+				}
+			}
+			else if (typeof item.itemid === 'string' && item.itemid.startsWith('[')) {
+				const parsedItems = JSON.parse(item.itemid);
+				parsedItems.forEach(parsedItem => {
+					const itemKey = `${parsedItem.itemid}-${parsedItem.color}`;
+					if (!uniqueItems.has(itemKey)) {
+						uniqueItems.add(itemKey);
+					}
+				});
+			}
+		});
+
+		const resultArray = Array.from(uniqueItems).map(itemKey => {
+			const [itemid, color] = itemKey.split('-');
+			return { itemid, color: color || '' };
+		});
+
+		return JSON.stringify(resultArray);
+	}
+
+	#handleCellClick(td, event=false) {
 		let tdClicked = td;
 		var nextTd = tdClicked.nextElementSibling;
 		var previousTd = tdClicked.previousElementSibling;
-		var element = td.querySelector(this.#menu_selector);
 
+		let element = td.querySelector(this.#menu_selector);
 		if (this._isDoubleSpanColumn(tdClicked)) {
 			element = nextTd.querySelector(this.#menu_selector);
 		}
 
-		if (element !== null) {
-			var dataset = JSON.parse(element.dataset.menu);
-			if (dataset?.type === this.#dataset_item) {
-				if (this.#selected_itemid === dataset.itemid) {
-					this.#selected_itemid = 0;
-					this.#selected_name = null;
+		if (!element) return;
+
+		const dataset = JSON.parse(element.dataset.menu);
+
+		if (dataset?.type === this.#dataset_item) {
+			const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
+
+			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags };
+
+			const key = `${dataset.itemid}__${dataset.name}`;
+			const index = this.#selected_items.findIndex(
+				item => `${item.itemid}__${item.name}` === key
+			);
+
+			if (event && event.ctrlKey) {
+				if (index !== -1) {
+					this.#selected_items.splice(index, 1);
 				}
 				else {
-					this.#selected_itemid = dataset.itemid;
-					this.#selected_name = dataset.name;
+					this.#selected_items.push(selectedItem);
 				}
-				this._markSelected(this.#dataset_item);
-				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#selected_itemid);
 			}
-			else if (dataset?.type === this.#dataset_host) {
-				if (this.#selected_hostid === dataset.hostid) {
-					this.#selected_hostid = this.#null_id;
+			else if (event && event.shiftKey) {
+				this.#selectRange(tdClicked);
+			}
+			else {
+				if (index !== -1 && this.#selected_items.length === 1) {
+					this.#selected_items = [{ itemid: this.#null_id, name: null }];
 				}
 				else {
-					this.#selected_hostid = dataset.hostid;
+					this.#selected_items = [selectedItem];
 				}
-				this._markSelected(this.#dataset_host);
-				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
 			}
+
+			this._markSelected(this.#dataset_item);
+			const itemsSelected = this.#processItemIds();
+			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, itemsSelected);
+		}
+		else if (dataset?.type === this.#dataset_host) {
+			if (this.#selected_hostid === dataset.hostid) {
+				this.#selected_hostid = this.#null_id;
+			}
+			else {
+				this.#selected_hostid = dataset.hostid;
+			}
+			this._markSelected(this.#dataset_host);
+			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
+		}
+
+		this.#lastClickedCell = tdClicked;
+	}
+
+	#selectRange(td) {
+		if (!this.#lastClickedCell) return;
+
+		const startIndex = this.#lastClickedCell.parentNode.rowIndex;
+		const endIndex = td.parentNode.rowIndex;
+		const columnIndex = this.#lastClickedCell.cellIndex;
+
+		const start = Math.min(startIndex, endIndex);
+		const end = Math.max(startIndex, endIndex);
+
+		for (let i = start; i <= end; i++) {
+			const cell = this.#values_table.rows[i].cells[columnIndex];
+			let element = cell.querySelector(this.#menu_selector);
+			if (this._isDoubleSpanColumn(cell)) {
+				element = cell.nextElementSibling.querySelector(this.#menu_selector);
+			}
+
+			if (!element) continue;
+
+			const dataset = JSON.parse(element.dataset.menu);
+			const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
+			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags };
+
+			this.#selected_items.push(selectedItem);
 		}
 	}
 
 	#removePaginationControls() {
-		const paginationElements = this.#parent_container.querySelectorAll('.pagination-controls');
+		const paginationElements = this.#parent_container
+			? this.#parent_container.querySelectorAll('.pagination-controls')
+			: [];
+
 		paginationElements.forEach(element => {
 			element.remove();
 		});
@@ -1274,6 +1380,12 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
+		const maxPages = Math.ceil(visibleRows.length / this.#rowsPerPage);
+
+		if (this.#currentPage > maxPages) {
+			this.#currentPage = 1;
+		}
+
 		const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
 		const endIndex = Math.min(startIndex + this.#rowsPerPage, visibleRows.length);
 		const displayedRows = visibleRows.slice(startIndex, endIndex);
@@ -1350,104 +1462,153 @@ class CWidgetTableModuleRME extends CWidget {
 
 	_markSelected(type) {
 		const tds = [];
+
 		this.#rowsArray.forEach(rowObj => {
 			const tr = rowObj.row;
-			const allTdElements = tr.querySelectorAll('td');
-			allTdElements.forEach(td => {
-				tds.push(td);
-			});
+			tr.querySelectorAll('td').forEach(td => tds.push(td));
 		});
+
 		var prevTd = null;
 		let hasItemMarking = false;
 		let hasHostMarking = false;
 		var tdsToMark = [];
-		tds.forEach(td => {
-			var origStyle = td.style.cssText;
+		const nameTracking = [];
+		const actualsFound = [];
+
+		const isItemSelected = (dataset) => {
+			return this.#selected_items.some(item =>
+				item.itemid === dataset.itemid && item.name === dataset.name
+			);
+		};
+
+		const hasName = (dataset) => {
+			return this.#selected_items.some(item =>
+				item.name === dataset.name
+			);
+		};
+
+		for (const td of tds) {
+			const origStyle = td.style.cssText;
 			var element = td.querySelector(this.#menu_selector);
-			if (element !== null) {
-				const dataset = JSON.parse(element.dataset.menu);
-				const cell_key = dataset?.itemid + "_" + td.getAttribute('id');
-				if (dataset?.type === this.#dataset_host) {
-					if (type === this.#dataset_item) {
-					}
-					else if (dataset?.hostid === this.#selected_hostid) {
-						hasHostMarking = true;
-						td.style.backgroundColor = this.host_bg_color;
-						td.style.color = this.font_color;
-					}
-					else {
-						td.style.backgroundColor = td.style.color = '';
-					}
+
+			if (!element) {
+				prevTd = td;
+				continue;
+			}
+
+			const dataset = JSON.parse(element.dataset.menu);
+			const cell_key = dataset?.itemid + "_" + td.getAttribute('id');
+
+			if (dataset?.type === this.#dataset_host) {
+				if (type === this.#dataset_item) continue;
+
+				if (dataset.hostid === this.#selected_hostid) {
+					hasHostMarking = true;
+					td.style.backgroundColor = this.host_bg_color;
+					td.style.color = this.font_color;
 				}
-				else if (dataset?.type === this.#dataset_item) {
-					if (type === this.#dataset_host) {
-					}
-					else if (dataset?.itemid === this.#selected_itemid || dataset?.name === this.#selected_name) {
-						if (dataset?.itemid === this.#selected_itemid) {
-							if (this._isDoubleSpanColumn(prevTd)) {
-								td.style.backgroundColor = prevTd.style.backgroundColor = this.bg_color;
-								td.style.color = prevTd.style.color = this.font_color;
-							}
-							else {
-								td.style.backgroundColor = this.bg_color;
-								td.style.color = this.font_color;
-							}
-							hasItemMarking = true;
-						}
-						else {
-							if (this._isDoubleSpanColumn(prevTd)) {
-								if (this._isBarGauge(prevTd)) {
-									td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
-								}
-								else if (this._isSparkLine(prevTd)) {
-									td.style = this.#cssStyleMap.get(cell_key);
-									prevTd.style = ''
-								}
-								tdsToMark.push(td);
-								tdsToMark.push(prevTd);
-							}
-							else {
-								td.style = this.#cssStyleMap.get(cell_key);
-								tdsToMark.push(td);
-							}
-						}
-					}
-					else {
-						if (this._isDoubleSpanColumn(prevTd)) {
-							if (this._isBarGauge(prevTd)) {
-								td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
-							}
-							else if (this._isSparkLine(prevTd)) {
-								td.style = this.#cssStyleMap.get(cell_key);
-								prevTd.style = ''
-							}
-						}
-						else {
-							td.style = this.#cssStyleMap.get(cell_key);
-						}
-					}
+				else {
+					td.style.backgroundColor = td.style.color = '';
 				}
 			}
+
+			else if (dataset?.type === this.#dataset_item) {
+				if (type === this.#dataset_host) continue;
+
+				if (isItemSelected(dataset)) {
+					hasItemMarking = true;
+					const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
+					actualsFound.push({ itemid: dataset.itemid, name: dataset.name, tags: tags });
+
+					if (this._isDoubleSpanColumn(prevTd)) {
+						td.style.backgroundColor = prevTd.style.backgroundColor = this.bg_color;
+						td.style.color = prevTd.style.color = this.font_color;
+					}
+					else {
+						td.style.backgroundColor = this.bg_color;
+						td.style.color = this.font_color;
+					}
+				}
+				else {
+					if (this._isDoubleSpanColumn(prevTd)) {
+						if (this._isBarGauge(prevTd)) {
+							td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
+						}
+						else if (this._isSparkLine(prevTd)) {
+							td.style = this.#cssStyleMap.get(cell_key);
+							prevTd.style = ''
+						}
+					}
+					else {
+						td.style = this.#cssStyleMap.get(cell_key);
+					}
+				}
+
+				if (hasName(dataset) && !nameTracking.includes(dataset.name)) {
+					tdsToMark.push(td);
+					nameTracking.push(dataset.name);
+				}
+			}
+
 			prevTd = td;
-		});
+		}
 
 		if (!hasHostMarking && type === this.#dataset_host) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
 		}
 
-		if (!hasItemMarking && tdsToMark.length > 0) {
-			for (const tm of tdsToMark) {
-				this.#handleCellClick(tm);
-				return;
-			}
-		}
+		if (type === this.#dataset_item) {
+			if (!hasItemMarking) {
+				if (tdsToMark.length > 0) {
+					tdsToMark.forEach((td, index) => {
+						const ctrlClickEvent = new MouseEvent('click', {
+							bubbles: true,
+							cancelable: true,
+							ctrlKey: index !== 0,
+							view: window
+						});
 
-		if (!hasItemMarking && type === this.#dataset_item) {
-			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+						this.#handleCellClick(td, ctrlClickEvent);
+					});
+				}
+				else if (this._fields.autoselect_first &&
+						refresh &&
+						this.#selected_items[0]['itemid'] !== this.#null_id) {
+					this.#first_td_value_cell = null;
+					const allTds = this.#values_table.querySelectorAll('td');
+					for (const td of allTds) {
+						let element = td.querySelector(this.#menu_selector);
+						if (element) {
+							if (this._isDoubleSpanColumn(td)) {
+								const newTd = td.nextElementSibling;
+								element = newTd.querySelector(this.#menu_selector);
+							}
+
+							const dataset = JSON.parse(element.dataset.menu);
+
+							if (dataset.itemid) {
+								this.#first_td_value_cell = td;
+								break;
+							}
+						}
+					}
+
+					if (this.#first_td_value_cell !== null) {
+						this.#first_td_value_cell.click();
+					}
+				}
+				else {
+					this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+				}
+			}
+			else {
+				this.#selected_items = actualsFound;
+				const itemsSelected = this.#processItemIds();
+				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, itemsSelected);
+			}
 		}
 	}
 
-	
 	_isDoubleSpanColumn(td) {
 		if (td === null) {
 			return null;
@@ -1687,7 +1848,7 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		}
 
-		const prelimValues = sortableRows.map(rowObj => this._getNumValue(rowObj, columnIndex, false, true));
+		const prelimValues = sortableRows.map(rowObj => this._getNumValue(rowObj.row, columnIndex, false, true));
 		const allNumeric = !prelimValues.some(obj => obj.type === 'text');
 
 		const rowsWithValues = sortableRows.map(rowObj => ({
@@ -1848,11 +2009,15 @@ class CWidgetTableModuleRME extends CWidget {
 		const h = Math.floor((sec % (3600 * 24)) / 3600);
 		const m = Math.floor((sec % 3600) / 60);
 		const s = Math.floor(sec % 60);
+		const ms = Math.round((sec % 1) * 1000);
+
 		const parts = [];
 		if (d) parts.push(`${d}d`);
 		if (h) parts.push(`${h}h`);
 		if (m && parts.length < 3) parts.push(`${m}m`);
 		if (s && parts.length < 3) parts.push(`${s}s`);
+		if (ms && parts.length < 3) parts.push(`${ms}ms`);
+
 		return parts.slice(0, 3).join(" ");
 	}
 
@@ -1867,7 +2032,6 @@ class CWidgetTableModuleRME extends CWidget {
 		return `${h}:${m}:${s}`;
 	}
 
-
 	#addColumnFilterCSS() {
 		if ($('style.column-filter-styles').length === 0) {
 			const styleColumnFilters = document.createElement('style');
@@ -1880,7 +2044,7 @@ class CWidgetTableModuleRME extends CWidget {
 					border: 1px solid #333;
 					box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
 					color: #e0e0e0;
-					font-family: Sans serif;
+					font-family: Arial, Tahoma, Verdana, sans-serif;
 					border-radius: 4px;
 					min-width: 400px;
 					max-width: 800px;
@@ -1911,7 +2075,6 @@ class CWidgetTableModuleRME extends CWidget {
 					gap: 6px;
 				}
 				.filter-popup-controls input {
-					font-family: Sans serif;
 					background: #1e1e1e;
 					color: #fff;
 					border: 1px solid #555;
@@ -2020,7 +2183,7 @@ class CWidgetTableModuleRME extends CWidget {
 					margin-top: 10px;
 				}
 				.filter-icon.active svg path {
-					stroke: #4ade80;
+					stroke: #4ad380;
 				}
 				.filter-icon.active {
 					border-radius: 2px;
@@ -2076,9 +2239,9 @@ class CWidgetTableModuleRME extends CWidget {
 				.custom-select {
 					position: relative;
 					display: inline-block;
-					font-family: Sans serif;
+					font-family: Arial, Tahoma, Verdana, sans-serif;
 					font-size: 12px;
-					width: 125px;
+					width: 130px;
 				}
 				.custom-select input[type="hidden"] {
 					display: none;
@@ -2208,7 +2371,7 @@ class CWidgetTableModuleRME extends CWidget {
 				html[theme="blue-theme"] .is-loading.widget-blur::after,
 				html[theme="hc-light"] .is-loading.widget-blur::before,
 				html[theme="hc-light"] .is-loading.widget-blur::after {
-					background-color: rgba(140, 140, 140, 1.0);
+					background-color: rgba(255, 255, 255, 1.0);
 				}
 				html[theme="hc-dark"] .is-loading.widget-blur::before,
 				html[theme="hc-dark"] .is-loading.widget-blur::after {

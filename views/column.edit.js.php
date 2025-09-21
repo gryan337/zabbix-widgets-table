@@ -149,11 +149,13 @@ window.tablemodulerme_column_edit_form = new class {
 	#updateForm() {
 		const display_value_as = this.#form.querySelector('[name=display_value_as]:checked').value;
 		const display = this.#form.querySelector('[name=display]:checked').value;
-		
+
+		// Column title	
 		for (const element of this.#form.querySelectorAll('.js-column-title')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
 
+		// Broadcast in grouped cell
 		for (const element of this.#form.querySelectorAll('.js-broadcast-in-group-cell')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
@@ -224,7 +226,8 @@ window.tablemodulerme_column_edit_form = new class {
 				input.disabled = !decimals_show;
 			}
 		}
-		
+
+		// Column aggregation.		
 		for (const element of this.#form.querySelectorAll('.js-column-agg-row')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
@@ -257,11 +260,13 @@ window.tablemodulerme_column_edit_form = new class {
 				input.disabled = !history_show;
 			}
 		}
-		
+
+		// Override footer.
 		for (const element of this.#form.querySelectorAll('.js-override-footer')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
 
+		// Option for including itemids encoding in cell for broadcasting
 		const column_pattern_selection = this.#form.querySelector('button[id=column_patterns_aggregation]');
 		for (const element of this.#form.querySelectorAll('.js-include-itemids')) {
 			if (column_pattern_selection.innerText === 'not used' || this.tgt.style.display == 'none') {
@@ -284,8 +289,8 @@ window.tablemodulerme_column_edit_form = new class {
 				$('#column_agg_method input[type="hidden"]').val() === '0') {
 			if (!this.aggregation_error) {
 				const title = 'Form configuration error';
-				const message = ['A \'Column patterns aggregation\' (under Advanced configuration) is required when using \'Aggregate All Hosts\' from the main form'];
-				const message_box = makeMessageBox('bad', message, title)[0];
+				const messages = ['A \'Column patterns aggregation\' (under Advanced configuration) is required when using \'Aggregate all hosts\' from the main form'];
+				const message_box = makeMessageBox('bad', messages, title)[0];
 				this.#form.parentNode.insertBefore(message_box, this.#form);
 				this.aggregation_error = true;
 			}
