@@ -25,10 +25,11 @@ if (array_key_exists('edit', $data)) {
 	$form->addVar('edit', 1);
 }
 
+// Set column title
 $form_grid->addItem([
 	(new CLabel([
 		_('Column title'),
-		makeHelpIcon(_('Only used when \'Layout\' is set to \'Column per Pattern\''))
+		makeHelpIcon(_('Only used when \'Layout\' is set to \'Column per pattern\''))
 	]))->addClass('js-column-title'),
 	(new CFormField(
 		(new CTextBox('column_title', $data['column_title'], false))
@@ -36,29 +37,39 @@ $form_grid->addItem([
 	))->addClass('js-column-title')
 ]);
 
-#$form_grid->addItem([
-#	(new CLabel([
-#		_('Broadcast from grouped column'),
-#		makeHelpIcon([
-#			_('Checking this box means that the itemid will be broadcasted to listening widgets by clicking the cell in the column with the grouping value'), BR(),
-#			_('This is useful for when you have multiple columns and you want to broadcast multiple metrics to be plotted simultaneously')
-#		])
-#	]))->addClass('js-broadcast-in-group-cell'),
-#	(new CFormField(
-#		(new CCheckBox('broadcast_in_group_row'))->setChecked($data['broadcast_in_group_row'])
-#	))->addClass('js-broadcast-in-group-cell')
-#]);
+// Set if you want to broadcast the itemids in the grouped column cell
+$form_grid->addItem([
+	(new CLabel([
+		_('Broadcast from grouped column'),
+		makeHelpIcon([
+			_('Checking this box means that the itemid will be broadcasted to listening widgets by clicking the cell in the column with the grouping value'), BR(),
+			_('This is useful for when you have multiple columns and you want to broadcast multiple metrics to be plotted simultaneously')
+		])
+	]))->addClass('js-broadcast-in-group-cell'),
+	(new CFormField(
+		(new CCheckBox('broadcast_in_group_row'))->setChecked($data['broadcast_in_group_row'])
+	))->addClass('js-broadcast-in-group-cell')
+]);
 
 // Item patterns
 $item_items_field_view = (new CWidgetFieldPatternSelectItemView($data['item_items_field']))
 	->setFormName('tablemodulerme_column');
 
+$key_tip = makeHelpIcon([
+	_('If you know the item key pattern, you can specify it instead of the item name pattern by typing: "key=<ITEM_KEY>" for each pattern you want.'), BR(), BR(),
+	_('Wildcards are still supported for item key patterns.'), BR(),
+	_('The reason for item key pattern usage here is it is faster due to indexing.'), BR(), BR(),
+	_('In order to find the key you need, to go the Latest data page, search for your item patterns and then check the "Show details" box. The key for each item will display below the item name in the "Name" column')
+]);
+
 foreach ($item_items_field_view->getViewCollection() as ['label' => $label, 'view' => $view, 'class' => $class]) {
+	$label->addItem($key_tip);
 	$form_grid->addItem([
 		$label,
 		(new CFormField($view))->addClass($class)
 	]);
 }
+
 $form_grid
 	->addItem($item_items_field_view->getTemplates())
 	->addItem(new CScriptTag([
@@ -233,12 +244,12 @@ $form_grid->addItem([
 // Advanced configuration.
 $advanced_configuration = new CWidgetFormFieldsetCollapsibleView(_('Advanced configuration'));
 
+// Column aggregation function.
 $advanced_configuration->addItem([
 	(new CLabel([
 		_('Column patterns aggregation'),
 		makeHelpIcon([
-			_('Choose a function to aggregate all item patterns for this column for each host.'), BR(),
-			_('Note that choosing a function will prevent the ability to click the value cell to update other widgets')
+			_('Choose a function to aggregate all item patterns for this column for each host.')
 		])
 	]))->addClass('js-column-agg-row'),
 	(new CFormField(
@@ -310,7 +321,8 @@ $advanced_configuration
 				->setModern()
 		))->addClass('js-history-row')
 	]);
-	
+
+// Footer Override
 $advanced_configuration
 	->addItem([
 		(new CLabel(_('Override footer'), 'override_footer'))->addClass('js-override-footer'),
@@ -324,16 +336,17 @@ $advanced_configuration
 		))->addClass('js-override-footer')
 	]);
 
-#$advanced_configuration
-#	->addItem([
-#		(new CLabel([
-#			_('Include itemids in cell'),
-#			makeHelpIcon(_('When using \'Column patterns aggregation\' include all itemids for broadcasting to other widgets'))
-#		]))->addClass('js-include-itemids'),
-#		(new CFormField(
-#			(new CCheckBox('include_itemids'))->setChecked($data['include_itemids'])
-#		))->addClass('js-include-itemids')
-#	]);
+// Whether to include itemids in table cells when using Column patterns aggregations
+$advanced_configuration
+	->addItem([
+		(new CLabel([
+			_('Include itemids in cell'),
+			makeHelpIcon(_('When using \'Column patterns aggregation\' include all itemids for broadcasting to other widgets'))
+		]))->addClass('js-include-itemids'),
+		(new CFormField(
+			(new CCheckBox('include_itemids'))->setChecked($data['include_itemids'])
+		))->addClass('js-include-itemids')
+	]);
 
 $form_grid->addItem($advanced_configuration);
 

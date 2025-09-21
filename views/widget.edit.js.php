@@ -66,6 +66,7 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 		const vertical_layout = this.#form.querySelector('#layout_1').checked;
 		const item_grouping_table = this.#form.querySelector('[id=item_group_by-table]');
 		const item_grouping_table_rows = item_grouping_table.querySelectorAll(':scope > tbody > tr');
+
 		for (const grouping_field of this.#form.querySelectorAll('.field_item_group_by')) {
 			if (!column_per_pattern) {
 				grouping_field.style.display = 'none';
@@ -84,6 +85,15 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 			}
 		}
 		
+		for (const show_grouping_only_field of this.#form.querySelectorAll('.field_show_grouping_only')) {
+			if (!column_per_pattern) {
+				show_grouping_only_field.style.display = 'none';
+			}
+			else {
+				show_grouping_only_field.style.display = '';
+			}
+		}
+
 		for (const bc_hostid_field of this.#form.querySelectorAll('.field_no_broadcast_hostid')) {
 			if (vertical_layout) {
 				bc_hostid_field.style.display = 'none';

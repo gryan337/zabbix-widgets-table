@@ -13,13 +13,14 @@ use Zabbix\Widgets\Fields\{
 	CWidgetFieldIntegerBox,
 	CWidgetFieldMultiSelectGroup,
 	CWidgetFieldMultiSelectHost,
+	CWidgetFieldMultiSelectItem,
 	CWidgetFieldMultiSelectOverrideHost,
 	CWidgetFieldPatternSelectHost,
 	CWidgetFieldPatternSelectItem,
 	CWidgetFieldRadioButtonList,
 	CWidgetFieldTags,
 	CWidgetFieldTextArea,
-	CWidgetFieldTextBox,
+	CWidgetFieldTextBox
 };
 
 /**
@@ -31,6 +32,9 @@ class WidgetForm extends CWidgetForm {
 	public const LAYOUT_VERTICAL = 1;
 	public const LAYOUT_THREE_COL = 50;
 	public const LAYOUT_COLUMN_PER = 51;
+
+	public const ITEM_FILTER_ITEMIDS = 0;
+	public const ITEM_FILTER_TAGS = 1;
 	
 	public const FOOTER_NONE = 0;
 	public const FOOTER_SUM = 1;
@@ -52,6 +56,9 @@ class WidgetForm extends CWidgetForm {
 	public const ORDERBY_ITEM_NAME = 2;
 	public const ORDERBY_ITEM_VALUE = 3;
 
+	public const BAR_GAUGE_LAYOUT_COLUMN = 0;
+	public const BAR_GAUGE_LAYOUT_ROW = 1;
+
 	public function addFields(): self {
 		return $this
 			->addField($this->isTemplateDashboard()
@@ -61,6 +68,19 @@ class WidgetForm extends CWidgetForm {
 			->addField($this->isTemplateDashboard()
 				? null
 				: new CWidgetFieldMultiSelectHost('hostids', _('Hosts'))
+			)
+			->addField(
+				(new CWidgetFieldMultiSelectItem('itemid', _('Item filter')))
+					->setMultiple(true)
+			)
+			->addField(
+				(new CWidgetFieldRadioButtonList('item_filter_type', _('Item filter type'), [
+					self::ITEM_FILTER_ITEMIDS => _('Itemids'),
+					self::ITEM_FILTER_TAGS => _('Tags')
+				]))->setDefault(self::ITEM_FILTER_ITEMIDS)
+			)
+			->addField(
+				new CWidgetFieldCheckBox('update_item_filter_only', _('Item filter update only'))
 			)
 			->addField($this->isTemplateDashboard()
 				? null
@@ -85,7 +105,7 @@ class WidgetForm extends CWidgetForm {
 					self::LAYOUT_HORIZONTAL => _('Horizontal'),
 					self::LAYOUT_VERTICAL => _('Vertical'),
 					self::LAYOUT_THREE_COL => _('3 Column'),
-					self::LAYOUT_COLUMN_PER => _('Column Per Pattern')
+					self::LAYOUT_COLUMN_PER => _('Column per pattern')
 				]))->setDefault(self::LAYOUT_HORIZONTAL)
 			)
 			->addField(
@@ -102,20 +122,29 @@ class WidgetForm extends CWidgetForm {
 				(new CWidgetFieldColumnsList('columns', _('Items')))
 					->setFlags(CWidgetField::FLAG_NOT_EMPTY | CWidgetField::FLAG_LABEL_ASTERISK)
 			)
-			->addField($this->isTemplateDashboard()
-				? null
-				: new CWidgetFieldCheckBox('no_broadcast_hostid', _('Disallow Host Broadcasting'))
+			->addField(
+				(new CWidgetFieldRadioButtonList('bar_gauge_layout', _('Bar gauge layout'), [
+					self::BAR_GAUGE_LAYOUT_COLUMN => _('Column'),
+					self::BAR_GAUGE_LAYOUT_ROW => _('Row')
+				]))->setDefault(self::BAR_GAUGE_LAYOUT_COLUMN)
 			)
 			->addField($this->isTemplateDashboard()
 				? null
-				: new CWidgetFieldCheckBox('aggregate_all_hosts', _('Aggregate All Hosts'))
+				: new CWidgetFieldCheckBox('no_broadcast_hostid', _('Disallow host broadcasting'))
+			)
+			->addField($this->isTemplateDashboard()
+				? null
+				: new CWidgetFieldCheckBox('aggregate_all_hosts', _('Aggregate all hosts'))
+			)
+			->addField(
+				new CWidgetFieldCheckBox('show_grouping_only', _('Show item grouping only'))
 			)
 			->addField(
 				new CWidgetFieldCheckBox('autoselect_first', _('Autoselect first cell'))
 			)
 			->addField(
-				(new CWidgetFieldRadioButtonList('footer', _('Show Footer Row'), [
-					self::FOOTER_NONE => _('No Footer'),
+				(new CWidgetFieldRadioButtonList('footer', _('Show footer row'), [
+					self::FOOTER_NONE => _('No footer'),
 					self::FOOTER_SUM => _('Sum'),
 					self::FOOTER_AVERAGE => _('Average')
 				]))->setDefault(self::FOOTER_NONE)
@@ -124,10 +153,10 @@ class WidgetForm extends CWidgetForm {
 				new CWidgetFieldTextBox('item_header', _('Item header name'))
 			)
 			->addField(
-				new CWidgetFieldTextBox('reset_row', _('Add Reset Row'))
+				new CWidgetFieldTextBox('reset_row', _('Add reset row'))
 			)
 			->addField(
-				new CWidgetFieldTextArea('item_name_strip', _('Metric Label'))
+				new CWidgetFieldTextArea('item_name_strip', _('Metric label'))
 			)
 
 			// Advanced configuration fields - host ordering.
@@ -200,7 +229,19 @@ class WidgetForm extends CWidgetForm {
 			$this->getField('item_ordering_host')->setFlags(CWidgetField::FLAG_NOT_EMPTY);
 		}
 
+		$item_groupings = $this->getField('item_group_by')->getValue();
+		if ($this->getField('aggregate_all_hosts')->getValue() == 1 &&
+				count($item_groupings) == 1 &&
+				$item_groupings[0]['tag_name'] === '{HOST.HOST}') {
+			$errors[] = _s('Cannot group by {HOST.HOST} and aggregate by all hosts');
+			return $errors;
+		}
+
+		$itemIdErrorToCheck = 'Invalid parameter "Item Filter/1": a number is expected.';
 		$errors = parent::validate($strict);
+
+		$errorIndex = array_search($itemIdErrorToCheck, $errors);
+		unset($errors[$errorIndex]);
 
 		$aggregate_hosts = $this->getField('aggregate_all_hosts')->getValue();
 		if ($aggregate_hosts) {
@@ -208,7 +249,7 @@ class WidgetForm extends CWidgetForm {
 			foreach ($columns as $column) {
 				if ($column['column_agg_method'] === AGGREGATE_NONE) {
 					$key = $column['items'][0];
-					$errors[] = _s('Form validation failure: When using \'Aggregate All Hosts\' a \'Column Patterns Aggregation\' choice is required in the \'Items\' form');
+					$errors[] = _s('Form validation failure: When using \'Aggregate all hosts\' a \'Column patterns aggregation\' choice is required in the \'Items\' form');
 					$errors[] = _s('Column with failure: "%1$s"', $key);
 					break;
 				}

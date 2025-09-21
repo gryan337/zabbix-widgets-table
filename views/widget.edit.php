@@ -27,6 +27,28 @@ $form
 			])
 		: null
 	)
+	->addField(
+		(new CWidgetFieldMultiSelectItemView($data['fields']['itemid']))
+			->setPopupParameter('value_types', [ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64])
+	)
+	->addField(
+		(new CWidgetFieldRadioButtonListView($data['fields']['item_filter_type']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Choose whether you want to filter using itemids or tags from the filtering widget widget'), BR(), BR(),
+					_('Currently, only the Item navigator widget broadcasts tags, but only if the Item navigator is configured with a \'Group by\' of \'Item tag value\'')
+				])
+			)
+	)
+	->addField(
+		(new CWidgetFieldCheckBoxView($data['fields']['update_item_filter_only']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Checking this box means that this widget will only display metrics when there is an Item filter set'), BR(),
+					_('If the Item filter is a widget, a selection from that referred widget is the only way this widget will display metrics')
+				])
+			)
+	)
 	->addField(array_key_exists('host_tags_evaltype', $data['fields'])
 		? new CWidgetFieldRadioButtonListView($data['fields']['host_tags_evaltype'])
 		: null
@@ -42,7 +64,7 @@ $form
 					_('Horizontal - Host in first column. Values per item/metrics in subsequent columns'), BR(),
 					_('Vertical - Item/Metric name in first column. Values per host in subsequent columns'), BR(),
 					_('3 Column - Item/Metric name in first column. Host in second column. Values per item/metrics in third column'), BR(),
-					_('Column Per Pattern - Each item pattern specified receives its own column')
+					_('Column Per pattern - Each item pattern specified receives its own column')
 				])
 			)
 	)
@@ -64,6 +86,14 @@ $form
 		(new CWidgetFieldColumnsListView($data['fields']['columns']))->addClass(ZBX_STYLE_TABLE_FORMS_SEPARATOR)
 	)
 	->addField(
+		(new CWidgetFieldRadioButtonListView($data['fields']['bar_gauge_layout']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Choose how to display the bar gauges in the table. Selecting \'Column\' will show proportions within each column, while selecting \'Row\' will show proportions within each row.')
+				])
+			)
+	)
+	->addField(
 		(new CWidgetFieldCheckBoxView($data['fields']['no_broadcast_hostid']))
 			->setFieldHint(
 				makeHelpIcon([
@@ -76,12 +106,24 @@ $form
 		(new CWidgetFieldCheckBoxView($data['fields']['aggregate_all_hosts']))
 			->setFieldHint(
 				makeHelpIcon([
-					_('Checking this box will aggregate all values, by the item grouping specified, across all hosts'), BR(), BR(),
-					_('NOTE: Checking this box requires a \'Column Patterns Aggregation\' to be set in the \'Items\' '), BR(),
-					_('configuration popup under the \'Advanced Configuration\' section')
+					_('Checking this box will aggregate all values, by the item grouping above, across all hosts'), BR(), BR(),
+					_('NOTE: Checking this box requires a \'Column patterns aggregation\' to be set in the \'Items\' '), BR(),
+					_('configuration popup under the \'Advanced Configuration\' section'), BR(), BR(),
+					_('OTHER NOTE: when using this \'Host ordering\' options from the Advanced configuration section below are ignored')
 				])
 			)
 			->addRowClass('field_aggregate_all_hosts')
+	)
+	->addField(
+		(new CWidgetFieldCheckBoxView($data['fields']['show_grouping_only']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Checking this box will cause only the \'Item grouping\' column to be displayed'), BR(),
+					_('This is useful for when you want to use this widget to act as a filter to other widgets instead of showing metrics.'), BR(),
+					_('NOTE: Checking this box automatically causes \'Broadcast from grouped column\' to be checked for each Item pattern specified')
+				])
+			)
+			->addRowClass('field_show_grouping_only')
 	)
 	->addField(
 		(new CWidgetFieldCheckBoxView($data['fields']['autoselect_first']))
@@ -103,7 +145,7 @@ $form
 		(new CWidgetFieldTextBoxView($data['fields']['item_header']))
 			->setFieldHint(
 				makeHelpIcon([
-					_('Changes the header name from the default of \'Items\' to this value')
+					_('Changes the header name from the default of \'Items\' to this value when using Vertical layout')
 				])
 			)
 	)
@@ -112,7 +154,7 @@ $form
 			->setFieldHint(
 				makeHelpIcon([
 					_('By typing a value into this box you will add a reset row to the widget with the value you entered.'), BR(),
-					_('A reset row is used with layouts of \'Horizontal\', \'3 Column\', and \'Column per Pattern\'.'), BR(),
+					_('A reset row is used with layouts of \'Horizontal\', \'3 Column\', and \'Column per pattern\'.'), BR(),
 					_('After a click on the reset row value, connected widgets will reset back to their base configurations.')
 				])
 			)

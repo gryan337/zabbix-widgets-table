@@ -10,10 +10,13 @@
 	"widget": {
 		"in": {
 			"hostids": {
-				"type": "_hostids"
+				"type": "_hostid"
 			},
 			"groupids": {
 				"type": "_hostgroupids"
+			},
+			"itemid": {
+				"type": "_itemid"
 			}
 		},
 		"js_class": "CWidgetTableModuleRME",
