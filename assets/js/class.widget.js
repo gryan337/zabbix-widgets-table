@@ -1261,7 +1261,10 @@ class CWidgetTableModuleRME extends CWidget {
 				this.#selectRange(tdClicked);
 			}
 			else {
-				if (index !== -1 && this.#selected_items.length === 1) {
+				const allMatch = this.#selected_items.length > 0 &&
+					this.#selected_items.every(item => `${item.itemid}__${item.name}` === key);
+
+				if (index !== -1 && allMatch) {
 					this.#selected_items = [{ itemid: this.#null_id, name: null }];
 				}
 				else {

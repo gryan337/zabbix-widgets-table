@@ -357,7 +357,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				}
 			}
 		}
-		$name = trim($name, ' / ');
+		$name = substr($name, 0, -3);
 		return $name;
 	}
 
