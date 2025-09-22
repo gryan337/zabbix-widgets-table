@@ -237,11 +237,14 @@ class WidgetForm extends CWidgetForm {
 			return $errors;
 		}
 
-		$itemIdErrorToCheck = 'Invalid parameter "Item Filter/1": a number is expected.';
 		$errors = parent::validate($strict);
 
+		$itemIdErrorToCheck = 'Invalid parameter "Item filter/1": a number is expected.';
+
 		$errorIndex = array_search($itemIdErrorToCheck, $errors);
-		unset($errors[$errorIndex]);
+		if ($errorIndex !== false) {
+			unset($errors[$errorIndex]);
+		}
 
 		$aggregate_hosts = $this->getField('aggregate_all_hosts')->getValue();
 		if ($aggregate_hosts) {
@@ -251,7 +254,7 @@ class WidgetForm extends CWidgetForm {
 					$key = $column['items'][0];
 					$errors[] = _s('Form validation failure: When using \'Aggregate all hosts\' a \'Column patterns aggregation\' choice is required in the \'Items\' form');
 					$errors[] = _s('Column with failure: "%1$s"', $key);
-					break;
+					return $errors;
 				}
 			}
 		}

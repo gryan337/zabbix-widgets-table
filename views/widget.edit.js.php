@@ -68,38 +68,30 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 		const item_grouping_table_rows = item_grouping_table.querySelectorAll(':scope > tbody > tr');
 
 		for (const grouping_field of this.#form.querySelectorAll('.field_item_group_by')) {
-			if (!column_per_pattern) {
-				grouping_field.style.display = 'none';
-			}
-			else {
-				grouping_field.style.display = '';
+			grouping_field.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of grouping_field.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
 			}
 		}
 
 		for (const aggregate_all_field of this.#form.querySelectorAll('.field_aggregate_all_hosts')) {
-			if (!column_per_pattern) {
-				aggregate_all_field.style.display = 'none';
-			}
-			else {
-				aggregate_all_field.style.display = '';
+			aggregate_all_field.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of aggregate_all_field.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
 			}
 		}
 		
 		for (const show_grouping_only_field of this.#form.querySelectorAll('.field_show_grouping_only')) {
-			if (!column_per_pattern) {
-				show_grouping_only_field.style.display = 'none';
-			}
-			else {
-				show_grouping_only_field.style.display = '';
+			show_grouping_only_field.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of show_grouping_only_field.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
 			}
 		}
 
 		for (const bc_hostid_field of this.#form.querySelectorAll('.field_no_broadcast_hostid')) {
-			if (vertical_layout) {
-				bc_hostid_field.style.display = 'none';
-			}
-			else {
-				bc_hostid_field.style.display = '';
+			bc_hostid_field.style.display = vertical_layout ? 'none' : '';
+			for (const input of bc_hostid_field.querySelectorAll('input')) {
+				input.disabled = vertical_layout;
 			}
 		}
 		

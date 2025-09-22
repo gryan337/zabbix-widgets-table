@@ -322,12 +322,14 @@ else {
 				$reset_row = [(new CCol($host_cell_values))];
 			}
 
-			foreach ($is_view_value as $vv) {
-				if ($vv) {
-					$reset_row = [...$reset_row, ...[(new CCol()), (new CCol())]];
-				}
-				else {
-					$reset_row = [...$reset_row, ...[(new CCol())]];
+			if (!$data['show_grouping_only']) {
+				foreach ($is_view_value as $vv) {
+					if ($vv) {
+						$reset_row = [...$reset_row, ...[(new CCol()), (new CCol())]];
+					}
+					else {
+						$reset_row = [...$reset_row, ...[(new CCol())]];
+					}
 				}
 			}
 		}
