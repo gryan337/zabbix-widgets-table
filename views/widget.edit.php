@@ -102,8 +102,8 @@ $form
 			)
 			->addRowClass('field_no_broadcast_hostid')
 	)
-	->addField(
-		(new CWidgetFieldCheckBoxView($data['fields']['aggregate_all_hosts']))
+	->addField(array_key_exists('aggregate_all_hosts', $data['fields'])
+		? (new CWidgetFieldCheckBoxView($data['fields']['aggregate_all_hosts']))
 			->setFieldHint(
 				makeHelpIcon([
 					_('Checking this box will aggregate all values, by the item grouping above, across all hosts'), BR(), BR(),
@@ -113,6 +113,7 @@ $form
 				])
 			)
 			->addRowClass('field_aggregate_all_hosts')
+		: null
 	)
 	->addField(
 		(new CWidgetFieldCheckBoxView($data['fields']['show_grouping_only']))

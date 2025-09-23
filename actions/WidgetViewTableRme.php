@@ -259,7 +259,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				$table = self::perColumnOrdering($columns, $table, $this->fields_values);
 			}
 
-			if (!$this->fields_values['aggregate_all_hosts']) {
+			if (!$this->isTemplateDashboard() && !$this->fields_values['aggregate_all_hosts']) {
 				$this->applyHostOrdering($table, $db_hosts);
 				$this->applyHostOrderingLimit($table);
 			}
@@ -269,7 +269,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		self::calculateValueViews($columns, $table);
 
 		// Remove hostids.
-		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+		if (!$this->isTemplateDashboard() &&
+				$this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER &&
+				$this->fields_values['aggregate_all_hosts']) {
 			$table = [$table];
 		}
 		else {
@@ -286,7 +288,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'configuration' => $columns,
 			'rows' => (
 					$this->fields_values['layout'] == WidgetForm::LAYOUT_VERTICAL ||
-					($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && !$this->fields_values['aggregate_all_hosts']))
+					(!$this->isTemplateDashboard() &&
+						$this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER &&
+						!$this->fields_values['aggregate_all_hosts']
+					)
+			)
 				? self::transposeTable($table)
 				: $table,
 			'db_hosts' => $db_hosts,
@@ -302,7 +308,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'host_order_item' => $this->fields_values['host_ordering_item'],
 			'item_grouping' => $this->fields_values['item_group_by'],
 			'no_broadcast_hostid' => $this->fields_values['no_broadcast_hostid'],
-			'aggregate_all_hosts' => $this->fields_values['aggregate_all_hosts'],
+			'aggregate_all_hosts' => $this->isTemplateDashboard()
+				? null
+				: $this->fields_values['aggregate_all_hosts'],
 			'show_grouping_only' => $this->fields_values['show_grouping_only'],
 			'row_reset' => $this->fields_values['reset_row'],
 			'footer' => $this->fields_values['footer'],
@@ -310,7 +318,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'bar_gauge_layout' => $this->fields_values['bar_gauge_layout']
 		];
 		
-		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && !$this->fields_values['aggregate_all_hosts']) {
+		if (!$this->isTemplateDashboard() &&
+				$this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER &&
+				!$this->fields_values['aggregate_all_hosts']) {
 			$num_hosts = [];
 			foreach ($table as $tindex => $stat) {
 				foreach ($stat as $smet) {
@@ -978,7 +988,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		}
 		
 		if ($this->fields_values['layout'] != WidgetForm::LAYOUT_THREE_COL) {
-			if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+			if (!$this->isTemplateDashboard() &&
+					$this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER &&
+					$this->fields_values['aggregate_all_hosts']) {
 				foreach ($table as $grouping => $cell) {
 					if (shouldAddToRowsWithViewValues($cell, $columns)) {
 						$columns_with_view_values[] = $grouping;
@@ -998,7 +1010,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 		$rows_with_view_values = [];
 
-		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+		if (!$this->isTemplateDashboard() &&
+				$this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER &&
+				$this->fields_values['aggregate_all_hosts']) {
 			foreach ($table as $grouping => $cell) {
 				if (shouldAddToRowsWithViewValues($cell, $columns)) {
 					$rows_with_view_values[] = $grouping;
@@ -1017,7 +1031,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 		$rows_with_view_values = array_flip($rows_with_view_values);
 		$columns_with_view_values = array_flip($columns_with_view_values);
-		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+		if (!$this->isTemplateDashboard() &&
+				$this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER
+				&& $this->fields_values['aggregate_all_hosts']) {
 			foreach ($table as $table_column_index => &$cell) {
 				$cell[Widget::CELL_METADATA]['is_view_value_in_column'] = array_key_exists($table_column_index, $columns_with_view_values);
 				$cell[Widget::CELL_METADATA]['is_view_value_in_row'] = array_key_exists($table_column_index, $rows_with_view_values);
@@ -1047,7 +1063,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 		};
 
-		if ($this->fields_values['aggregate_all_hosts']) {
+		if (!$this->isTemplateDashboard() && $this->fields_values['aggregate_all_hosts']) {
 			uasort($table, $orderComparison);
 			return $table;
 		}
@@ -1173,7 +1189,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 		}
 
-		if ($this->fields_values['aggregate_all_hosts']) {
+		if (!$this->isTemplateDashboard() && $this->fields_values['aggregate_all_hosts']) {
 			$aggregatedArray = [];
 
 			foreach ($final_table as $hostId => $hostData) {
@@ -1283,7 +1299,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 		}
 
-		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER && $this->fields_values['aggregate_all_hosts']) {
+		if (!$this->isTemplateDashboard() &&
+				$this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER &&
+				$this->fields_values['aggregate_all_hosts']) {
 			foreach ($table as $cell) {
 				updateColumnMinMax($cell, $column_min, $column_max);
 			}
