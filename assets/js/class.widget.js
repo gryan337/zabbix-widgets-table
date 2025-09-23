@@ -627,6 +627,7 @@ class CWidgetTableModuleRME extends CWidget {
 				const filteredValuesLowerCase = filteredValues.map(v => String(v).toLowerCase());
 
 				this.#filterState.checked = this.#filterState.checked?.filter(v => filteredValuesLowerCase.includes(v));
+				this.#filterState.search = query;
 
 				isAllSelected = filteredValues.length > 0 && filteredValues.every(v => this.#filterState.checked?.includes(String(v).toLowerCase()));
 
@@ -813,10 +814,7 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			const updateClearFiltersButton = () => {
-				const hasChecked = Array.from(checkboxContainer.querySelectorAll('input[type="checkbox"]:checked')).length > 0;
-				const hasSearch = searchInput.value.trim() !== '';
-
-				if (hasChecked || hasSearch) {
+				if (this.#filterState.checked.length > 0 || this.#filterState.search !== '') {
 					clearFiltersButton.style.visibility = 'visible';
 				}
 				else {
