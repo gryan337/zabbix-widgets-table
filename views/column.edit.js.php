@@ -285,7 +285,7 @@ window.tablemodulerme_column_edit_form = new class {
 	}
 
 	submit() {
-		if (this.all_hosts_aggregated.nextElementSibling.querySelector('[id="aggregate_all_hosts"]').checked &&
+		if (this.all_hosts_aggregated?.nextElementSibling.querySelector('[id="aggregate_all_hosts"]').checked &&
 				$('#column_agg_method input[type="hidden"]').val() === '0') {
 			if (!this.aggregation_error) {
 				const title = 'Form configuration error';

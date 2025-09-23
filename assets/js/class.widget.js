@@ -1178,7 +1178,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#recalculateSvgSparklines() {
 		requestAnimationFrame(() => {
-			this.#values_table.querySelectorAll('z-sparkline').forEach(el => {
+			this.#values_table?.querySelectorAll('z-sparkline').forEach(el => {
 				el.attributeChangedCallback('width', null, el.offsetWidth);
 			});
 		});

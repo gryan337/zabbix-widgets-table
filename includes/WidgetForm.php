@@ -128,9 +128,8 @@ class WidgetForm extends CWidgetForm {
 					self::BAR_GAUGE_LAYOUT_ROW => _('Row')
 				]))->setDefault(self::BAR_GAUGE_LAYOUT_COLUMN)
 			)
-			->addField($this->isTemplateDashboard()
-				? null
-				: new CWidgetFieldCheckBox('no_broadcast_hostid', _('Disallow host broadcasting'))
+			->addField(
+				new CWidgetFieldCheckBox('no_broadcast_hostid', _('Disallow host broadcasting'))
 			)
 			->addField($this->isTemplateDashboard()
 				? null
@@ -230,7 +229,8 @@ class WidgetForm extends CWidgetForm {
 		}
 
 		$item_groupings = $this->getField('item_group_by')->getValue();
-		if ($this->getField('aggregate_all_hosts')->getValue() == 1 &&
+		if (!$this->isTemplateDashboard() &&
+				$this->getField('aggregate_all_hosts')->getValue() == 1 &&
 				count($item_groupings) == 1 &&
 				$item_groupings[0]['tag_name'] === '{HOST.HOST}') {
 			$errors[] = _s('Cannot group by {HOST.HOST} and aggregate by all hosts');
@@ -246,15 +246,17 @@ class WidgetForm extends CWidgetForm {
 			unset($errors[$errorIndex]);
 		}
 
-		$aggregate_hosts = $this->getField('aggregate_all_hosts')->getValue();
-		if ($aggregate_hosts) {
-			$columns = $this->getField('columns')->getValue();
-			foreach ($columns as $column) {
-				if ($column['column_agg_method'] === AGGREGATE_NONE) {
-					$key = $column['items'][0];
-					$errors[] = _s('Form validation failure: When using \'Aggregate all hosts\' a \'Column patterns aggregation\' choice is required in the \'Items\' form');
-					$errors[] = _s('Column with failure: "%1$s"', $key);
-					return $errors;
+		if (!$this->isTemplateDashboard()) {
+			$aggregate_hosts = $this->getField('aggregate_all_hosts')->getValue();
+			if ($aggregate_hosts) {
+				$columns = $this->getField('columns')->getValue();
+				foreach ($columns as $column) {
+					if ($column['column_agg_method'] === AGGREGATE_NONE) {
+						$key = $column['items'][0];
+						$errors[] = _s('Form validation failure: When using \'Aggregate all hosts\' a \'Column patterns aggregation\' choice is required in the \'Items\' form');
+						$errors[] = _s('Column with failure: "%1$s"', $key);
+						return $errors;
+					}
 				}
 			}
 		}
