@@ -77,9 +77,9 @@ A high-level view of our project milestones and upcoming goals.
 
 ## 📍 September 2025
 
-- [ ] Add the ability to broadcast multiple itemids and tags to other widgets on this github (piechart, graph, and this widget)  
-- [ ] Enable multi-selection of table cells with ctrlkey and shiftkey allowing for highly customizable drill-downs in the Zabbix dashboards  
-- [ ] Allow for bar gauges to show proportions in the table rows or table columns, allowing the user full control of the table orientation  
+- [X] Add the ability to broadcast multiple itemids and tags to other widgets on this github (piechart, graph, and this widget)  
+- [X] Enable multi-selection of table cells with ctrlkey and shiftkey allowing for highly customizable drill-downs in the Zabbix dashboards  
+- [X] Allow for bar gauges to show proportions in the table rows or table columns, allowing the user full control of the table orientation  
 - [ ] Allow columns to be draggable (click + drag) in the initial configuration of the widget  
 
 ---
