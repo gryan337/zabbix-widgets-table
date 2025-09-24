@@ -1248,10 +1248,12 @@ class CWidgetTableModuleRME extends CWidget {
 			);
 
 			if (event && event.ctrlKey) {
-				if (index !== -1) {
-					this.#selected_items.splice(index, 1);
-				}
-				else {
+				const before = this.#selected_items.length;
+				this.#selected_items = this.#selected_items.filter(
+					item => `${item.itemid}__${item.name}` !== key
+				);
+
+				if (this.#selected_items.length === before) {
 					this.#selected_items.push(selectedItem);
 				}
 			}
