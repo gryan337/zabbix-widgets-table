@@ -163,14 +163,14 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 			// Each pattern result must be ordered before applying limit.
 			if ($this->fields_values['layout'] == WidgetForm::LAYOUT_VERTICAL ||
-					$this->fields_values['layout'] != WidgetForm::LAYOUT_HORIZONTAL) {
+					$this->fields_values['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
 				$this->applyItemOrdering($table, $db_hosts);
 				$this->applyItemOrderingLimit($table);
 			}
 			
 			$column_tables[$column_index] = $table;
 		}
-		
+
 		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_THREE_COL) {
 			$this->applyItemOrderingLimitThreeCol($column_tables);
 		}
