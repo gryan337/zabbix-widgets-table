@@ -21,124 +21,124 @@ if ($data['error'] !== null) {
 	$table->setNoDataMessage($data['error'], null, ZBX_ICON_SEARCH_LARGE);
 }
 else {
-	if ($data['show_column_header'] != WidgetForm::COLUMN_HEADER_OFF) {
-		$header = [];
+	$header = [];
 
-		$class = '';
-		foreach ($data['configuration'] as $config) {
-			if ($config['display'] === CWidgetFieldColumnsList::DISPLAY_SPARKLINE ||
-					$config['display'] === CWidgetFieldColumnsList::DISPLAY_AS_IS) {
-				$class = ZBX_STYLE_CENTER;
+	$class = '';
+	foreach ($data['configuration'] as $config) {
+		if ($config['display'] === CWidgetFieldColumnsList::DISPLAY_SPARKLINE ||
+				$config['display'] === CWidgetFieldColumnsList::DISPLAY_AS_IS) {
+			$class = ZBX_STYLE_CENTER;
+			break;
+		}
+	}
+
+	if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL) {
+		$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
+		$header[] = new CColHeader(_($item_header));
+
+		foreach ($data['rows'][0] as $cell) {
+			$hostid = $cell[Widget::CELL_HOSTID];
+			$title = $data['db_hosts'][$hostid]['name'];
+			['is_view_value_in_row' => $is_view_value] = $cell[Widget::CELL_METADATA];
+			$header[] = (new CColHeader(
+				($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
+					? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
+					: (new CSpan($title))
+				)->setTitle($title)
+			))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
+		}
+	}
+	elseif ($data['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
+		$header[] = new CColHeader(_('Hosts'));
+
+		foreach ($data['rows'][0] as $cell) {
+			['name' => $title, 'is_view_value_in_column' => $is_view_value] = $cell[Widget::CELL_METADATA];
+			$header[] = (new CColHeader(
+				($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
+					? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
+					: (new CSpan($title))
+				)->setTitle($title)
+			))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
+		}
+	}
+	elseif ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
+		$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
+		$header[] = new CColHeader(_($item_header));
+		$header[] = new CColHeader(_('Host'));
+		$is_view_value = false;
+		foreach ($data['rows'] as $index => $values) {
+			if ($is_view_value) {
 				break;
 			}
-		}
-				
-		if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL) {
-			$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
-			$header[] = new CColHeader(_($item_header));
-
-			foreach ($data['rows'][0] as $cell) {
-				$hostid = $cell[Widget::CELL_HOSTID];
-				$title = $data['db_hosts'][$hostid]['name'];
+			foreach ($values as $index => $cell) {
 				['is_view_value_in_row' => $is_view_value] = $cell[Widget::CELL_METADATA];
-				$header[] = (new CColHeader(
-					($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
-						? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
-						: (new CSpan($title))
-					)->setTitle($title)
-				))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
-			}
-		}
-		elseif ($data['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
-			$header[] = new CColHeader(_('Hosts'));
-
-			foreach ($data['rows'][0] as $cell) {
-				['name' => $title, 'is_view_value_in_column' => $is_view_value] = $cell[Widget::CELL_METADATA];
-				$header[] = (new CColHeader(
-					($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
-						? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
-						: (new CSpan($title))
-					)->setTitle($title)
-				))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
-			}
-		}
-		elseif ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
-			$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
-			$header[] = new CColHeader(_($item_header));
-			$header[] = new CColHeader(_('Host'));
-			$is_view_value = false;
-			foreach ($data['rows'] as $index => $values) {
 				if ($is_view_value) {
 					break;
 				}
-				foreach ($values as $index => $cell) {
-					['is_view_value_in_row' => $is_view_value] = $cell[Widget::CELL_METADATA];
-					if ($is_view_value) {
-						break;
-					}
-				}
-			}
-			
-			$header[] = (new CColHeader(
-				($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
-					? (class_exists('CVertical') ? (new CVertical('Value')) : (new CSpan('Value'))->addClass(ZBX_STYLE_TEXT_VERTICAL))
-					: (new CSpan('Value'))
-				)->setTitle('Value')
-			))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
-		}
-		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
-			$groupby_host = (count($data['item_grouping']) === 1 &&
-					$data['item_grouping'][0]['tag_name'] === '{HOST.HOST}')
-				? true
-				: false;
-				
-			if (!$groupby_host) {
-				$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
-				$header[] = new CColHeader(_($item_header));
-			}
-			
-			if (count($data['num_hosts']) > 1 || $groupby_host) {
-				$header[] = new CColHeader(_('Host'));
-			}
-			
-			$is_view_value = [];
-			foreach ($data['configuration'] as $column_index => $column) {
-				switch ($column['display']) {
-					case CWidgetFieldColumnsList::DISPLAY_SPARKLINE:
-					case CWidgetFieldColumnsList::DISPLAY_INDICATORS:
-					case CWidgetFieldColumnsList::DISPLAY_BAR:
-						$is_view_value[$column_index] = 1;
-						break;
-					case CWidgetFieldColumnsList::DISPLAY_AS_IS:
-						$is_view_value[$column_index] = '';
-						break;
-					default:
-						$is_view_value[$column_index] = '';
-				}
-			}
-			
-			foreach ($data['rows'] as $row_index => &$cell) {
-				foreach ($cell as $mindex => &$metrics) {
-					$column_index = $metrics[Widget::CELL_METADATA]['column_index'];
-					$metrics[Widget::CELL_METADATA]['is_view_value_in_column'] = $is_view_value[$column_index];
-					$metrics[Widget::CELL_METADATA]['is_view_value_in_row'] = $is_view_value[$column_index];
-				}
-			}
-
-			if (!$data['show_grouping_only']) {
-				foreach ($data['configuration'] as $index => $config) {
-					$title = $config['column_title'] ? $config['column_title'] : $config['items'][0];
-					$ivv = array_key_exists($index, $is_view_value) ? ($is_view_value[$index] ? 2 : 1) : 1;
-					$header[] = (new CColHeader(
-						($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
-							? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
-							: (new CSpan($title))
-						)->setTitle($title)
-					))->setColSpan($ivv)->addClass($class);
-				}
 			}
 		}
 
+		$header[] = (new CColHeader(
+			($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
+				? (class_exists('CVertical') ? (new CVertical('Value')) : (new CSpan('Value'))->addClass(ZBX_STYLE_TEXT_VERTICAL))
+				: (new CSpan('Value'))
+			)->setTitle('Value')
+		))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
+	}
+	elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
+		$groupby_host = (count($data['item_grouping']) === 1 &&
+				$data['item_grouping'][0]['tag_name'] === '{HOST.HOST}')
+			? true
+			: false;
+
+		if (!$groupby_host) {
+			$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
+			$header[] = new CColHeader(_($item_header));
+		}
+
+		if (count($data['num_hosts']) > 1 || $groupby_host) {
+			$header[] = new CColHeader(_('Host'));
+		}
+
+		$is_view_value = [];
+		foreach ($data['configuration'] as $column_index => $column) {
+			switch ($column['display']) {
+				case CWidgetFieldColumnsList::DISPLAY_SPARKLINE:
+				case CWidgetFieldColumnsList::DISPLAY_INDICATORS:
+				case CWidgetFieldColumnsList::DISPLAY_BAR:
+					$is_view_value[$column_index] = 1;
+					break;
+				case CWidgetFieldColumnsList::DISPLAY_AS_IS:
+					$is_view_value[$column_index] = '';
+					break;
+				default:
+					$is_view_value[$column_index] = '';
+			}
+		}
+
+		foreach ($data['rows'] as $row_index => &$cell) {
+			foreach ($cell as $mindex => &$metrics) {
+				$column_index = $metrics[Widget::CELL_METADATA]['column_index'];
+				$metrics[Widget::CELL_METADATA]['is_view_value_in_column'] = $is_view_value[$column_index];
+				$metrics[Widget::CELL_METADATA]['is_view_value_in_row'] = $is_view_value[$column_index];
+			}
+		}
+
+		if (!$data['show_grouping_only']) {
+			foreach ($data['configuration'] as $index => $config) {
+				$title = $config['column_title'] ? $config['column_title'] : $config['items'][0];
+				$ivv = array_key_exists($index, $is_view_value) ? ($is_view_value[$index] ? 2 : 1) : 1;
+				$header[] = (new CColHeader(
+					($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
+						? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
+						: (new CSpan($title))
+					)->setTitle($title)
+				))->setColSpan($ivv)->addClass($class);
+			}
+		}
+	}
+
+	if ($data['show_column_header'] != WidgetForm::COLUMN_HEADER_OFF) {
 		$table->setHeader($header);
 	}
 

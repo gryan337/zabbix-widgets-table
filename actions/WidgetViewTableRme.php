@@ -999,6 +999,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 			else {
 				for ($i = 0; $i < $width; $i++) {
+					if (!array_key_exists($i, $table) &&
+							$this->fields_values['layout'] != WidgetForm::LAYOUT_HORIZONTAL) {
+						continue;
+					}
+
 					foreach ($table as [$i => $cell]) {
 						if (shouldAddToRowsWithViewValues($cell, $columns)) {
 							$columns_with_view_values[] = $i;
