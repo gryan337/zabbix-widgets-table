@@ -1224,6 +1224,10 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#handleCellClick(td, event=false) {
+		if (event && event.target.closest('.menu-btn')) {
+			return;
+		}
+
 		let tdClicked = td;
 		var nextTd = tdClicked.nextElementSibling;
 		var previousTd = tdClicked.previousElementSibling;

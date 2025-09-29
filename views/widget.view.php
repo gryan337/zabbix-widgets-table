@@ -341,6 +341,7 @@ else {
 	foreach ($data['rows'] as $row_index => $data_row) {
 		$table_row = [];
 
+		$host_context_msg = 'Click here for host context menu';
 		$host_attributes = [
 			'type' => 'host',
 			'hostid' => ''
@@ -368,6 +369,7 @@ else {
 			['name' => $title] = $data_row[Widget::CELL_METADATA];
 			$table_row[] = new CCol($title);
 			$host_attributes['hostid'] = $data_row[Widget::CELL_HOSTID];
+
 			$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']));
 			if (!$data['no_broadcast_hostid']) {
 				$host_cell_values
@@ -375,7 +377,15 @@ else {
 					->addStyle('text-decoration: underline;')
 					->setAttribute('data-menu', json_encode($host_attributes));
 			}
-			$table_row[] = new CCol($host_cell_values);
+
+			$host_context_button = (new CButton('', ''))
+				->addClass('menu-btn')
+				->setHint(
+					(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
+				)
+				->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
+
+			$table_row[] = new CCol([$host_cell_values, $host_context_button]);
 			$table_row = [...$table_row, ...makeTableCellViews($data_row, $data)];
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
@@ -440,7 +450,15 @@ else {
 							->addClass(ZBX_STYLE_CURSOR_POINTER)
 							->addStyle('text-decoration: underline;')
 							->setAttribute('data-menu', json_encode($host_attributes));
-						$table_row[] = new CCol($host_cell_values);
+
+						$host_context_button = (new CButton('', ''))
+							->addClass('menu-btn')
+							->setHint(
+								(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
+							)
+							->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
+
+						$table_row[] = new CCol([$host_cell_values, $host_context_button]);
 					}
 					else {
 						$table_row[] = new CCol('');
@@ -449,7 +467,15 @@ else {
 				else {
 					if ($host_attributes['hostid']) {
 						$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']));
-						$table_row[] = new CCol($host_cell_values);
+
+						$host_context_button = (new CButton('', ''))
+							->addClass('menu-btn')
+							->setHint(
+								(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
+							)
+							->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
+
+						$table_row[] = new CCol([$host_cell_values, $host_context_button]);
 					}
 					else {
 						$table_row[] = new CCol('');
@@ -479,14 +505,25 @@ else {
 			}
 
 			$host_attributes['hostid'] = $data_row[0][Widget::CELL_HOSTID];
-			$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']));
+			$host_name = $data['db_hosts'][$host_attributes['hostid']]['name'];
+
+			$host_cell_values = (new CSpan($host_name));
 			if (!$data['no_broadcast_hostid']) {
 				$host_cell_values
 					->addClass(ZBX_STYLE_CURSOR_POINTER)
 					->addStyle('text-decoration: underline;')
 					->setAttribute('data-menu', json_encode($host_attributes));
 			}
-			$table_row[] = new CCol($host_cell_values);
+
+			$host_context_button = (new CButton('', ''))
+				->addClass('menu-btn')
+				->setHint(
+					(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
+				)
+				->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
+
+			$table_row[] = new CCol([$host_cell_values, $host_context_button]);
+
 		}
 
 		if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL ||
