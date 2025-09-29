@@ -43,3 +43,40 @@ div.dashboard-widget-tablemodulerme z-sparkline {
   border-top-color: transparent;
   border-bottom-color: transparent;
   line-height: 0; }
+
+.menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--button-color);
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+.menu-btn::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 -5px 0 currentColor, 0 5px 0 currentColor;
+}
+
+[theme="blue-theme"],
+[theme="hc-light"] {
+  --button-color: #555;
+}
+
+[theme="dark-theme"],
+[theme="hc-dark"] {
+  --button-color: #bbb;
+}
