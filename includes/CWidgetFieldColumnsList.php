@@ -22,6 +22,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 	// Column value display value as type.
 	public const DISPLAY_VALUE_AS_NUMERIC = 1;
 	public const DISPLAY_VALUE_AS_TEXT = 2;
+	public const DISPLAY_VALUE_AS_URL = 100;
 
 	// Column value display type.
 	public const DISPLAY_AS_IS = 1;
@@ -35,6 +36,9 @@ class CWidgetFieldColumnsList extends CWidgetField {
 	public const HISTORY_DATA_TRENDS = 2;
 
 	public const DEFAULT_DECIMAL_PLACES = 2;
+
+	public const URL_DISPLAY_AS_IS = 1;
+	public const URL_DISPLAY_CUSTOM = 2;
 
 	public const SPARKLINE_DEFAULT = [
 		'width'		=> 1,
@@ -160,6 +164,9 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'base_color' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'display_value_as' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'display' => ZBX_WIDGET_FIELD_TYPE_INT32,
+			'url_display_mode' => ZBX_WIDGET_FIELD_TYPE_INT32,
+			'url_display_override' => ZBX_WIDGET_FIELD_TYPE_STR,
+			'url_open_in' =>ZBX_WIDGET_FIELD_TYPE_INT32,
 			'min' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'max' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'decimal_places' => ZBX_WIDGET_FIELD_TYPE_INT32,
@@ -179,6 +186,9 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'base_color' => '',
 			'display_value_as' => CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC,
 			'display' => CWidgetFieldColumnsList::DISPLAY_AS_IS,
+			'url_display_mode' => CWidgetFieldColumnsList::URL_DISPLAY_AS_IS,
+			'url_display_override' => '',
+			'url_open_in' => 0,
 			'min' => '',
 			'max' => '',
 			'highlights' => [],
@@ -294,13 +304,21 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'aggregate_function'	=> ['type' => API_INT32, 'in' => implode(',', [AGGREGATE_NONE, AGGREGATE_MIN, AGGREGATE_MAX, AGGREGATE_AVG, AGGREGATE_COUNT, AGGREGATE_SUM, AGGREGATE_FIRST, AGGREGATE_LAST]), 'default' => AGGREGATE_NONE],
 			'time_period'			=> ['type' => API_ANY],
 			'override_footer'		=> ['type' => API_INT32, 'in' => implode(',', [self::FOOTER_DONT_OVERRIDE, self::FOOTER_SHOW_NONE, self::FOOTER_SHOW_SUM, self::FOOTER_SHOW_AVERAGE]), 'default' => self::FOOTER_DONT_OVERRIDE],
-			'display_value_as'		=> ['type' => API_INT32, 'in' => implode(',', [self::DISPLAY_VALUE_AS_NUMERIC, self::DISPLAY_VALUE_AS_TEXT]), 'default' => self::DISPLAY_VALUE_AS_NUMERIC],
+			'display_value_as'		=> ['type' => API_INT32, 'in' => implode(',', [self::DISPLAY_VALUE_AS_NUMERIC, self::DISPLAY_VALUE_AS_TEXT, self::DISPLAY_VALUE_AS_URL]), 'default' => self::DISPLAY_VALUE_AS_NUMERIC],
 			'display'				=> ['type' => API_MULTIPLE, 'rules' => [
 											['if' => ['field' => 'display_value_as', 'in' => self::DISPLAY_VALUE_AS_NUMERIC],
 												'type' => API_INT32, 'default' => self::DISPLAY_AS_IS, 'in' => implode(',', [self::DISPLAY_AS_IS, self::DISPLAY_BAR, self::DISPLAY_INDICATORS, self::DISPLAY_SPARKLINE])],
 											['else' => true,
 												'type' => API_INT32]
 			]],
+			'url_display_mode' 			=> ['type' => API_MULTIPLE, 'rules' => [
+											['if' => ['field' => 'display_value_as', 'in' => self::DISPLAY_VALUE_AS_URL],
+												'type' => API_INT32, 'default' => self::URL_DISPLAY_AS_IS, 'in' => implode(',', [self::URL_DISPLAY_AS_IS, self::URL_DISPLAY_CUSTOM])],
+											['else' => true,
+												'type' => API_INT32]
+			]],
+			'url_display_override'		=> ['type' => API_STRING_UTF8, 'default' => ''],
+			'url_open_in'			=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'history'				=> ['type' => API_INT32, 'default' => self::HISTORY_DATA_AUTO, 'in' => implode(',', [self::HISTORY_DATA_AUTO, self::HISTORY_DATA_HISTORY, self::HISTORY_DATA_TRENDS])],
 			'include_itemids'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'sparkline'				=> ['type' => API_ANY],

@@ -977,6 +977,10 @@ function makeTableCellViews(array $cell, array $data): array {
 		return makeTableCellViewsText($cell, $data, $formatted_value, $is_view_value, $final_unit);
 	}
 
+	if ($column['display_value_as'] == CWidgetFieldColumnsList::DISPLAY_VALUE_AS_URL) {
+		return makeTableCellViewsUrl($cell, $data, $formatted_value, $is_view_value, $final_unit);
+	}
+
 	if ($is_view_value) {
 		return [(new CCol()), (new CCol())];
 	}
@@ -1257,6 +1261,34 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 	}
 
 	return [$value_cell];
+}
+
+function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
+	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
+	$value = $cell[Widget::CELL_VALUE];
+	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
+
+	if ($column['url_display_mode'] == CWidgetFieldColumnsList::URL_DISPLAY_CUSTOM &&
+			$column['url_display_override'] != '' &&
+			$column['url_display_override'] != null) {
+		$resolved = CMacrosResolverHelper::resolveItemBasedWidgetMacros(
+			[$itemid => ['label' => $column['url_display_override']]],
+			['label' => 'label']
+		);
+		$link = (new CLink($resolved[$itemid]['label'], (new CUrl($value))));
+	}
+	else {
+		$link = (new CLink($value, (new CUrl($value))));
+	}
+
+	if ($column['url_open_in'] == 1) {
+		$link->setTarget('_blank');
+	}
+
+	$col = (new CCol($link))->addStyle('text-align: center; vertical-align: middle;');
+
+	return [$col];
+
 }
 
 function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value, bool $is_view_value, string $units): array {
