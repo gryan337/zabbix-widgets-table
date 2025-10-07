@@ -43,7 +43,7 @@ window.tablemodulerme_column_edit_form = new class {
 
 		this.#form
 			.querySelectorAll(
-				'[name="display_value_as"], [name="aggregate_function"], [name="column_agg_method"], [name="display"], [name="history"]'
+				'[name="display_value_as"], [name="aggregate_function"], [name="column_agg_method"], [name="display"], [name="history"], [name="url_display_mode"]'
 			)
 			.forEach(element => {
 				element.addEventListener('change', () => this.#updateForm());
@@ -149,6 +149,7 @@ window.tablemodulerme_column_edit_form = new class {
 	#updateForm() {
 		const display_value_as = this.#form.querySelector('[name=display_value_as]:checked').value;
 		const display = this.#form.querySelector('[name=display]:checked').value;
+		const url_display_mode = this.#form.querySelector('[name=url_display_mode]:checked').value;
 
 		// Column title	
 		for (const element of this.#form.querySelectorAll('.js-column-title')) {
@@ -204,6 +205,36 @@ window.tablemodulerme_column_edit_form = new class {
 
 			for (const input of element.querySelectorAll('input')) {
 				input.disabled = !highlights_show;
+			}
+		}
+
+		// URL display options.
+		const display_url = display_value_as == <?= CWidgetFieldColumnsList::DISPLAY_VALUE_AS_URL ?>;
+		const url_override_show = display_value_as == <?= CWidgetFieldColumnsList::DISPLAY_VALUE_AS_URL ?> &&
+			url_display_mode == <?= CWidgetFieldColumnsList::URL_DISPLAY_CUSTOM ?>;
+
+		for (const element of this.#form.querySelectorAll('.js-url-display-mode')) {
+			element.style.display = display_url ? '' : 'none';
+
+			for (const input of element.querySelectorAll('input')) {
+				input.disabled = !display_url;
+			}
+		}
+
+		for (const element of this.#form.querySelectorAll('.js-url-display-override')) {
+			element.style.display = url_override_show ? '' : 'none';
+
+			for (const input of element.querySelectorAll('input')) {
+				input.disabled = !url_override_show;
+			}
+		}
+
+
+		for (const element of this.#form.querySelectorAll('.js-url-open-in')) {
+			element.style.display = display_url ? '' : 'none';
+
+			for (const input of element.querySelectorAll('input')) {
+				input.disabled = !display_url;
 			}
 		}
 

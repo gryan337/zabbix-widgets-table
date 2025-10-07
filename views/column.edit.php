@@ -116,8 +116,9 @@ $form_grid->addItem([
 	new CLabel(_('Display value as'), 'display_value_as'),
 	new CFormField(
 		(new CRadioButtonList('display_value_as', (int) $data['display_value_as']))
-			->addValue(_('Numeric'), CWidgetFieldColumnsList::DISPLAY_AS_IS)
-			->addValue(_('Text'), CWidgetFieldColumnsList::DISPLAY_BAR)
+			->addValue(_('Numeric'), CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC)
+			->addValue(_('Text'), CWidgetFieldColumnsList::DISPLAY_VALUE_AS_TEXT)
+			->addValue(_('URL'), CWidgetFieldColumnsList::DISPLAY_VALUE_AS_URL)
 			->setModern()
 	)
 ]);
@@ -239,6 +240,50 @@ $highlights = (new CDiv([
 $form_grid->addItem([
 	(new CLabel(_('Highlights'), 'highlights_table'))->addClass('js-highlights-row'),
 	(new CFormField($highlights))->addClass('js-highlights-row')
+]);
+
+$form_grid->addItem([
+	(new CLabel(_('URL display mode'), 'url_display_mode'))->addClass('js-url-display-mode'),
+	(new CFormField(
+		(new CRadioButtonList('url_display_mode', (int) $data['url_display_mode']))
+			->addValue(_('As is'), CWidgetFieldColumnsList::URL_DISPLAY_AS_IS)
+			->addValue(_('Custom'), CWidgetFieldColumnsList::URL_DISPLAY_CUSTOM)
+			->setModern()
+	))->addClass('js-url-display-mode')
+]);
+
+$form_grid->addItem([
+	(new CLabel([
+		_('URL display override'),
+		makeHelpIcon([
+			_('Customize the display text of the URL'), BR(), BR(),
+			_('Instead of displaying the raw URL you can set arbitrary text to display instead. The URL will be encoded into the text you enter in this text box.'), BR(), BR(),
+			_('You can also mix macros with text. Supported macros:'),
+			(new CList([
+				'{HOST.*}',
+				'{ITEM.*}',
+				'{INVENTORY.*}',
+				_('User macros'),
+			]))->addClass(ZBX_STYLE_LIST_DASHED)
+		])
+	]))->addClass('js-url-display-override'),
+	(new CFormField(
+		(new CTextBox('url_display_override', $data['url_display_override'], false))
+			->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+			->setAttribute('placeholder', _('Set custom display text'))
+	))->addClass('js-url-display-override')
+]);
+
+$form_grid->addItem([
+	(new CLabel([
+		_('Open URL in new tab'),
+		makeHelpIcon([
+			_('Check this box to open the URL in a new browser tab, otherwise the link will open in the same tab')
+		])
+	]))->addClass('js-url-open-in'),
+	(new CFormField(
+		(new CCheckBox('url_open_in'))->setChecked($data['url_open_in'])
+	))->addClass('js-url-open-in')
 ]);
 
 // Advanced configuration.
