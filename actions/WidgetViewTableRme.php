@@ -157,9 +157,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			else {
 				$db_values = self::getItemValues($db_column_items, $column);
 				$table = self::makeColumnizedTable($db_column_items, $column, $db_values, $db_sparkline_values, $this->fields_values['layout']);
+				unset($db_values);
 			}
 
 			$db_items += $db_column_items;
+			unset($db_column_items);
 
 			// Each pattern result must be ordered before applying limit.
 			if ($this->fields_values['layout'] == WidgetForm::LAYOUT_VERTICAL ||
@@ -169,7 +171,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 			
 			$column_tables[$column_index] = $table;
+			unset($table);
 		}
+		unset($item_cache);
 
 		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_THREE_COL) {
 			$this->applyItemOrderingLimitThreeCol($column_tables);
@@ -233,6 +237,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		}
 
 		$table = self::concatenateTables($column_tables);
+		unset($column_tables);
 
 		if (!$table) {
 			return [
