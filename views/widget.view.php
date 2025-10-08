@@ -1264,6 +1264,7 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 }
 
 function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
+	$hostid = $cell[Widget::CELL_HOSTID];
 	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
@@ -1272,7 +1273,10 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 			$column['url_display_override'] != '' &&
 			$column['url_display_override'] != null) {
 		$resolved = CMacrosResolverHelper::resolveItemBasedWidgetMacros(
-			[$itemid => ['label' => $column['url_display_override']]],
+			[$itemid => [
+				'label' => $column['url_display_override'],
+				'hostid' => $hostid
+			]],
 			['label' => 'label']
 		);
 		$link = (new CLink($resolved[$itemid]['label'], (new CUrl($value))));
@@ -1285,7 +1289,7 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 		$link->setTarget('_blank');
 	}
 
-	$col = (new CCol($link))->addStyle('text-align: center; vertical-align: middle;');
+	$col = (new CCol($link))->addStyle('text-align: center;');
 
 	return [$col];
 

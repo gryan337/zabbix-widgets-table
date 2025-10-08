@@ -384,6 +384,9 @@ class CWidgetTableModuleRME extends CWidget {
 				updateWarningIcon();
 				updateClearFiltersButton();
 				lastCheckedCheckbox = null;
+				this.#selected_items = [{ itemid: this.#null_id, name: null }];
+				this.#selected_hostid = this.#null_id;
+				this.checkAndRemarkSelected();
 			});
 
 			filterControls.appendChild(filterTypeContainer);
@@ -525,6 +528,9 @@ class CWidgetTableModuleRME extends CWidget {
 				updateWarningIcon();
 				updateClearFiltersButton();
 				lastCheckedCheckbox = null;
+				this.#selected_items = [{ itemid: this.#null_id, name: null }];
+				this.#selected_hostid = this.#null_id;
+				this.checkAndRemarkSelected();
 			});
 
 			const warningSvg = `
@@ -842,6 +848,11 @@ class CWidgetTableModuleRME extends CWidget {
 		this.boundMouseUp = this.handleMouseUpTi.bind(this);
 		this.attachListeners();
 
+		this.checkAndRemarkSelected();
+
+	}
+
+	checkAndRemarkSelected() {
 		if (this.#selected_hostid !== null) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
 			this._markSelected(this.#dataset_host);
@@ -963,6 +974,23 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
+	#filterSelectedItems() {
+		this.#selected_items = this.#selected_items.filter(selectedItem => {
+			return this.#rowsArray.some(rowObj => {
+				if (rowObj.status === 'display') {
+					const menuElements = rowObj.row.querySelectorAll(`td [data-menu]`);
+					for (const menuElement of menuElements) {
+						const menuData = JSON.parse(menuElement.dataset.menu);
+						if (menuData.itemid === selectedItem.item || menuData.name === selectedItem.name) {
+							return true;
+						}
+					}
+				}
+				return false;
+			});
+		});
+	}
+
 	#applyFilter() {
 		function getColumnInfo(td, columns) {
 			const indexStr = td.getAttribute('column-id');
@@ -1056,6 +1084,11 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 
 		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+		this.#filterSelectedItems();
+		if (this.#selected_items.length === 0) {
+			this.#selected_items = [{ itemid: this.#null_id, name: null }];
+		}
+		this.checkAndRemarkSelected();
 
 		if (this._fields.bar_gauge_layout === 0) {
 			displayedRows.forEach(rowObj => {
