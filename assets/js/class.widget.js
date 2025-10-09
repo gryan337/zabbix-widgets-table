@@ -64,6 +64,8 @@ class CWidgetTableModuleRME extends CWidget {
 	};
 
 	#lastClickedCell = null;
+	#clearFiltersClickedWithSelections = false;
+	#filterTooltipIds = new Set();
 
 	processUpdateResponse(response) {
 		super.processUpdateResponse(response);
@@ -313,13 +315,14 @@ class CWidgetTableModuleRME extends CWidget {
 			filterTypeContainer.appendChild(button);
 
 			const options = [
-				{ value: 'contains', label: 'Contains' },
-				{ value: 'equals', label: 'Equals' },
-				{ value: 'starts with', label: 'Starts with' },
-				{ value: 'ends with', label: 'Ends with' },
-				{ value: 'wildcard', label: 'Wildcard' },
-				{ value: 'does not contain', label: 'Does not contain' },
-				{ value: 'regex', label: 'Regex' }
+				{ value: 'contains', label: 'Contains', help: 'Filters items that contain the specified text.' },
+				{ value: 'equals', label: 'Equals', help: 'Filters items that exactly match the specified text.' },
+				{ value: 'starts with', label: 'Starts with', help: 'Filters items that start with the specified text.' },
+				{ value: 'ends with', label: 'Ends with', help: 'Filters items that end with the specified text.' },
+				{ value: 'wildcard', label: 'Wildcard', help: 'Filters items that match the specified wildcarded (*) pattern.\nMultiple wildcards (*) are supported.' },
+				{ value: 'does not contain', label: 'Does not contain', help: 'Filters items that do not contain the specified text.' },
+				{ value: 'regex', label: 'Regex', help: 'Filters items that match the specified regular expression.' },
+				{ value: 'boolean', label: 'Boolean Expr', help: 'Filters items that match the specified boolean expression.\nSupports \'AND\', \'OR\', \'AND NOT\', \'OR NOT\', and parentheses\ni.e. (TERMA OR TERMB) AND TERMCD AND NOT TERMCDE' }
 			];
 
 			const initialValue = this.#filterState?.type || 'contains';
@@ -331,6 +334,16 @@ class CWidgetTableModuleRME extends CWidget {
 			const list = document.createElement('ul');
 			list.className = 'list';
 			list.style.display = 'none';
+
+			if (this.#filterTooltipIds) {
+				this.#filterTooltipIds.forEach(id => {
+					const oldTooltip = document.getElementById(id);
+					if (oldTooltip) {
+						oldTooltip.remove();
+					}
+				});
+			}
+			this.#filterTooltipIds = new Set();
 
 			options.forEach(opt => {
 				const li = document.createElement('li');
@@ -346,8 +359,36 @@ class CWidgetTableModuleRME extends CWidget {
 					updateWarningIcon();
 					updateClearFiltersButton();
 					this.#filterState.type = opt;
+					setupInputHandler();
 				});
+
+				const helpIcon = document.createElement('span');
+				helpIcon.className = 'help-icon';
+				helpIcon.textContent = '?';
+				helpIcon.dataset.help = opt.help;
+				li.appendChild(helpIcon);
 				list.appendChild(li);
+
+				const filterTooltipId = `${this.#values_table.id}-${this._widgetid}-${opt.label}-tooltip`;
+				const filterTooltip = document.createElement('div');
+				filterTooltip.id = filterTooltipId;
+				filterTooltip.className = 'filter-tooltip';
+				filterTooltip.textContent = opt.help;
+				filterTooltip.style.display = 'none';
+				document.body.appendChild(filterTooltip);
+
+				this.#filterTooltipIds.add(filterTooltipId);
+
+				helpIcon.addEventListener('mouseover', (e) => {
+					const rect = helpIcon.getBoundingClientRect();
+					filterTooltip.style.left = `${rect.left + window.scrollX + rect.width + 10}px`;
+					filterTooltip.style.top = `${rect.top + window.scrollY + 15}px`;
+					filterTooltip.style.display = 'block';
+				});
+
+				helpIcon.addEventListener('mouseout', () => {
+					filterTooltip.style.display = 'none';
+				});
 			});
 
 			filterTypeContainer.appendChild(list);
@@ -375,18 +416,11 @@ class CWidgetTableModuleRME extends CWidget {
 				searchInput.value = '';
 				searchInput.dispatchEvent(new Event('input'));
 
-				this.#filterState.checked = [];
-				isAllSelected = false;
-				toggleButton.textContent = 'Select All';
-
 				renderVisibleCheckboxes();
 				updateSummary();
 				updateWarningIcon();
 				updateClearFiltersButton();
 				lastCheckedCheckbox = null;
-				this.#selected_items = [{ itemid: this.#null_id, name: null }];
-				this.#selected_hostid = this.#null_id;
-				this.checkAndRemarkSelected();
 			});
 
 			filterControls.appendChild(filterTypeContainer);
@@ -528,9 +562,12 @@ class CWidgetTableModuleRME extends CWidget {
 				updateWarningIcon();
 				updateClearFiltersButton();
 				lastCheckedCheckbox = null;
-				this.#selected_items = [{ itemid: this.#null_id, name: null }];
-				this.#selected_hostid = this.#null_id;
-				this.checkAndRemarkSelected();
+				if ((this.#selected_items.length > 0 && this.#selected_items[0].itemid !== this.#null_id) ||
+						(this.#selected_hostid !== this.#null_id && this.#selected_hostid !== null)) {
+					this.#clearFiltersClickedWithSelections = true
+					this.#selected_items = [{ itemid: this.#null_id, name: null }];
+					this.#selected_hostid = this.#null_id;
+				}
 			});
 
 			const warningSvg = `
@@ -646,11 +683,25 @@ class CWidgetTableModuleRME extends CWidget {
 				spacer.style.height = `${filteredValues.length * 30}px`
 			};
 
-			const inputHandler = sortedValues.length > 250
-				? this.debounce(this.handleInput, 300)
-				: this.handleInput;
+			const setupInputHandler = () => {
+				const filterMode = hiddenInput.value;
 
-			searchInput.addEventListener('input', inputHandler);
+				searchInput.removeEventListener('input', currentInputHandler);
+
+				const newInputHandler = filterMode === 'boolean'
+					? this.debounce(this.handleInput, 1000)
+					: (sortedValues.length > 250
+						? this.debounce(this.handleInput, 300)
+						: this.handleInput);
+
+				searchInput.addEventListener('input', newInputHandler);
+
+				currentInputHandler = newInputHandler;
+			};
+
+			let currentInputHandler;
+
+			setupInputHandler();
 
 			const renderVisibleCheckboxes = () => {
 				const scrollTop = scrollContainer.scrollTop;
@@ -891,6 +942,14 @@ class CWidgetTableModuleRME extends CWidget {
 			if (!popup.contains(e.target) && !filterIcon.contains(e.target)) {
 				popup.style.display = 'none';
 				this._resumeUpdating();
+				if (this.#clearFiltersClickedWithSelections) {
+					filterIcon.classList.remove('active');
+					filterIcon.classList.remove('filter-error');
+					filterIcon.title = 'Click to filter this column';
+					this.#filterApplied = false;
+					this.checkAndRemarkSelected();
+					this.#clearFiltersClickedWithSelections = false;
+				}
 			}
 		}
 	}
@@ -924,7 +983,7 @@ class CWidgetTableModuleRME extends CWidget {
 		this.offsetX = 0;
 		this.offsetY = 0;
 
-		handle.style.cursor = 'move';
+		handle.style.cursor = 'grab';
 	}
 
 	handleMouseDownTi(e) {
@@ -938,6 +997,7 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		this.isDragging = true;
+		this.handle.style.cursor = 'grabbing';
 		const rect = this.popup.getBoundingClientRect();
 		this.offsetX = e.clientX - rect.left;
 		this.offsetY = e.clientY - rect.top;
@@ -946,6 +1006,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 	handleMouseMoveTi(e) {
 		if (this.isDragging) {
+			this.handle.style.cursor = 'grabbing';
 			this.popup.style.left = `${e.clientX - this.offsetX}px`;
 			this.popup.style.top = `${e.clientY - this.offsetY}px`;
 		}
@@ -953,6 +1014,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 	handleMouseUpTi(e) {
 		this.isDragging = false;
+		this.handle.style.cursor = 'grab';
 		document.body.style.userSelect = '';
 	}
 
@@ -1083,12 +1145,26 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		});
 
+		const selectedItemsBefore = [...this.#selected_items];
+
 		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
 		this.#filterSelectedItems();
-		if (this.#selected_items.length === 0) {
+
+		const selectedItemsAfter = [...this.#selected_items];
+
+		if (selectedItemsBefore.length > 0 && this.#selected_items.length === 0) {
 			this.#selected_items = [{ itemid: this.#null_id, name: null }];
 		}
-		this.checkAndRemarkSelected();
+
+		if (selectedItemsBefore.length === 1 &&
+				this.#selected_items.length === 1 &&
+				this.#selected_items[0].itemid === this.#null_id &&
+				selectedItemsBefore[0].itemid === this.#null_id &&
+				!this.#clearFiltersClickedWithSelections) {
+		}
+		else {
+			this.checkAndRemarkSelected();
+		}
 
 		if (this._fields.bar_gauge_layout === 0) {
 			displayedRows.forEach(rowObj => {
@@ -1159,6 +1235,87 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		switch (filterMode) {
+			case 'boolean': {
+				if (searchValue === '') return false;
+				const tokenize = expr => {
+					const tokens = [];
+					const regex = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|(\bAND\b|\bOR\b|\bNOT\b)|([()])|([^()\s]+)/gi;
+					let match;
+					while ((match = regex.exec(expr)) !== null) {
+						if (match[1] !== undefined) tokens.push(match[1]);
+						else if (match[2] !== undefined) tokens.push(match[2]);
+						else if (match[3] !== undefined) tokens.push(match[3].toUpperCase());
+						else if (match[4] !== undefined) tokens.push(match[4]);
+						else if (match[5] !== undefined) tokens.push(match[5]);
+					}
+					return tokens;
+				};
+
+				const parseExpression = tokens => {
+					const parseTerm = () => {
+						let node = parseFactor();
+						while (tokens[0] === 'AND') {
+							tokens.shift();
+							node = { op: 'AND', left: node, right: parseFactor() };
+						}
+						return node;
+					};
+
+					const parseFactor = () => {
+						const tok = tokens.shift();
+						if (tok === '(') {
+							const node = parseExpression(tokens);
+							if (tokens[0] === ')') tokens.shift();
+							return node;
+						}
+						if (tok === 'NOT') {
+							return { op: 'NOT', value: parseFactor() };
+						}
+						return tok;
+					};
+
+					let node = parseTerm();
+					while (tokens[0] === 'OR') {
+						tokens.shift();
+						node = { op: 'OR', left: node, right: parseTerm() };
+					}
+					return node;
+				};
+
+				const evaluateNode = (node, text) => {
+					if (node === undefined || (typeof node === 'object' && node.op === undefined)) {
+						return false;
+					}
+
+					if (typeof node === 'string') {
+						const term = caseSensitive ? node : node.toLowerCase();
+						const isRegex = term.startsWith('^') || term.endsWith('$') || /[.*+?()[\]|]/.test(term);
+						try {
+							return isRegex
+								? new RegExp(term, caseSensitive ? '' : 'i').test(text)
+								: text.includes(term);
+						}
+						catch {
+							return false;
+						}
+					}
+					switch (node.op) {
+						case 'AND': return evaluateNode(node.left, text) && evaluateNode(node.right, text);
+						case 'OR':  return evaluateNode(node.left, text) || evaluateNode(node.right, text);
+						case 'NOT': return !evaluateNode(node.value, text);
+					}
+				};
+
+				try {
+					const tokens = tokenize(searchValue);
+					const ast = parseExpression(tokens);
+					return evaluateNode(ast, text);
+				}
+				catch (e) {
+					console.error('Boolean filter parse error:', e);
+					return false;
+				}
+			}
 			case 'equals':
 				return text === searchValue;
 			case 'starts with':
@@ -1517,7 +1674,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		const isItemSelected = (dataset) => {
 			return this.#selected_items.some(item =>
-				item.itemid === dataset.itemid && item.name === dataset.name
+				item.itemid === dataset.itemid || item.name === dataset.name
 			);
 		};
 
@@ -2326,7 +2483,7 @@ class CWidgetTableModuleRME extends CWidget {
 					right: 0;
 					background-color: #1e1e1e;
 					border: 1px solid #4f4f4f;
-					max-height: 200px;
+					max-height: 300px;
 					overflow-y: auto;
 					z-index: 10000;
 					margin: 0;
@@ -2338,6 +2495,10 @@ class CWidgetTableModuleRME extends CWidget {
 					padding: 4px 8px;
 					cursor: pointer;
 					color: #f2f2f2;
+					position: relative;
+					display: flex;
+					justify-content: space-between;
+					align-items: center;
 				}
 				.custom-select .list li:hover,
 				.custom-select .list li.hover {
@@ -2354,6 +2515,31 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 				.custom-select .list::-webkit-scrollbar-track {
 					background-color: #1f1f1f;
+				}
+				.help-icon {
+					cursor: pointer;
+					color: #fff;
+					background-color: #9a6104;
+					border-radius: 50%;
+					width: 13px;
+					height: 13px;
+					display: flex;
+					justify-content: center;
+					align-items: center;
+					font-size: 11px;
+					line-height: 1;
+					margin-left: 8px;
+				}
+				.filter-tooltip {
+					position: absolute;
+					background-color: #9a6104;
+					color: #fff;
+					padding: 5px;
+					border-radius: 3px;
+					display: none;
+					z-index: 10001;
+					white-space: pre-wrap;
+					pointer-events: none;
 				}
 			`;
 			document.head.appendChild(styleColumnFilters);
