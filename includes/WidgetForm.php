@@ -59,6 +59,8 @@ class WidgetForm extends CWidgetForm {
 	public const BAR_GAUGE_LAYOUT_COLUMN = 0;
 	public const BAR_GAUGE_LAYOUT_ROW = 1;
 
+	public const DEFAULT_DELIMITER = ' / ';
+
 	public function addFields(): self {
 		return $this
 			->addField($this->isTemplateDashboard()
@@ -110,6 +112,11 @@ class WidgetForm extends CWidgetForm {
 			)
 			->addField(
 				new CWidgetFieldTableModuleItemGrouping('item_group_by', _('Item grouping'))
+			)
+			->addField(
+				(new CWidgetFieldTextBox('grouping_delimiter', _('Grouping delimiter')))
+					->setValue(self::DEFAULT_DELIMITER)
+					->setFlags(CWidgetField::FLAG_NOT_EMPTY)
 			)
 			->addField(
 				(new CWidgetFieldRadioButtonList('show_column_header', _('Show column header'), [

@@ -80,6 +80,17 @@ $form
 			->addRowClass('field_item_group_by')
 	)
 	->addField(
+		(new CWidgetFieldTextBoxView($data['fields']['grouping_delimiter']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Allows for customizing the Item grouping delimiter.'), BR(),
+					_('By default, the delimiter is \' / \' of nothing is specified here.')
+				])
+			)
+			->setWidth(ZBX_TEXTAREA_SMALL_WIDTH)
+			->addRowClass('field_grouping_delimiter')
+	)
+	->addField(
 		new CWidgetFieldRadioButtonListView($data['fields']['problems'])
 	)
 	->addField(
