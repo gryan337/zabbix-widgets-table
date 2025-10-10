@@ -592,7 +592,7 @@ function topBottomNColPerPattern($data) {
 	}
 
 	if ($data['host_order_by'] === WidgetForm::ORDERBY_ITEM_VALUE) {
-		$patterns = WidgetView::castWildcards($data['host_order_item']);
+		$patterns = WidgetViewTableRme::castWildcards($data['host_order_item']);
 		$column_names = [];
 		$column_keys = [];
 		foreach ($groupedRows as $column) {
@@ -614,7 +614,7 @@ function topBottomNColPerPattern($data) {
 			if (strpos($pattern, 'key\\=') === 0) {
 				$regex = '/^' . substr($regex, 7);
 				$pattern = substr($pattern, 5);
-				foreach ($column_keys as $index => $column_key) {
+				foreach ($column_keys as $column_index => $keys) {
 					foreach ($keys as $key) {
 						if ($key === $pattern || preg_match($regex, $key)) {
 							$ordering_column_options[] = [$column_index, $key];
@@ -623,7 +623,7 @@ function topBottomNColPerPattern($data) {
 				}
 			}
 			else {
-				foreach ($column_names as $index => $column_name) {
+				foreach ($column_names as $column_index => $names) {
 					foreach ($names as $name) {
 						if ($name === $pattern || preg_match($regex, $name)) {
 							$ordering_column_options[] = [$column_index, $name];
