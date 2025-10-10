@@ -564,7 +564,7 @@ class CWidgetTableModuleRME extends CWidget {
 				lastCheckedCheckbox = null;
 				if ((this.#selected_items.length > 0 && this.#selected_items[0].itemid !== this.#null_id) ||
 						(this.#selected_hostid !== this.#null_id && this.#selected_hostid !== null)) {
-					this.#clearFiltersClickedWithSelections = true
+					this.#clearFiltersClickedWithSelections = true;
 					this.#selected_items = [{ itemid: this.#null_id, name: null }];
 					this.#selected_hostid = this.#null_id;
 				}
@@ -1150,8 +1150,6 @@ class CWidgetTableModuleRME extends CWidget {
 		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
 		this.#filterSelectedItems();
 
-		const selectedItemsAfter = [...this.#selected_items];
-
 		if (selectedItemsBefore.length > 0 && this.#selected_items.length === 0) {
 			this.#selected_items = [{ itemid: this.#null_id, name: null }];
 		}
@@ -1674,7 +1672,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		const isItemSelected = (dataset) => {
 			return this.#selected_items.some(item =>
-				item.itemid === dataset.itemid || item.name === dataset.name
+				item.itemid === dataset.itemid && item.name === dataset.name
 			);
 		};
 

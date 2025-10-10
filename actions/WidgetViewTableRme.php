@@ -320,7 +320,8 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'row_reset' => $this->fields_values['reset_row'],
 			'footer' => $this->fields_values['footer'],
 			'num_hosts' => [],
-			'bar_gauge_layout' => $this->fields_values['bar_gauge_layout']
+			'bar_gauge_layout' => $this->fields_values['bar_gauge_layout'],
+			'delimiter' => $this->fields_values['grouping_delimiter']
 		];
 		
 		if (!$this->isTemplateDashboard() &&
@@ -362,17 +363,19 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 	}
 	
 	private function computeNameForPerColumn(array $tags, array $groupings): string {
+		$delimiter = $this->fields_values['grouping_delimiter'];
+		$delimiter_length = mb_strlen($delimiter, 'UTF-8');
 		$name = '';
 		foreach ($groupings as $i => $attrs) {
 			$tag = $attrs['tag_name'];
 			foreach ($tags as $tag_index => $values) {
 				if ($values['tag'] == $tag) {
-					$name .= $values['value'] . ' / ';
+					$name .= $values['value'] . $delimiter;
 					break;
 				}
 			}
 		}
-		$name = substr($name, 0, -3);
+		$name = substr($name, 0, -$delimiter_length);
 		return $name;
 	}
 

@@ -74,6 +74,14 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 			}
 		}
 
+		for (const grouping_delimiter of this.#form.querySelectorAll('.field_grouping_delimiter')) {
+			grouping_delimiter.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of grouping_delimiter.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
+				input.setAttribute('data-no-trim', '1');
+			}
+		}
+
 		for (const aggregate_all_field of this.#form.querySelectorAll('.field_aggregate_all_hosts')) {
 			aggregate_all_field.style.display = !column_per_pattern ? 'none' : '';
 			for (const input of aggregate_all_field.querySelectorAll('input')) {

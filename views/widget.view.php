@@ -398,7 +398,7 @@ else {
 					$dmt['name'] = $cell[Widget::CELL_METADATA]['grouping_name'];
 					$tags = [];
 					foreach ($data['item_grouping'] as $index => $grouping) {
-						$grouping_name_parts = explode(' / ', $cell[Widget::CELL_METADATA]['grouping_name']);
+						$grouping_name_parts = explode($data['delimiter'], $cell[Widget::CELL_METADATA]['grouping_name']);
 						$tag_value = $grouping_name_parts[$index] ?? '';
 						$tags[] = ['tag' => $grouping['tag_name'], 'value' => $tag_value];
 					}
