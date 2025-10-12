@@ -22,6 +22,8 @@ if ($data['error'] !== null) {
 }
 else {
 	$header = [];
+	$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
+	$host_header = empty($data['host_header']) ? 'Host' : $data['host_header'];
 
 	$class = '';
 	foreach ($data['configuration'] as $config) {
@@ -33,7 +35,6 @@ else {
 	}
 
 	if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL) {
-		$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
 		$header[] = new CColHeader(_($item_header));
 
 		foreach ($data['rows'][0] as $cell) {
@@ -49,7 +50,7 @@ else {
 		}
 	}
 	elseif ($data['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
-		$header[] = new CColHeader(_('Hosts'));
+		$header[] = new CColHeader(_($host_header));
 
 		foreach ($data['rows'][0] as $cell) {
 			['name' => $title, 'is_view_value_in_column' => $is_view_value] = $cell[Widget::CELL_METADATA];
@@ -62,9 +63,8 @@ else {
 		}
 	}
 	elseif ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
-		$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
 		$header[] = new CColHeader(_($item_header));
-		$header[] = new CColHeader(_('Host'));
+		$header[] = new CColHeader(_($host_header));
 		$is_view_value = false;
 		foreach ($data['rows'] as $index => $values) {
 			if ($is_view_value) {
@@ -92,12 +92,11 @@ else {
 			: false;
 
 		if (!$groupby_host) {
-			$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
 			$header[] = new CColHeader(_($item_header));
 		}
 
 		if (count($data['num_hosts']) > 1 || $groupby_host) {
-			$header[] = new CColHeader(_('Host'));
+			$header[] = new CColHeader(_($host_header));
 		}
 
 		$is_view_value = [];
@@ -995,6 +994,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$column_index];
 	$color = $column['base_color'];
+	$font_color = $column['font_color'];
 
 	$value_cell = (new CCol(new CDiv($formatted_value)))
 		->setAttribute('units', $units)
@@ -1020,6 +1020,18 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 		$value_cell->setHint((new CDiv($value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
 	}
 
+	$styles = [];
+	if ($color !== '') {
+		$styles[] = 'background-color: #' . $color;
+	}
+
+	if ($font_color !== '') {
+		$styles[] = 'color: #' . $font_color;
+	}
+
+	$styles[] = 'text-align: center';
+	$style = implode('; ', $styles);
+
 	switch ($column['display']) {
 		case CWidgetFieldColumnsList::DISPLAY_AS_IS:
 			if ($column['thresholds']) {
@@ -1037,8 +1049,6 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				}
 			}
 
-			$style = $color !== '' ? 'background-color: #'.$color : null;
-			$style .= '; text-align: center';
 			$value_cell->addStyle($style);
 
 			if (!$is_view_value) {
@@ -1057,8 +1067,6 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				}
 			}
 
-			$style = $color !== '' ? 'background-color: #'.$color : null;
-			$style .= ';text-align: center';
 			$value_cell->addStyle($style);
 			$sparkline_value = $cell[Widget::CELL_SPARKLINE_VALUE] ?? [];
 			$sparkline = (new CSparkline())
@@ -1081,7 +1089,8 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 
 		case CWidgetFieldColumnsList::DISPLAY_INDICATORS:
 		case CWidgetFieldColumnsList::DISPLAY_BAR:
-			$style = 'text-align: center';
+			$style = 'text-align: center; ';
+			$style .= $font_color !== '' ? 'color: #'.$font_color : null;
 			$value_cell->addStyle($style);
 
 			switch ($data['layout']) {
@@ -1171,6 +1180,7 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
 	$color = $column['base_color'];
+	$font_color = $column['font_color'];
 	$item = $data['db_items'][$itemid];
 	$item['units'] = array_key_exists('units', $cell[Widget::CELL_METADATA])
 		? $cell[Widget::CELL_METADATA]['units']
@@ -1221,8 +1231,9 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 	}
 	else {
 		$dmp['itemid'] = $cell[Widget::CELL_ITEMID];
-	}			
+	}
 
+#	$style = $font_color !== '' ? 'color: #'.$color : null;
 	return (new CSpan($formatted_value))
 		->addStyle('text-decoration-line: underline; text-decoration-style: dotted;')
 		->setAttribute('data-menu', json_encode($dmp));
@@ -1234,7 +1245,8 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
 	$item = $data['db_items'][$itemid];
 
-	$color = '';
+	$color = $column['base_color'];
+	$font_color = $column['font_color'];
 	if (array_key_exists('highlights', $column)) {
 		foreach ($column['highlights'] as $highlight) {
 			if (@preg_match('('.$highlight['pattern'].')', $value)) {
@@ -1244,16 +1256,41 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 		}
 	}
 
-	$style = $color !== '' ? 'background-color: #'.$color : null;
-	$style .= '; text-align: center';
+	$styles = [];
+	if ($color !== '') {
+		$styles[] = 'background-color: #' . $color;
+	}
+
+	if ($font_color !== '') {
+		$styles[] = 'color: #' . $font_color;
+	}
+
+	$styles[] = 'text-align: center';
+	$style = implode('; ', $styles);
+
 	$value_cell = (new CCol(new CDiv($formatted_value)))
 		->addStyle($style)
 		->setAttribute('units', $units)
-		->addClass(ZBX_STYLE_CURSOR_POINTER)
 		->addClass(ZBX_STYLE_NOWRAP);
 
 	if ($value !== '') {
 		$value_cell->setHint((new CDiv($value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
+	}
+
+	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
+		if ($column['column_agg_method'] !== AGGREGATE_NONE) {
+			if (!$column['include_itemids']) {
+			}
+			else {
+				$value_cell->addClass(ZBX_STYLE_CURSOR_POINTER);
+			}
+		}
+		else {
+			$value_cell->addClass(ZBX_STYLE_CURSOR_POINTER);
+		}
+	}
+	else {
+		$value_cell->addClass(ZBX_STYLE_CURSOR_POINTER);
 	}
 
 	if ($is_view_value) {
@@ -1268,6 +1305,20 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
+	$color = $column['base_color'];
+	$font_color = $column['font_color'];
+
+	$styles = [];
+	if ($color !== '') {
+		$styles[] = 'background-color: #' . $color;
+	}
+
+	if ($font_color !== '') {
+		$style_link = 'color: #' . $font_color;
+	}
+
+	$styles[] = 'text-align: center';
+	$style = implode('; ', $styles);
 
 	if ($column['url_display_mode'] == CWidgetFieldColumnsList::URL_DISPLAY_CUSTOM &&
 			$column['url_display_override'] != '' &&
@@ -1285,11 +1336,13 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 		$link = (new CLink($value, (new CUrl($value))));
 	}
 
+	$link->addStyle($style_link);
+
 	if ($column['url_open_in'] == 1) {
 		$link->setTarget('_blank');
 	}
 
-	$col = (new CCol($link))->addStyle('text-align: center;');
+	$col = (new CCol($link))->addStyle($style);
 
 	return [$col];
 

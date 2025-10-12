@@ -159,6 +159,9 @@ class WidgetForm extends CWidgetForm {
 				new CWidgetFieldTextBox('item_header', _('Item header name'))
 			)
 			->addField(
+				new CWidgetFieldTextBox('host_header', _('Host header name'))
+			)
+			->addField(
 				new CWidgetFieldTextBox('reset_row', _('Add reset row'))
 			)
 			->addField(
