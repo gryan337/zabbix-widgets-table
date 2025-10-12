@@ -111,6 +111,16 @@ $form_grid->addItem([
 	)
 ]);
 
+// Font color.
+$form_grid->addItem([
+	new CLabel(_('Font color'), 'lbl_font_color'),
+	new CFormField(
+		(new CColorPicker('font_color'))
+			->setColor($data['font_color'])
+			->allowEmpty()
+	)
+]);
+
 // Display value as.
 $form_grid->addItem([
 	new CLabel(_('Display value as'), 'display_value_as'),

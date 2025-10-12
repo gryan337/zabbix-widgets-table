@@ -157,7 +157,15 @@ $form
 		(new CWidgetFieldTextBoxView($data['fields']['item_header']))
 			->setFieldHint(
 				makeHelpIcon([
-					_('Changes the header name from the default of \'Items\' to this value when using Vertical layout')
+					_('Changes the header name from the default of \'Items\' to this value when using all layouts except Horizontal')
+				])
+			)
+	)
+	->addField(
+		(new CWidgetFieldTextBoxView($data['fields']['host_header']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Changes the header name from the default of \'Host\' to this value when using all layouts except Vertical')
 				])
 			)
 	)
