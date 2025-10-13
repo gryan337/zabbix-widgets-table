@@ -1313,6 +1313,7 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 		$styles[] = 'background-color: #' . $color;
 	}
 
+	$style_link = null;
 	if ($font_color !== '') {
 		$style_link = 'color: #' . $font_color;
 	}
@@ -1336,7 +1337,9 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 		$link = (new CLink($value, (new CUrl($value))));
 	}
 
-	$link->addStyle($style_link);
+	if ($style_link) {
+		$link->addStyle($style_link);
+	}
 
 	if ($column['url_open_in'] == 1) {
 		$link->setTarget('_blank');
