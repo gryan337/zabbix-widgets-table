@@ -1021,17 +1021,13 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 		$value_cell->setHint((new CDiv($value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
 	}
 
-	$styles = [];
-	if ($color !== '') {
-		$styles[] = 'background-color: #' . $color;
-	}
+	$styles = ['background-color: #' . $color];
 
 	if ($font_color !== '') {
 		$styles[] = 'color: #' . $font_color;
 	}
 
 	$styles[] = 'text-align: center';
-	$style = implode('; ', $styles);
 
 	switch ($column['display']) {
 		case CWidgetFieldColumnsList::DISPLAY_AS_IS:
@@ -1045,11 +1041,12 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 							break;
 						}
 
-						$color = $threshold['color'];
+						$styles[] = 'background-color: #' . $threshold['color'];
 					}
 				}
 			}
 
+			$style = implode('; ', $styles);
 			$value_cell->addStyle($style);
 
 			if (!$is_view_value) {
@@ -1064,9 +1061,11 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 					if ($value < $threshold['threshold']) {
 						break;
 					}
-					$color = $threshold['color'];
+					$styles[] = 'background-color: #' . $threshold['color'];
 				}
 			}
+
+			$style = implode('; ', $styles);
 
 			$value_cell->addStyle($style);
 			$sparkline_value = $cell[Widget::CELL_SPARKLINE_VALUE] ?? [];
