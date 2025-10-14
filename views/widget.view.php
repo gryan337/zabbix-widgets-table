@@ -12,6 +12,7 @@ use Modules\TableModuleRME\Includes\{
 	CWidgetFieldColumnsList,
 	WidgetForm
 };
+use Modules\TableModuleRME\Actions\WidgetViewTableRme;
 use Modules\TableModuleRME\Widget;
 
 $table = (new CTableInfo())->addClass(ZBX_STYLE_LIST_TABLE_STICKY_HEADER);
