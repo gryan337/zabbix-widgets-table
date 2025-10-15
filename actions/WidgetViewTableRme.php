@@ -581,7 +581,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				'trends', 'key_', 'type', 'delay'
 			],
 			'selectValueMap' => ['mappings'],
-			'selectTags' => 'extend',
 			'monitored' => true,
 			'webitems' => true,
 			'searchWildcardsEnabled' => true,
@@ -592,6 +591,10 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			],
 			'preservekeys' => true
 		];
+
+		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
+			$options['selectTags'] = 'extend';
+		}
 
 		if (!$transformed_keys && !$column['items']) {
 			$options['search'][$search_field] = '*';
