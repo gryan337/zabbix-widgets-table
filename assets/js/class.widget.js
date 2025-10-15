@@ -438,7 +438,8 @@ class CWidgetTableModuleRME extends CWidget {
 						if (filterList.style.display === 'none') {
 							openList();
 							focusItem(0);
-						} else {
+						}
+						else {
 							closeList();
 						}
 						break;
@@ -1013,7 +1014,6 @@ class CWidgetTableModuleRME extends CWidget {
 		else if (this.#first_td_value_cell !== null && this._fields.autoselect_first) {
 			this.#first_td_value_cell.click();
 		}
-
 	}
 
 	onResize() {
@@ -1397,6 +1397,8 @@ class CWidgetTableModuleRME extends CWidget {
 						case 'OR':  return evaluateNode(node.left, text) || evaluateNode(node.right, text);
 						case 'NOT': return !evaluateNode(node.value, text);
 					}
+
+					return false;
 				};
 
 				try {
@@ -2175,11 +2177,12 @@ class CWidgetTableModuleRME extends CWidget {
 			row.querySelector('td[footer-row]')
 		);
 
+		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
+		
 		if (!footerRowObj) {
 			return;
 		}
 
-		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
 		const footerRow = footerRowObj.row;
 		const footerCells = Array.from(footerRow.querySelectorAll('td'));
 
@@ -2411,7 +2414,7 @@ class CWidgetTableModuleRME extends CWidget {
 					content: '';
 					position: absolute;
 					top: 0px;
-					left: 2px;
+					left: 4px;
 					width: 5px;
 					height: 9px;
 					border: solid white;
@@ -2625,15 +2628,15 @@ class CWidgetTableModuleRME extends CWidget {
 					border-radius: 3px;
 					display: none;
 					z-index: 10001;
+					max-width: 400px;
 					white-space: pre-wrap;
 					pointer-events: none;
 				}
 			`;
 			document.head.appendChild(styleColumnFilters);
 
-			var theme = jQuery('html').attr('theme');
 			const root = document.documentElement;
-			switch (theme) {
+			switch (this.#theme) {
 				case 'hc-dark':
 					root.style.setProperty('--checkbox-bg', '#000000');
 					root.style.setProperty('--input-bg', '#000000');
@@ -2643,7 +2646,6 @@ class CWidgetTableModuleRME extends CWidget {
 					root.style.setProperty('--warning-tooltip-bg', '#383838');
 					root.style.setProperty('--checkbox-border', '#9ca3af');
 					root.style.setProperty('--main-bg', '#1d1d1d');
-					root.style.setProperty('--checkbox-toggle-btn', '#455a64');
 					break;
 				case 'dark-theme':
 					root.style.setProperty('--checkbox-bg', '#1e1e1e');
@@ -2654,19 +2656,17 @@ class CWidgetTableModuleRME extends CWidget {
 					root.style.setProperty('--warning-tooltip-bg', '#383838');
 					root.style.setProperty('--checkbox-border', '#9ca3af');
 					root.style.setProperty('--main-bg', '#2a2a2a');
-					root.style.setProperty('--checkbox-toggle-btn', '#455a64');
 					break;
 				case 'hc-light':
 				case 'blue-theme':
 					root.style.setProperty('--checkbox-bg', '#ececec');
 					root.style.setProperty('--input-bg', '#ffffff');
 					root.style.setProperty('--filter-type-bg', '#ffffff');
-					root.style.setProperty('--filter-type-text', '#000000');
 					root.style.setProperty('--filter-type-bg-selected', '#ffffff');
+					root.style.setProperty('--filter-type-text', '#000000');
 					root.style.setProperty('--warning-tooltip-bg', '#ffffff');
 					root.style.setProperty('--checkbox-border', '#5a616f');
-					root.style.setProperty('--main-bg', '#fff');
-					root.style.setProperty('--checkbox-toggle-btn', '#8aa3af');
+					root.style.setProperty('--main-bg', '#ffffff');
 					break;
 			}
 		}
@@ -2735,9 +2735,8 @@ class CWidgetTableModuleRME extends CWidget {
 			`;
 			document.head.appendChild(stylePagination);
 
-			var theme = jQuery('html').attr('theme');
 			const root = document.documentElement;
-			switch (theme) {
+			switch (this.#theme) {
 				case 'dark-theme':
 					root.style.setProperty('--pagination-bg', 'var(--pagination-bg-dark)');
 					root.style.setProperty('--page-num', 'var(--page-num-dark)');
