@@ -252,7 +252,7 @@ else {
 		}
 	}
 
-	if ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_ROW || !($data['layout'] == WidgetForm::LAYOUT_THREE_COL)) {
+	if ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_ROW && !($data['layout'] == WidgetForm::LAYOUT_THREE_COL)) {
 		foreach ($data['rows'] as $row_index => $dr) {
 			foreach ($dr as $data_row) {
 				if (!$data_row) {
