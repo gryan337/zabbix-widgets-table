@@ -310,9 +310,9 @@ class CWidgetTableModuleRME extends CWidget {
 			hiddenInput.type = 'hidden';
 			filterTypeContainer.appendChild(hiddenInput);
 
-			const button = document.createElement('button');
-			button.type = 'button';
-			filterTypeContainer.appendChild(button);
+			const filterButton = document.createElement('button');
+			filterButton.type = 'button';
+			filterTypeContainer.appendChild(filterButton);
 
 			const options = [
 				{ value: 'contains', label: 'Contains', help: 'Filters items that contain the specified text.' },
@@ -329,11 +329,12 @@ class CWidgetTableModuleRME extends CWidget {
 			const initialLabel = options.find(o => o.value === initialValue)?.label || 'Contains';
 
 			hiddenInput.value = initialValue;
-			button.textContent = initialLabel;
+			filterButton.textContent = initialLabel;
 
-			const list = document.createElement('ul');
-			list.className = 'list';
-			list.style.display = 'none';
+			const filterList = document.createElement('ul');
+			filterList.className = 'list';
+			filterList.style.display = 'none';
+			filterList.tabIndex = -1;
 
 			if (this.#filterTooltipIds) {
 				this.#filterTooltipIds.forEach(id => {
@@ -352,9 +353,9 @@ class CWidgetTableModuleRME extends CWidget {
 				li.dataset.label = opt.label;
 				li.addEventListener('click', () => {
 					event.stopPropagation();
-					list.style.display = 'none';
+					filterList.style.display = 'none';
 					hiddenInput.value = li.dataset.value;
-					button.textContent = li.dataset.label;
+					filterButton.textContent = li.dataset.label;
 					searchInput.dispatchEvent(new Event('input'));
 					updateWarningIcon();
 					updateClearFiltersButton();
@@ -367,7 +368,7 @@ class CWidgetTableModuleRME extends CWidget {
 				helpIcon.textContent = '?';
 				helpIcon.dataset.help = opt.help;
 				li.appendChild(helpIcon);
-				list.appendChild(li);
+				filterList.appendChild(li);
 
 				const filterTooltipId = `${this.#values_table.id}-${this._widgetid}-${opt.label}-tooltip`;
 				const filterTooltip = document.createElement('div');
@@ -391,16 +392,109 @@ class CWidgetTableModuleRME extends CWidget {
 				});
 			});
 
-			filterTypeContainer.appendChild(list);
+			filterTypeContainer.appendChild(filterList);
 
-			button.addEventListener('click', () => {
+			filterButton.addEventListener('click', () => {
 				event.stopPropagation();
-				list.style.display = list.style.display === 'none' ? 'block' : 'none';
+				filterList.style.display = filterList.style.display === 'none' ? 'block' : 'none';
+			});
+
+			let currentIndex = -1;
+
+			filterButton.setAttribute('aria-haspopup', 'listbox');
+			filterButton.setAttribute('aria-expanded', 'false');
+			filterList.setAttribute('role', 'listbox');
+			filterList.querySelectorAll('li').forEach(li => li.setAttribute('role', 'option'));
+
+			function openList() {
+				filterList.style.display = 'block';
+				filterButton.setAttribute('aria-expanded', 'true');
+				filterList.focus();
+			}
+
+			function closeList() {
+				filterList.style.display = 'none';
+				filterButton.setAttribute('aria-expanded', 'false');
+				currentIndex = -1;
+			}
+
+			function focusItem(index) {
+				const items = filterList.querySelectorAll('li');
+				if (items.length === 0) return;
+				items.forEach(li => li.classList.remove('focused'));
+				if (index >= 0 && index < items.length) {
+					currentIndex = index;
+					items[currentIndex].classList.add('focused');
+					items[currentIndex].scrollIntoView({ block: 'nearest' });
+				}
+			}
+
+			filterButton.addEventListener('keydown', (e) => {
+				const items = filterList.querySelectorAll('li');
+				switch (e.key) {
+					case ' ':
+					case 'Enter':
+						e.preventDefault();
+						if (filterList.style.display === 'none') {
+							openList();
+							focusItem(0);
+						} else {
+							closeList();
+						}
+						break;
+					case 'ArrowDown':
+						e.preventDefault();
+						openList();
+						focusItem(0);
+						break;
+					case 'ArrowUp':
+						e.preventDefault();
+						openList();
+						focusItem(items.length - 1);
+						break;
+				}
+			});
+
+			filterList.addEventListener('keydown', (e) => {
+				const items = filterList.querySelectorAll('li');
+				if (items.length === 0) return;
+
+				switch (e.key) {
+					case 'ArrowDown':
+						e.preventDefault();
+						focusItem((currentIndex + 1) % items.length);
+						break;
+					case 'ArrowUp':
+						e.preventDefault();
+						focusItem((currentIndex - 1 + items.length) % items.length);
+						break;
+					case 'Enter':
+					case ' ':
+						e.preventDefault();
+						if (currentIndex >= 0) {
+							items[currentIndex].click();
+							closeList();
+							filterButton.focus();
+						}
+						break;
+					case 'Escape':
+						e.preventDefault();
+						closeList();
+						filterButton.focus();
+						break;
+					case 'Tab':
+						closeList();
+						break;
+				}
+			});
+
+			filterList.querySelectorAll('li').forEach((li, i) => {
+				li.addEventListener('mouseenter', () => focusItem(i));
 			});
 
 			this.dropdownOutsideClickHandler = (e) => {
 				if (!filterTypeContainer.contains(e.target)) {
-					list.style.display = 'none';
+					filterList.style.display = 'none';
 				}
 			};
 
@@ -454,7 +548,6 @@ class CWidgetTableModuleRME extends CWidget {
 			toggleButton.style.background = '#455a64';
 			toggleButton.style.color = '#eee';
 			toggleButton.style.fontWeight = 'bold';
-			toggleButton.className = 'toggle-button';
 
 			toggleButton.addEventListener('click', () => {
 				let valuesToCheck;
@@ -847,6 +940,8 @@ class CWidgetTableModuleRME extends CWidget {
 
 				popup.style.visibility = 'visible';
 				popup.style.display = 'flex';
+
+				requestAnimationFrame(() => searchInput.focus());
 				this._pauseUpdating();
 			});
 
@@ -2235,10 +2330,9 @@ class CWidgetTableModuleRME extends CWidget {
 				.filter-popup {
 					position: absolute;
 					z-index: 999;
-					background: #1e1e1e;
+					background: var(--checkbox-bg);
 					border: 1px solid #333;
 					box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
-					color: #e0e0e0;
 					font-family: Arial, Tahoma, Verdana, sans-serif;
 					border-radius: 4px;
 					min-width: 400px;
@@ -2256,11 +2350,10 @@ class CWidgetTableModuleRME extends CWidget {
 					gap: 6px;
 					padding: 8px;
 					border-bottom: 1px solid #333;
-					background: #2a2a2a;
+					background: var(--main-bg);
 				}
 				.filter-popup-header-title {
 					font-weight: bold;
-					color: #ccc;
 					font-size: 14px;
 					margin-bottom: 4px;
 				}
@@ -2270,8 +2363,7 @@ class CWidgetTableModuleRME extends CWidget {
 					gap: 6px;
 				}
 				.filter-popup-controls input {
-					background: #1e1e1e;
-					color: #fff;
+					background: var(--input-bg);
 					border: 1px solid #555;
 					border-radius: 3px;
 					padding: 4px 8px;
@@ -2282,7 +2374,6 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 				.filter-popup-controls .clear-btn {
 					cursor: pointer;
-					color: #aaa;
 					font-size: 11px;
 				}
 				.filter-popup-checkboxes {
@@ -2303,7 +2394,7 @@ class CWidgetTableModuleRME extends CWidget {
 					-moz-appearance: none;
 					width: 16px;
 					height: 16px;
-					border: 2px solid #9ca3af;
+					border: 2px solid var(--checkbox-border);
 					border-radius: 4px;
 					background-color: white;
 					cursor: pointer;
@@ -2319,8 +2410,8 @@ class CWidgetTableModuleRME extends CWidget {
 				.filter-popup-checkboxes input[type="checkbox"]:checked::after {
 					content: '';
 					position: absolute;
-					top: 1px;
-					left: 4px;
+					top: 0px;
+					left: 2px;
 					width: 5px;
 					height: 9px;
 					border: solid white;
@@ -2331,14 +2422,14 @@ class CWidgetTableModuleRME extends CWidget {
 				.filter-popup-footer {
 					border-top: 1px solid #333;
 					padding: 8px;
-					background: #2a2a2a;
+					background: var(--main-bg);
 					display: flex;
 					flex-direction: column;
 					gap: 6px;
 					font-size: 12px;
 				}
 				.filter-popup-footer button {
-					background: #3a8fd1;
+					background: #2c72d3;
 					color: white;
 					border: none;
 					padding: 6px 12px;
@@ -2403,8 +2494,8 @@ class CWidgetTableModuleRME extends CWidget {
 					display: block;
 				}
 				.custom-tooltip {
-					background-color: #383838;
-					color: #f2f2f2;
+					background-color: var(--warning-tooltip-bg);
+					border: 1px solid #ccc;
 					padding: 4px 8px;
 					border-radius: 3px;
 					font-size: 12px;
@@ -2415,7 +2506,7 @@ class CWidgetTableModuleRME extends CWidget {
 					border: 0.5px solid #4e4e4e;
 					border-radius: 8px;
 					padding: 8px;
-					background-color: #2b2b2b;
+					background-color: var(--main-bg);
 					display: flex;
 					flex-direction: column;
 					gap: 6px;
@@ -2424,12 +2515,6 @@ class CWidgetTableModuleRME extends CWidget {
 					display: flex;
 					justify-content: space-between;
 					align-items: center;
-				}
-				.toggle-button {
-					background-color: #455a64;
-					color: #eee;
-					font-weight: bold;
-					padding: 6px 12px;
 				}
 				.custom-select {
 					position: relative;
@@ -2450,8 +2535,8 @@ class CWidgetTableModuleRME extends CWidget {
 					white-space: pre;
 					font-size: 12px;
 					line-height: initial;
-					color: #f2f2f2;
-					background-color: #1e1e1e;
+					color: var(--filter-type-text);
+					background-color: var(--filter-type-bg);
 					border: 1px solid #4f4f4f;
 					cursor: pointer;
 					border-radius: 0;
@@ -2459,8 +2544,8 @@ class CWidgetTableModuleRME extends CWidget {
 				.custom-select > button:hover,
 				.custom-select > button:focus,
 				.custom-select > button:active {
-					color: #f2f2f2;
-					background-color: #383838;
+					color: var(--filter-type-text);
+					background-color: var(--filter-type-bg-selected);
 					border-color: #4f4f4f;
 					outline: none;
 				}
@@ -2479,7 +2564,7 @@ class CWidgetTableModuleRME extends CWidget {
 					top: 100%;
 					left: 0;
 					right: 0;
-					background-color: #1e1e1e;
+					background-color: var(--checkbox-bg);
 					border: 1px solid #4f4f4f;
 					max-height: 300px;
 					overflow-y: auto;
@@ -2492,7 +2577,7 @@ class CWidgetTableModuleRME extends CWidget {
 				.custom-select .list li {
 					padding: 4px 8px;
 					cursor: pointer;
-					color: #f2f2f2;
+					color: var(--filter-type-text);
 					position: relative;
 					display: flex;
 					justify-content: space-between;
@@ -2504,12 +2589,16 @@ class CWidgetTableModuleRME extends CWidget {
 					border-color: #4f4f4f;
 					color: #f2f2f2;
 				}
+				.custom-select .list li.focused {
+					background-color: #007bff;
+					color: white;
+				}
 				.custom-select .list::-webkit-scrollbar {
 					width: 9px;
 				}
 				.custom-select .list::-webkit-scrollbar-thumb {
 					background-color: #383838;
-					border: 1px solid #2b2b2b;
+					border: 1px solid var(--main-bg);
 				}
 				.custom-select .list::-webkit-scrollbar-track {
 					background-color: #1f1f1f;
@@ -2541,6 +2630,45 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 			`;
 			document.head.appendChild(styleColumnFilters);
+
+			var theme = jQuery('html').attr('theme');
+			const root = document.documentElement;
+			switch (theme) {
+				case 'hc-dark':
+					root.style.setProperty('--checkbox-bg', '#000000');
+					root.style.setProperty('--input-bg', '#000000');
+					root.style.setProperty('--filter-type-bg', '#000000');
+					root.style.setProperty('--filter-type-bg-selected', '#0a0a0a');
+					root.style.setProperty('--filter-type-text', '#f2f2f2');
+					root.style.setProperty('--warning-tooltip-bg', '#383838');
+					root.style.setProperty('--checkbox-border', '#9ca3af');
+					root.style.setProperty('--main-bg', '#1d1d1d');
+					root.style.setProperty('--checkbox-toggle-btn', '#455a64');
+					break;
+				case 'dark-theme':
+					root.style.setProperty('--checkbox-bg', '#1e1e1e');
+					root.style.setProperty('--input-bg', '#1e1e1e');
+					root.style.setProperty('--filter-type-bg', '#1e1e1e');
+					root.style.setProperty('--filter-type-bg-selected', '#383838');
+					root.style.setProperty('--filter-type-text', '#f2f2f2');
+					root.style.setProperty('--warning-tooltip-bg', '#383838');
+					root.style.setProperty('--checkbox-border', '#9ca3af');
+					root.style.setProperty('--main-bg', '#2a2a2a');
+					root.style.setProperty('--checkbox-toggle-btn', '#455a64');
+					break;
+				case 'hc-light':
+				case 'blue-theme':
+					root.style.setProperty('--checkbox-bg', '#ececec');
+					root.style.setProperty('--input-bg', '#ffffff');
+					root.style.setProperty('--filter-type-bg', '#ffffff');
+					root.style.setProperty('--filter-type-text', '#000000');
+					root.style.setProperty('--filter-type-bg-selected', '#ffffff');
+					root.style.setProperty('--warning-tooltip-bg', '#ffffff');
+					root.style.setProperty('--checkbox-border', '#5a616f');
+					root.style.setProperty('--main-bg', '#fff');
+					root.style.setProperty('--checkbox-toggle-btn', '#8aa3af');
+					break;
+			}
 		}
 	}
 
