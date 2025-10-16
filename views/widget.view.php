@@ -209,6 +209,11 @@ else {
 				}
 				$column_index = $data_row[Widget::CELL_METADATA]['column_index'];
 
+				$value = $data_row[Widget::CELL_VALUE];
+				if (!is_numeric($value)) {
+					continue;
+				}
+				
 				if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL) {
 					$column_index = 0;
 					$key = $data_row[Widget::CELL_HOSTID];
@@ -223,7 +228,6 @@ else {
 				else {
 					$key = $data_row[Widget::CELL_METADATA]['name'];
 				}
-				$value = $data_row[2];
 
 				if (!array_key_exists($column_index, $min_and_max)) {
 					$min_and_max[$column_index] = [];
@@ -260,6 +264,10 @@ else {
 				}
 
 				$value = $data_row[Widget::CELL_VALUE];
+				if (!is_numeric($value)) {
+					continue;
+				}
+				
 				if ($data['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
 					$key = $data_row[Widget::CELL_HOSTID];
 				}
