@@ -114,7 +114,6 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
 
 ## 🐞 Known Issues / Polish List
 
-- Add tooltips to column filter dropdowns.  
 - More dropdown filter options.  
 - Code cleanup (reduce JS reliance, move logic to PHP + CSS).  
 - Expand documentation.  
