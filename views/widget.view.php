@@ -364,8 +364,8 @@ else {
 				}
 			}
 
-                        ['name' => $title] = $data_row[0][Widget::CELL_METADATA];
-                        $table_row[] = new CCol($title);
+            ['name' => $title] = $data_row[0][Widget::CELL_METADATA];
+        	$table_row[] = new CCol($title);
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
 			if ($data['footer']) {
