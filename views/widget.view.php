@@ -1049,6 +1049,13 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 							break;
 						}
 
+						foreach ($styles as $key => $style) {
+							if (strpos($style, 'background-color:') === 0) {
+								unset($styles[$key]);
+								break;
+							}
+						}
+
 						$styles[] = 'background-color: #' . $threshold['color'];
 					}
 				}
@@ -1069,6 +1076,14 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 					if ($value < $threshold['threshold']) {
 						break;
 					}
+
+					foreach ($styles as $key => $style) {
+						if (strpos($style, 'background-color:') === 0) {
+							unset($styles[$key]);
+							break;
+						}
+					}
+					
 					$styles[] = 'background-color: #' . $threshold['color'];
 				}
 			}
