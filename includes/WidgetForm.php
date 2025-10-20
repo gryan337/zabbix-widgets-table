@@ -59,6 +59,10 @@ class WidgetForm extends CWidgetForm {
 	public const BAR_GAUGE_LAYOUT_COLUMN = 0;
 	public const BAR_GAUGE_LAYOUT_ROW = 1;
 
+	public const BAR_GAUGE_TOOLTIP_MAX = 0;
+	public const BAR_GAUGE_TOOLTIP_SUM = 1;
+	public const BAR_GAUGE_TOOLTIP_RAW = 2;
+
 	public const DEFAULT_DELIMITER = ' / ';
 
 	public function addFields(): self {
@@ -134,6 +138,13 @@ class WidgetForm extends CWidgetForm {
 					self::BAR_GAUGE_LAYOUT_COLUMN => _('Column'),
 					self::BAR_GAUGE_LAYOUT_ROW => _('Row')
 				]))->setDefault(self::BAR_GAUGE_LAYOUT_COLUMN)
+			)
+			->addField(
+				(new CWidgetFieldRadioButtonList('bar_gauge_tooltip', _('Bar gauge tooltip'), [
+					self::BAR_GAUGE_TOOLTIP_MAX => _('Max'),
+					self::BAR_GAUGE_TOOLTIP_SUM => _('Sum'),
+					self::BAR_GAUGE_TOOLTIP_RAW => _('Raw')
+				]))->setDefault(self::BAR_GAUGE_TOOLTIP_MAX)
 			)
 			->addField(
 				new CWidgetFieldCheckBox('no_broadcast_hostid', _('Disallow host broadcasting'))

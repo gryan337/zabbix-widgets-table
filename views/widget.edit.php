@@ -105,6 +105,16 @@ $form
 			)
 	)
 	->addField(
+		(new CWidgetFieldRadioButtonListView($data['fields']['bar_gauge_tooltip']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('When hovering over a bar gauge in the table it will show what the corresponding value cell\'s proportion is as a percentage.'), BR(),
+					_('The default is to show the ratio to the max value. However, by choosing \'Sum\' you can show what the corresponding value cell\'s proportion is to the sum of all value cells, or you can show the raw value.'), BR(),
+					_('NOTE: The proportion shown will use the choice from \'Bar gauge layout\' above')
+				])
+			)
+	)
+	->addField(
 		(new CWidgetFieldCheckBoxView($data['fields']['no_broadcast_hostid']))
 			->setFieldHint(
 				makeHelpIcon([
