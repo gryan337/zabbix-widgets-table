@@ -61,7 +61,7 @@ class WidgetForm extends CWidgetForm {
 
 	public const BAR_GAUGE_TOOLTIP_MAX = 0;
 	public const BAR_GAUGE_TOOLTIP_SUM = 1;
-	public const BAR_GAUGE_TOOLTIP_RAW = 2;
+	public const BAR_GAUGE_TOOLTIP_NONE = 2;
 
 	public const DEFAULT_DELIMITER = ' / ';
 
@@ -143,7 +143,7 @@ class WidgetForm extends CWidgetForm {
 				(new CWidgetFieldRadioButtonList('bar_gauge_tooltip', _('Bar gauge tooltip'), [
 					self::BAR_GAUGE_TOOLTIP_MAX => _('Max'),
 					self::BAR_GAUGE_TOOLTIP_SUM => _('Sum'),
-					self::BAR_GAUGE_TOOLTIP_RAW => _('Raw')
+					self::BAR_GAUGE_TOOLTIP_NONE => _('None')
 				]))->setDefault(self::BAR_GAUGE_TOOLTIP_MAX)
 			)
 			->addField(
