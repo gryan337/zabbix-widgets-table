@@ -109,7 +109,7 @@ $form
 			->setFieldHint(
 				makeHelpIcon([
 					_('When hovering over a bar gauge in the table it will show what the corresponding value cell\'s proportion is as a percentage.'), BR(),
-					_('The default is to show the ratio to the max value. However, by choosing \'Sum\' you can show what the corresponding value cell\'s proportion is to the sum of all value cells, or you can show the raw value.'), BR(),
+					_('The default is to show the ratio to the max value. However, by choosing \'Sum\' you can show what the corresponding value cell\'s proportion is to the sum of all value cells, or you can show no tooltip.'), BR(),
 					_('NOTE: The proportion shown will use the choice from \'Bar gauge layout\' above')
 				])
 			)
