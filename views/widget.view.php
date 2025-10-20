@@ -1176,20 +1176,33 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			}
 
 			if ($data['bar_gauge_tooltip'] === WidgetForm::BAR_GAUGE_TOOLTIP_MAX) {
-				$temp_value = $value / $columnar_max * 100;
+				if ($columnar_max != 0) {
+					$temp_value = $value / $columnar_max * 100;
+				}
+				else {
+					$temp_value = 0;
+				}
 				$tooltip_value = number_format($temp_value, 3, '.', '') . ' % of ' . $str_word . ' max';
 			}
 			else if ($data['bar_gauge_tooltip'] === WidgetForm::BAR_GAUGE_TOOLTIP_SUM) {
-				$temp_value = $value / $columnar_sum * 100;
+				if ($columnar_sum != 0) {
+					$temp_value = $value / $columnar_sum * 100;
+				}
+				else {
+					$temp_value = 0;
+				}
 				$tooltip_value = number_format($temp_value, 3, '.', '') . ' % of ' . $str_word . ' sum';;
 			}
 			else {
-				$tooltip_value = $value;
+				$tooltip_value = null;
 			}
 
 			$bar_gauge_cell = (new CCol($bar_gauge))
-				->setAttribute('column-id', $column_index)
-				->setHint((new CDiv($tooltip_value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100);
+				->setAttribute('column-id', $column_index);
+
+			if ($tooltip_value !== null) {
+				$bar_gauge_cell->setHint((new CDiv($tooltip_value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100);
+			}
 
 			if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
 				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
