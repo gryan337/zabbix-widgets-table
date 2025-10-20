@@ -1288,7 +1288,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 					const bgValue = parseFloat(gauge.getAttribute('value'));
 
-					let newTooltipValue = bgValue;
+					let newTooltipValue = null;
 					let hintStrValue = '';
 					let formatted = newTooltipValue;
 					if (this._fields.bar_gauge_tooltip === 0) {
@@ -1302,9 +1302,11 @@ class CWidgetTableModuleRME extends CWidget {
 						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
 					}
 
-					const oldHint = td.getAttribute('data-hintbox-contents');
-					const newHint = oldHint.replace(/>.*?</, `>${formatted}<`);
-					td.setAttribute('data-hintbox-contents', newHint);
+					if (formatted !== null) {
+						const oldHint = td.getAttribute('data-hintbox-contents');
+						const newHint = oldHint.replace(/>.*?</, `>${formatted}<`);
+						td.setAttribute('data-hintbox-contents', newHint);
+					}
 
 					gauge.setAttribute('min', min);
 					gauge.setAttribute('max', max);
