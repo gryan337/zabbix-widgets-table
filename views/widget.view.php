@@ -190,8 +190,8 @@ else {
 		}
 	}
 
-	global $min_and_max;
-	$min_and_max = [];
+	global $min_max_sum;
+	$min_max_sum = [];
 	$three_column_layout = [];
 
 	if ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_COLUMN || $data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
@@ -229,20 +229,21 @@ else {
 					$key = $data_row[Widget::CELL_METADATA]['name'];
 				}
 
-				if (!array_key_exists($column_index, $min_and_max)) {
-					$min_and_max[$column_index] = [];
+				if (!array_key_exists($column_index, $min_max_sum)) {
+					$min_max_sum[$column_index] = [];
 				}
 
-				if (array_key_exists($key, $min_and_max[$column_index])) {
-					$min_and_max[$column_index][$key]['min'] = $value < $min_and_max[$column_index][$key]['min']
+				if (array_key_exists($key, $min_max_sum[$column_index])) {
+					$min_max_sum[$column_index][$key]['min'] = $value < $min_max_sum[$column_index][$key]['min']
 						? $value
-						: $min_and_max[$column_index][$key]['min'];
-					$min_and_max[$column_index][$key]['max'] = $value > $min_and_max[$column_index][$key]['max']
+						: $min_max_sum[$column_index][$key]['min'];
+					$min_max_sum[$column_index][$key]['max'] = $value > $min_max_sum[$column_index][$key]['max']
 						? $value
-						: $min_and_max[$column_index][$key]['max'];
+						: $min_max_sum[$column_index][$key]['max'];
+					$min_max_sum[$column_index][$key]['sum'] += $value;
 				}
 				else {
-					$min_and_max[$column_index][$key] = ['min' => $value, 'max' => $value];
+					$min_max_sum[$column_index][$key] = ['min' => $value, 'max' => $value, 'sum' => $value];
 				}
 			}
 		}
@@ -275,16 +276,17 @@ else {
 					$key = $data_row[Widget::CELL_METADATA]['name'];
 				}
 
-				if (array_key_exists($key, $min_and_max)) {
-					$min_and_max[$key]['min'] = $value < $min_and_max[$key]['min']
+				if (array_key_exists($key, $min_max_sum)) {
+					$min_max_sum[$key]['min'] = $value < $min_max_sum[$key]['min']
 						? $value
-						: $min_and_max[$key]['min'];
-					$min_and_max[$key]['max'] = $value > $min_and_max[$key]['max']
+						: $min_max_sum[$key]['min'];
+					$min_max_sum[$key]['max'] = $value > $min_max_sum[$key]['max']
 						? $value
-						: $min_and_max[$key]['max'];
+						: $min_max_sum[$key]['max'];
+					$min_max_sum[$key]['sum'] += $value;
 				}
 				else {
-					$min_and_max[$key] = ['min' => $value, 'max' => $value];
+					$min_max_sum[$key] = ['min' => $value, 'max' => $value, 'sum' => $value];
 				}
 			}
 		}
@@ -996,7 +998,7 @@ function makeTableCellViews(array $cell, array $data): array {
 }
 
 function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
-	global $min_and_max;
+	global $min_max_sum;
 	$column_index = $cell[Widget::CELL_METADATA]['column_index'];
 	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
 	$item = $data['db_items'][$itemid];
@@ -1144,10 +1146,11 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 
 			$columnar_min = $column['original_min'] !== ''
 				? $column['min']
-				: determineColumnarValue($min_and_max, $column_index, $key, 'min', $column['min'], $data);
+				: determineColumnarValue($min_max_sum, $column_index, $key, 'min', $column['min'], $data);
 			$columnar_max = $column['original_max'] !== ''
 				? $column['max']
-				: determineColumnarValue($min_and_max, $column_index, $key, 'max', $column['max'], $data);
+				: determineColumnarValue($min_max_sum, $column_index, $key, 'max', $column['max'], $data);
+			$columnar_sum = determineColumnarValue($min_max_sum, $column_index, $key, 'sum', 0, $data);
 
 			$value_cell->setHint((new CDiv($value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
 
@@ -1167,32 +1170,45 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				}
 			}
 
+			$str_word = 'column';
+			if ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_ROW) {
+				$str_word = 'row';
+			}
+
+			if ($data['bar_gauge_tooltip'] === WidgetForm::BAR_GAUGE_TOOLTIP_MAX) {
+				$temp_value = $value / $columnar_max * 100;
+				$tooltip_value = number_format($temp_value, 3, '.', '') . ' % of ' . $str_word . ' max';
+			}
+			else if ($data['bar_gauge_tooltip'] === WidgetForm::BAR_GAUGE_TOOLTIP_SUM) {
+				$temp_value = $value / $columnar_sum * 100;
+				$tooltip_value = number_format($temp_value, 3, '.', '') . ' % of ' . $str_word . ' sum';;
+			}
+			else {
+				$tooltip_value = $value;
+			}
+
+			$bar_gauge_cell = (new CCol($bar_gauge))
+				->setAttribute('column-id', $column_index)
+				->setHint((new CDiv($tooltip_value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100);
+
 			if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
 				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
 					if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
-						return [
-							(new CCol($bar_gauge))
-								->setAttribute('column-id', $column_index),
-							$value_cell
-						];
+						return [$bar_gauge_cell, $value_cell];
 					}
 				}
 			}
-			return [
-				(new CCol($bar_gauge))
-					->addClass(ZBX_STYLE_CURSOR_POINTER)
-					->setAttribute('column-id', $column_index),
-				$value_cell
-			];
+
+			return [$bar_gauge_cell->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
 	}
 }
 
-function determineColumnarValue($min_and_max, $column_index, $key, $type, $default, $data) {
+function determineColumnarValue($min_max_sum, $column_index, $key, $type, $default, $data) {
 	if ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_COLUMN || $data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
-		return $min_and_max[$column_index][$key][$type] ?? $default;
+		return $min_max_sum[$column_index][$key][$type] ?? $default;
 	}
 	elseif ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_ROW && $data['layout'] !== WidgetForm::LAYOUT_THREE_COL) {
-		return $min_and_max[$key][$type] ?? $default;
+		return $min_max_sum[$key][$type] ?? $default;
 	}
 	return $default;
 }

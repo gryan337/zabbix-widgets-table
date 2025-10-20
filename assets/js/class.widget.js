@@ -1162,14 +1162,15 @@ class CWidgetTableModuleRME extends CWidget {
 			return { indexNum, columnDef };
 		}
 
-		function resolveMinMax(columnDef, dynamicStats, indexNum) {
+		function resolveMinMaxSum(columnDef, dynamicStats, indexNum) {
 			const staticMin = columnDef.min !== undefined && columnDef.min !== '' ? parseFloat(columnDef.min) : null;
 			const staticMax = columnDef.max !== undefined && columnDef.max !== '' ? parseFloat(columnDef.max) : null;
 
 			const min = staticMin !== null ? staticMin : dynamicStats[indexNum]?.min;
 			const max = staticMax !== null ? staticMax : dynamicStats[indexNum]?.max;
+			const sum = dynamicStats[indexNum]?.sum;
 
-			return { min, max };
+			return { min, max, sum };
 		}
 
 		if (!this.#filterState) return;
@@ -1223,17 +1224,26 @@ class CWidgetTableModuleRME extends CWidget {
 
 						const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
 						const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
-						if (hasStaticMin && hasStaticMax) return;
 
 						if (!this._isNumeric(gauge.value)) return;
 						const value = parseFloat(gauge.value);
 
 						if (!columnStats[indexNum]) {
-							columnStats[indexNum] = { min: value, max: value };
+							columnStats[indexNum] = {
+								min: hasStaticMin ? columnDef.min : value,
+								max: hasStaticMax ? columnDef.max : value,
+								sum: value
+							};
 						}
 						else {
-							columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
-							columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
+							columnStats[indexNum].sum += value;
+							if (!hasStaticMin) {
+								columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
+							}
+
+							if (!hasStaticMax) {
+								columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
+							}
 						}
 					});
 				}
@@ -1272,9 +1282,30 @@ class CWidgetTableModuleRME extends CWidget {
 					if (!info) return;
 
 					const { indexNum, columnDef } = info;
-					const { min, max } = resolveMinMax(columnDef, columnStats, indexNum);
+					const { min, max, sum } = resolveMinMaxSum(columnDef, columnStats, indexNum);
 
 					if (min === undefined || max === undefined) return;
+
+					const bgValue = parseFloat(gauge.getAttribute('value'));
+
+					let newTooltipValue = bgValue;
+					let hintStrValue = '';
+					let formatted = newTooltipValue;
+					if (this._fields.bar_gauge_tooltip === 0) {
+						newTooltipValue = bgValue / max * 100;
+						hintStrValue = ' % of column max';
+						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
+					}
+					else if (this._fields.bar_gauge_tooltip === 1) {
+						newTooltipValue = bgValue / sum * 100;
+						hintStrValue = ' % of column sum';
+						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
+					}
+
+					const oldHint = td.getAttribute('data-hintbox-contents');
+					const newHint = oldHint.replace(/>.*?</, `>${formatted}<`);
+					td.setAttribute('data-hintbox-contents', newHint);
+
 					gauge.setAttribute('min', min);
 					gauge.setAttribute('max', max);
 				});

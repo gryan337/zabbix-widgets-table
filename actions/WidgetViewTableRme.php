@@ -322,6 +322,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'footer' => $this->fields_values['footer'],
 			'num_hosts' => [],
 			'bar_gauge_layout' => $this->fields_values['bar_gauge_layout'],
+			'bar_gauge_tooltip' => $this->fields_values['bar_gauge_tooltip'],
 			'delimiter' => $this->fields_values['grouping_delimiter']
 		];
 		
