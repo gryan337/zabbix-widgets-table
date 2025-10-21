@@ -1173,6 +1173,17 @@ class CWidgetTableModuleRME extends CWidget {
 			return { min, max, sum };
 		}
 
+		function extractValueFromHintbox(hintboxContent) {
+			const match = hintboxContent.match(/<div class="hintbox-wrap">(.*?)<\/div>/);
+			if (match && match[1]) {
+				const numericValue = parseFloat(match[1]);
+				if (!isNaN(numericValue)) {
+					return numericValue;
+				}
+			}
+			return null;
+		}
+
 		if (!this.#filterState) return;
 
 		this.invalidRegex = false;
@@ -1209,13 +1220,20 @@ class CWidgetTableModuleRME extends CWidget {
 
 			rowObj.status = showRow ? 'display' : 'hidden';
 
-			if (this._fields.bar_gauge_layout === 0) {
+			if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
 				if (rowObj.status === 'display') {
 					const allTdsInRow = tr.querySelectorAll('td');
 
 					allTdsInRow.forEach((td, index) => {
-						const gauge = td.querySelector('z-bar-gauge');
-						if (!gauge) return;
+						if (this._isBarGauge(td) || this._isSparkLine(td)) return;
+						let value = null;
+
+						const hintboxContent = td.getAttribute('data-hintbox-contents');
+						if (hintboxContent) {
+							value = extractValueFromHintbox(hintboxContent);
+						}
+
+						if (value === null) return;
 
 						const info = getColumnInfo(td, columns);
 						if (!info) return;
@@ -1225,8 +1243,7 @@ class CWidgetTableModuleRME extends CWidget {
 						const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
 						const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
 
-						if (!this._isNumeric(gauge.value)) return;
-						const value = parseFloat(gauge.value);
+						if (!this._isNumeric(value)) return;
 
 						if (!columnStats[indexNum]) {
 							columnStats[indexNum] = {
@@ -1269,7 +1286,7 @@ class CWidgetTableModuleRME extends CWidget {
 			this.checkAndRemarkSelected();
 		}
 
-		if (this._fields.bar_gauge_layout === 0) {
+		if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
 			displayedRows.forEach(rowObj => {
 				const tr = rowObj.row;
 				const allTdsInRow = tr.querySelectorAll('td');
@@ -1295,11 +1312,16 @@ class CWidgetTableModuleRME extends CWidget {
 						newTooltipValue = bgValue / max * 100;
 						hintStrValue = ' % of column max';
 						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
+						gauge.setAttribute('max', max);
 					}
 					else if (this._fields.bar_gauge_tooltip === 1) {
 						newTooltipValue = bgValue / sum * 100;
 						hintStrValue = ' % of column sum';
 						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
+						gauge.setAttribute('max', sum);
+					}
+					else {
+						gauge.setAttribute('max', max);
 					}
 
 					if (formatted !== null) {
@@ -1309,7 +1331,6 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 
 					gauge.setAttribute('min', min);
-					gauge.setAttribute('max', max);
 				});
 			});
 		}
