@@ -1427,7 +1427,8 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 
 	if ($column['url_display_mode'] == CWidgetFieldColumnsList::URL_DISPLAY_CUSTOM &&
 			$column['url_display_override'] != '' &&
-			$column['url_display_override'] != null) {
+			$column['url_display_override'] != null &&
+	   		$value) {
 		$resolved = CMacrosResolverHelper::resolveItemBasedWidgetMacros(
 			[$itemid => [
 				'label' => $column['url_display_override'],
