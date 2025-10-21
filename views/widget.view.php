@@ -1007,8 +1007,21 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 	$color = $column['base_color'];
 	$font_color = $column['font_color'];
 
+	$column_pos = $column_index;
+	if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL && $data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_COLUMN) {
+		$subArrayKeys = array_keys($min_max_sum[0]);
+		$position = array_search($cell[Widget::CELL_HOSTID], $subArrayKeys);
+		$column_pos = $position !== false
+			? $position
+			: $column_index;
+	}
+	else if ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
+		$column_pos = 0;
+	}
+
 	$value_cell = (new CCol(new CDiv($formatted_value)))
 		->setAttribute('units', $units)
+		->setAttribute('column-id', $column_pos)
 		->addClass(ZBX_STYLE_NOWRAP);
 
 	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
@@ -1103,14 +1116,16 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				->setTimePeriodFrom($column['sparkline']['time_period']['from_ts'])
 				->setTimePeriodTo($column['sparkline']['time_period']['to_ts']);
 
+			$sparkline_cell = (new CCol($sparkline))->setAttribute('column-id', $column_pos);
+
 			if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
 				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
 					if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
-						return [new CCol($sparkline), $value_cell];
+						return [$sparkline_cell, $value_cell];
 					}
 				}
 			}
-			return [(new CCol($sparkline))->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
+			return [$sparkline_cell->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
 
 		case CWidgetFieldColumnsList::DISPLAY_INDICATORS:
 		case CWidgetFieldColumnsList::DISPLAY_BAR:
@@ -1157,8 +1172,14 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			$bar_gauge = (new CBarGauge())
 				->setValue($value)
 				->setAttribute('fill', $color !== '' ? '#' . $color : Widget::DEFAULT_FILL)
-				->setAttribute('min', $columnar_min)
-				->setAttribute('max', $columnar_max);
+				->setAttribute('min', $columnar_min);
+
+			if ($data['bar_gauge_tooltip'] === WidgetForm::BAR_GAUGE_TOOLTIP_SUM) {
+				$bar_gauge->setAttribute('max', $columnar_sum);
+			}
+			else {
+				$bar_gauge->setAttribute('max', $columnar_max);
+			}
 
 			if ($column['display'] == CWidgetFieldColumnsList::DISPLAY_BAR) {
 				$bar_gauge->setAttribute('solid', 1);
@@ -1171,7 +1192,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			}
 
 			$str_word = 'column';
-			if ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_ROW) {
+			if ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_ROW && $data['layout'] !== WidgetForm::LAYOUT_THREE_COL) {
 				$str_word = 'row';
 			}
 
@@ -1198,7 +1219,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			}
 
 			$bar_gauge_cell = (new CCol($bar_gauge))
-				->setAttribute('column-id', $column_index);
+				->setAttribute('column-id', $column_pos);
 
 			if ($tooltip_value !== null) {
 				$bar_gauge_cell->setHint((new CDiv($tooltip_value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100);
