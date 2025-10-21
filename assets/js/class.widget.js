@@ -1563,11 +1563,11 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#handleCellClick(td, event=false) {
-		if (event && event.target.closest('.menu-btn')) {
+		if (event && event.target?.closest('.menu-btn')) {
 			return;
 		}
 
-		const extBtn = event.target.closest('.ext-btn');
+		const extBtn = event.target?.closest('.ext-btn');
 		if (extBtn) {
 			const href = extBtn.getAttribute('href');
 			const target = extBtn.getAttribute('target') || '_self';
