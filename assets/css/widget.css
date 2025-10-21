@@ -71,12 +71,67 @@ div.dashboard-widget-tablemodulerme z-sparkline {
   box-shadow: 0 -5px 0 currentColor, 0 5px 0 currentColor;
 }
 
+.value-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+a.ext-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--button-color);
+  vertical-align: middle;
+  position: relative;
+  text-decoration: none;
+  border-radius: 3px;
+}
+
+a.ext-btn::before {
+  content: '';
+  display: block;
+  width: 12px;
+  height: 12px;
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24"><path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3z"/><path d="M5 5h5V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-5h-2v5H5V5z"/></svg>') center / contain no-repeat;
+  background: currentColor;
+  pointer-events: none;
+}
+
+a.ext-btn:hover {
+  background: var(--button-hover-bg, rgba(0,0,0,0.08));
+  color: var(--button-hover-color, #000);
+}
+
+a.ext-btn:active {
+  background: var(--button-active-bg, rgba(0,0,0,0.15));
+}
+
+a.ext-btn:focus-visible {
+  outline: 2px solid rgba(0,0,0,0.25);
+  outline-offset: 2px;
+}
+
+a.ext-btn::before {
+  pointer-events: none;
+}
+
+
 [theme="blue-theme"],
 [theme="hc-light"] {
   --button-color: #555;
+  --button-hover-color: #000;
 }
 
 [theme="dark-theme"],
 [theme="hc-dark"] {
   --button-color: #bbb;
+  --button-hover-color: #fff;
 }

@@ -1567,6 +1567,14 @@ class CWidgetTableModuleRME extends CWidget {
 			return;
 		}
 
+		const extBtn = event.target.closest('.ext-btn');
+		if (extBtn) {
+			const href = extBtn.getAttribute('href');
+			const target = extBtn.getAttribute('target') || '_self';
+			window.open(href, target);
+			return;
+		}
+
 		let tdClicked = td;
 		var nextTd = tdClicked.nextElementSibling;
 		var previousTd = tdClicked.previousElementSibling;
