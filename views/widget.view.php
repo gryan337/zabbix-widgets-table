@@ -1373,6 +1373,7 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 		(new CDiv([$formatted_value, $link]))
 			->addClass('value-with-icon')
 	))
+		->addStyle($style)
 		->setAttribute('units', $units)
 		->addClass(ZBX_STYLE_NOWRAP);
 
