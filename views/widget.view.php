@@ -582,6 +582,27 @@ else {
 	->addItem($table)
 	->show();
 
+function makeUrl($cell, $column) {
+	$urlItemids = array_map('trim', explode(',', $cell[Widget::CELL_ITEMID]));
+	$url = (new CUrl('history.php'))
+		->setArgument('itemids', $urlItemids)
+		->setArgument('action', 'showvalues');
+
+	if (array_key_exists('from', $column['time_period'])) {
+		$url->setArgument('from', $column['time_period']['from']);
+		$url->setArgument('to', $column['time_period']['to']);
+	}
+
+	$link = (new CLink(null, $url))
+		->addClass('ext-btn')
+		->setHint(
+			(new CDiv('Click here to show raw values'))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
+		)
+		->setTarget('_blank');
+
+	return $link;
+}
+
 function topBottomNColPerPattern($data) {
 	$allRows = [];
 	foreach ($data['rows'] as $group) {
@@ -976,7 +997,7 @@ function makeTableCellViews(array $cell, array $data): array {
 	$formatted_value = makeTableCellViewFormattedValue($cell, $data);
 	$trigger = $data['db_item_problem_triggers'][$itemid] ?? null;
 	if ($trigger !== null) {
-		return makeTableCellViewsTrigger($cell, $trigger, $formatted_value, $is_view_value, $final_unit);
+		return makeTableCellViewsTrigger($cell, $trigger, $formatted_value, $is_view_value, $final_unit, $data);
 	}
 
 	if ($column['display_value_as'] == CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC) {
@@ -1019,7 +1040,12 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 		$column_pos = 0;
 	}
 
-	$value_cell = (new CCol(new CDiv($formatted_value)))
+	$link = makeUrl($cell, $column);
+
+	$value_cell = (new CCol(
+		(new CDiv([$formatted_value, $link]))
+			->addClass('value-with-icon')
+	))
 		->setAttribute('units', $units)
 		->setAttribute('column-id', $column_pos)
 		->addClass(ZBX_STYLE_NOWRAP);
@@ -1341,8 +1367,12 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 	$styles[] = 'text-align: center';
 	$style = implode('; ', $styles);
 
-	$value_cell = (new CCol(new CDiv($formatted_value)))
-		->addStyle($style)
+	$link = makeUrl($cell, $column);
+
+	$value_cell = (new CCol(
+		(new CDiv([$formatted_value, $link]))
+			->addClass('value-with-icon')
+	))
 		->setAttribute('units', $units)
 		->addClass(ZBX_STYLE_NOWRAP);
 
@@ -1424,15 +1454,22 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 
 }
 
-function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value, bool $is_view_value, string $units): array {
+function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value, bool $is_view_value, string $units, array $data): array {
 	$value = $cell[Widget::CELL_VALUE];
+	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
+
+	$link = makeUrl($cell, $column);
 
 	if ($trigger['problem']['acknowledged'] == EVENT_ACKNOWLEDGED) {
 		$formatted_value = [$formatted_value, (new CSpan())->addClass(ZBX_ICON_CHECK)];
 	}
 
 	$class = CSeverityHelper::getStyle((int) $trigger['priority']);
-	$value_cell = (new CCol(new CDiv($formatted_value)))
+
+	$value_cell = (new CCol(
+		(new CDiv([$formatted_value, $link]))
+			->addClass('value-with-icon')
+	))
 		->addClass($class)
 		->setAttribute('units', $units)
 		->addClass(ZBX_STYLE_CURSOR_POINTER)
