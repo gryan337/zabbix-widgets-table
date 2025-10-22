@@ -229,6 +229,13 @@ window.tablemodulerme_column_edit_form = new class {
 			}
 		}
 
+		for (const element of this.#form.querySelectorAll('.js-url-custom-override')) {
+			element.style.display = url_override_show ? '' : 'none';
+
+			for (const input of element.querySelectorAll('input')) {
+				input.disabled = !url_override_show;
+			}
+		}
 
 		for (const element of this.#form.querySelectorAll('.js-url-open-in')) {
 			element.style.display = display_url ? '' : 'none';

@@ -167,6 +167,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'display' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'url_display_mode' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'url_display_override' => ZBX_WIDGET_FIELD_TYPE_STR,
+			'url_custom_override' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'url_open_in' =>ZBX_WIDGET_FIELD_TYPE_INT32,
 			'min' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'max' => ZBX_WIDGET_FIELD_TYPE_STR,
@@ -190,6 +191,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'display' => CWidgetFieldColumnsList::DISPLAY_AS_IS,
 			'url_display_mode' => CWidgetFieldColumnsList::URL_DISPLAY_AS_IS,
 			'url_display_override' => '',
+			'url_custom_override' => '',
 			'url_open_in' => 0,
 			'min' => '',
 			'max' => '',
@@ -320,6 +322,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 												'type' => API_INT32]
 			]],
 			'url_display_override'		=> ['type' => API_STRING_UTF8, 'default' => ''],
+			'url_custom_override'		=> ['type' => API_STRING_UTF8, 'default' => ''],
 			'url_open_in'			=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'history'				=> ['type' => API_INT32, 'default' => self::HISTORY_DATA_AUTO, 'in' => implode(',', [self::HISTORY_DATA_AUTO, self::HISTORY_DATA_HISTORY, self::HISTORY_DATA_TRENDS])],
 			'include_itemids'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],

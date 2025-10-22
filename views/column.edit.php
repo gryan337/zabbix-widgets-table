@@ -286,6 +286,28 @@ $form_grid->addItem([
 
 $form_grid->addItem([
 	(new CLabel([
+		_('URL customization'),
+		makeHelpIcon([
+			_('Customize the entire URL'), BR(), BR(),
+			_('Instead of displaying the metric value as a URL, you can leverage the hosts and items from the returned results to create a fully customized URL. You can also just simply enter any valid URL (i.e. https://www.zabbix.com)'), BR(), BR(),
+			_('You can also mix macros with text. Supported macros:'),
+			(new CList([
+				'{HOST.*}',
+				'{ITEM.*}',
+				'{INVENTORY.*}',
+				_('User macros'),
+			]))->addClass(ZBX_STYLE_LIST_DASHED)
+		])
+	]))->addClass('js-url-custom-override'),
+	(new CFormField(
+		(new CTextBox('url_custom_override', $data['url_custom_override'], false))
+			->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+			->setAttribute('placeholder', _('Create a fully custom URL'))
+	))->addClass('js-url-custom-override')
+]);
+
+$form_grid->addItem([
+	(new CLabel([
 		_('Open URL in new tab'),
 		makeHelpIcon([
 			_('Check this box to open the URL in a new browser tab, otherwise the link will open in the same tab')
