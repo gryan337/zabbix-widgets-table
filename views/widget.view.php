@@ -582,8 +582,10 @@ else {
 	->addItem($table)
 	->show();
 
+
 function makeUrl($cell, $column) {
 	$urlItemids = array_map('trim', explode(',', $cell[Widget::CELL_ITEMID]));
+
 	$url = (new CUrl('history.php'))
 		->setArgument('itemids', $urlItemids)
 		->setArgument('action', 'showvalues');
@@ -593,15 +595,34 @@ function makeUrl($cell, $column) {
 		$url->setArgument('to', $column['time_period']['to']);
 	}
 
-	$link = (new CLink(null, $url))
+	$svg = (new CTag('svg', true))
+		->addClass('ext-icon')
+		->setAttribute('viewBox', '0 0 24 24');
+
+	$path1 = (new CTag('path', true))
+		->setAttribute('d', 'M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3z');
+
+	$path2 = (new CTag('path', true))
+		->setAttribute('d', 'M5 5h5V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-5h-2v5H5V5z');
+
+	$svg->addItem($path1);
+	$svg->addItem($path2);
+
+	$link = (new CLink($svg, $url))
 		->addClass('ext-btn')
 		->setHint(
-			(new CDiv('Click here to show raw values'))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
+			(new CDiv('Click here to show raw values'))->addClass(ZBX_STYLE_HINTBOX_WRAP),
+			'',
+			false,
+			'',
+			100
 		)
-		->setTarget('_blank');
+		->setTarget('_blank')
+		->setAttribute('rel', 'noopener noreferrer');
 
 	return $link;
 }
+
 
 function topBottomNColPerPattern($data) {
 	$allRows = [];
