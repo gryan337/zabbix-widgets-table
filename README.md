@@ -88,16 +88,19 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
 - Sortable columns (correctly handles `B`, `bps`, `s`, `unixtime`, etc.).  
 - Automatic pagination after **75 rows**.  
 - Column filtering (first column):  
-  - Filter types: Contains, Equals, Starts/Ends with, Wildcard, Not Contains, Regex.  
+  - Filter types: Contains, Equals, Starts/Ends with, Wildcard, Not Contains, Regex, and Boolean Expression.  
   - Green funnel = filter active, Red funnel = invalid regex.  
 - Footer row with **Sum** or **Average**.  
 - Column-specific overrides for aggregations (Sum, Avg, Min, Max).  
+- Column display option of URL added to allow for items represented as URLs to be clickable.  
+- URL display option allows for complete customization of the display text and generating fully customized URLs.  
 - Customizable item headers using Zabbix macros (e.g., regex replace).  
+- Configuration control of autoselection of first host and item table cell for instant broadcasting.  
 - Reset row capability (broadcasts hostid `000000` to reset linked widgets).  
 - Support for **aggregations across multiple hosts/items**.
-- Multi-cell selection (`Ctrl` + click, `Shift` + range) → broadcasts all selected itemids.  
+- Multi-cell selection (`Ctrl` + click, `Shift` + click) → broadcasts all selected itemids.  
 - **Groupings-only mode**: Use the widget as a **dashboard filter** for other tables.  
-- **Bar gauge proportions** in rows/columns for visualizations.  
+- **Bar gauge proportions** in rows/columns as well as tooltip showing ratio to other table cells as a percentage.  
 - **Aggregate by item groupings** (not just hosts) for high-level overviews → drill down into details with clicks.
 
 ---
@@ -114,7 +117,6 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
 
 ## 🐞 Known Issues / Polish List
 
-- More dropdown filter options.  
 - Code cleanup (reduce JS reliance, move logic to PHP + CSS).  
 - Expand documentation.  
 
@@ -126,11 +128,8 @@ High-level milestones and upcoming goals.
 
 ---
 
-## 📍 September 2025
+## 📍 October 2025
 
-- [X] Multi-itemid + tag broadcasting across widgets (piechart, graph, table).  
-- [X] Multi-cell selection with **Ctrl** and **Shift** (drill-downs).  
-- [X] Bar gauges for table rows/columns (orientation control).  
 - [ ] Draggable columns in configuration UI.  
 
 ---
@@ -139,6 +138,7 @@ High-level milestones and upcoming goals.
 
 | Milestone | Status | Target |
 |-----------|--------|--------|
-| Crowd-sourced feature requests & feedback | 🔜 Upcoming | October 2025 |
+| Crowd-sourced feature requests & feedback | 🔜 Upcoming | Q4 2025 |
+| Column filtering for all columns | 🔜 Upcoming | Q4 2025 |
 
 ---
