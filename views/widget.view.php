@@ -1447,6 +1447,19 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 	$style = implode('; ', $styles);
 
 	if ($column['url_display_mode'] == CWidgetFieldColumnsList::URL_DISPLAY_CUSTOM &&
+			$column['url_custom_override'] != '' &&
+			$column['url_custom_override'] != null) {
+		$custom_url_resolved = CMacrosResolverHelper::resolveItemBasedWidgetMacros(
+			[$itemid => [
+				'label' => $column['url_custom_override'],
+				'hostid' => $hostid
+			]],
+			['label' => 'label']
+		);
+		$value = $custom_url_resolved[$itemid]['label'];
+	}
+
+	if ($column['url_display_mode'] == CWidgetFieldColumnsList::URL_DISPLAY_CUSTOM &&
 			$column['url_display_override'] != '' &&
 			$column['url_display_override'] != null &&
 			$value) {
