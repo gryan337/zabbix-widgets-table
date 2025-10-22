@@ -82,8 +82,8 @@ div.dashboard-widget-tablemodulerme z-sparkline {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   margin-left: 0px;
   padding: 0;
   border: none;
@@ -104,8 +104,8 @@ a.ext-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   margin-left: 0px;
   padding: 0;
   cursor: pointer;
@@ -117,6 +117,7 @@ a.ext-btn {
 
 a.ext-btn:hover {
   background: var(--button-hover-bg);
+  color: var(--button-hover-color);
 }
 
 a.ext-btn:active {
