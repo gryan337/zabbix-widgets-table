@@ -1050,7 +1050,9 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 	$font_color = $column['font_color'];
 
 	$column_pos = $column_index;
-	if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL && $data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_COLUMN) {
+	if ($min_max_sum &&
+			$data['layout'] == WidgetForm::LAYOUT_VERTICAL &&
+			$data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_COLUMN) {
 		$subArrayKeys = array_keys($min_max_sum[0]);
 		$position = array_search($cell[Widget::CELL_HOSTID], $subArrayKeys);
 		$column_pos = $position !== false
