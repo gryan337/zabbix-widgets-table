@@ -66,8 +66,7 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
 ## 🔮 Future Development
 
 - Continue polishing bugs and usability issues.  
-- Expand **column filtering** to all columns with more filter conditions.  
-- Add a **light mode** theme for the filtering popup.  
+- Expand **column filtering** to all columns with more filter conditions.   
 - Ongoing code cleanup (move logic from JavaScript → PHP + CSS).
 
 ---
