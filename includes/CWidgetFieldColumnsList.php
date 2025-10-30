@@ -40,6 +40,10 @@ class CWidgetFieldColumnsList extends CWidgetField {
 	public const URL_DISPLAY_AS_IS = 1;
 	public const URL_DISPLAY_CUSTOM = 2;
 
+	public const VALUEMAP_AS_IS = 0;
+	public const VALUEMAP_VALUE = 1;
+	public const VALUEMAP_MAPPING = 2;
+
 	public const SPARKLINE_DEFAULT = [
 		'width'		=> 1,
 		'fill'		=> 3,
@@ -172,6 +176,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'min' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'max' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'decimal_places' => ZBX_WIDGET_FIELD_TYPE_INT32,
+			'valuemap_override' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'aggregate_function' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'history' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'include_itemids' => ZBX_WIDGET_FIELD_TYPE_INT32
@@ -198,6 +203,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'highlights' => [],
 			'thresholds' => [],
 			'decimal_places' => CWidgetFieldColumnsList::DEFAULT_DECIMAL_PLACES,
+			'valuemap_override' => CWidgetFieldColumnsList::VALUEMAP_AS_IS,
 			'aggregate_function' => AGGREGATE_NONE,
 			'time_period' => [
 				CWidgetField::FOREIGN_REFERENCE_KEY => CWidgetField::createTypedReference(
@@ -306,6 +312,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 				'value'					=> ['type' => API_STRING_UTF8, 'length' => DB::getFieldLength('item_tag', 'value')]
 			]],
 			'aggregate_function'	=> ['type' => API_INT32, 'in' => implode(',', [AGGREGATE_NONE, AGGREGATE_MIN, AGGREGATE_MAX, AGGREGATE_AVG, AGGREGATE_COUNT, AGGREGATE_SUM, AGGREGATE_FIRST, AGGREGATE_LAST]), 'default' => AGGREGATE_NONE],
+			'valuemap_override'	=> ['type' => API_INT32, 'in' => implode(',', [self::VALUEMAP_AS_IS, self::VALUEMAP_VALUE, self::VALUEMAP_MAPPING]), 'default' => self::VALUEMAP_AS_IS],
 			'time_period'			=> ['type' => API_ANY],
 			'override_footer'		=> ['type' => API_INT32, 'in' => implode(',', [self::FOOTER_DONT_OVERRIDE, self::FOOTER_SHOW_NONE, self::FOOTER_SHOW_SUM, self::FOOTER_SHOW_AVERAGE]), 'default' => self::FOOTER_DONT_OVERRIDE],
 			'display_value_as'		=> ['type' => API_INT32, 'in' => implode(',', [self::DISPLAY_VALUE_AS_NUMERIC, self::DISPLAY_VALUE_AS_TEXT, self::DISPLAY_VALUE_AS_URL]), 'default' => self::DISPLAY_VALUE_AS_NUMERIC],
