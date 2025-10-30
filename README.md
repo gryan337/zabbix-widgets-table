@@ -90,7 +90,8 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
   - Filter types: Contains, Equals, Starts/Ends with, Wildcard, Not Contains, Regex, and Boolean Expression.  
   - Green funnel = filter active, Red funnel = invalid regex.  
 - Footer row with **Sum** or **Average**.  
-- Column-specific overrides for aggregations (Sum, Avg, Min, Max).  
+- Column-specific overrides for aggregations (Sum, Avg, Min, Max).
+- Ability to customize how value mapped values are displayed.  
 - Column display option of URL added to allow for items represented as URLs to be clickable.  
 - URL display option allows for complete customization of the display text and generating fully customized URLs.  
 - Customizable item headers using Zabbix macros (e.g., regex replace).  
