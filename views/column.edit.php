@@ -220,6 +220,29 @@ $form_grid->addItem([
 	))->addClass('js-decimals-row')
 ]);
 
+// Valuemap display override
+$form_grid->addItem([
+	(new CLabel([
+		_('Valuemap display option'),
+		makeHelpIcon([
+			_('By default, values with a value mapping will be displayed in the normal value mapping format of:'), BR(),
+			_(' \'<MAPPING> (<RAW_VALUE>)\''), BR(), BR(),
+			_('You can optionally choose to display just the MAPPING or the RAW_VALUE, however')
+		])
+	]))->addClass('js-valuemap-display'),
+	(new CFormField(
+		(new CSelect('valuemap_override'))
+			->setId('valuemap_override')
+			->setValue($data['valuemap_override'])
+			->addOptions(CSelect::createOptionsFromArray([
+				CWidgetFieldColumnsList::VALUEMAP_AS_IS => 'Display as is',
+				CWidgetFieldColumnsList::VALUEMAP_MAPPING => 'Mapping only',
+				CWidgetFieldColumnsList::VALUEMAP_VALUE => 'Value only'
+			]))
+			->setFocusableElementId('valuemap_override')
+	))->addClass('js-valuemap-display')
+]);
+
 // Highlights.
 $highlights = (new CDiv([
 	(new CTable())

@@ -47,6 +47,7 @@ class ColumnEditTableRme extends CController {
 			'url_custom_override' =>	'string',
 			'url_open_in' =>			'int32',
 			'decimal_places' =>			'string',
+			'valuemap_override' =>			'int32',
 			'aggregate_function' =>		'int32',
 			'time_period' =>			'array',
 			'history' =>				'int32',
@@ -205,6 +206,7 @@ class ColumnEditTableRme extends CController {
 				'highlights' => [],
 				'thresholds' => [],
 				'decimal_places' => CWidgetFieldColumnsList::DEFAULT_DECIMAL_PLACES,
+				'valuemap_override' => CWidgetFieldColumnsList::VALUEMAP_AS_IS,
 				'aggregate_function' => AGGREGATE_NONE,
 				'time_period' => [
 					CWidgetField::FOREIGN_REFERENCE_KEY => CWidgetField::createTypedReference(

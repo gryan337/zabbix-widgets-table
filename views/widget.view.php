@@ -1296,6 +1296,23 @@ function determineColumnarValue($min_max_sum, $column_index, $key, $type, $defau
 	return $default;
 }
 
+function handleValueMapOverrideConfig(string $input, string $mode) {
+	if (preg_match('/^(.*)\(([^()]*)\)\s*$/', $input, $matches)) {
+		switch ($mode) {
+			case CWidgetFieldColumnsList::VALUEMAP_AS_IS:
+				return $input;
+
+			case CWidgetFieldColumnsList::VALUEMAP_VALUE:
+				return trim($matches[2]);
+
+			case CWidgetFieldColumnsList::VALUEMAP_MAPPING:
+				return trim($matches[1]);
+		}
+	}
+
+	return $input;
+}
+
 function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 	$original_name = $cell[Widget::CELL_METADATA]['original_name'];
 	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
@@ -1322,6 +1339,12 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 			]
 		);
 	}
+
+	if (array_key_exists('mappings', $item['valuemap']) &&
+			!empty($item['valuemap']['mappings'])) {
+		$formatted_value = handleValueMapOverrideConfig($formatted_value, $column['valuemap_override']);
+	}
+
 
 	$is_multiple_itemids = false;
 	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
@@ -1355,7 +1378,6 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 		$dmp['itemid'] = $cell[Widget::CELL_ITEMID];
 	}
 
-#	$style = $font_color !== '' ? 'color: #'.$color : null;
 	return (new CSpan($formatted_value))
 		->addStyle('text-decoration-line: underline; text-decoration-style: dotted;')
 		->setAttribute('data-menu', json_encode($dmp));
