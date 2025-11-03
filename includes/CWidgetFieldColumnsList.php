@@ -176,6 +176,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'min' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'max' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'decimal_places' => ZBX_WIDGET_FIELD_TYPE_INT32,
+			'go_to_history_values' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'valuemap_override' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'aggregate_function' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'history' => ZBX_WIDGET_FIELD_TYPE_INT32,
@@ -203,6 +204,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'highlights' => [],
 			'thresholds' => [],
 			'decimal_places' => CWidgetFieldColumnsList::DEFAULT_DECIMAL_PLACES,
+			'go_to_history_values' => 0,
 			'valuemap_override' => CWidgetFieldColumnsList::VALUEMAP_AS_IS,
 			'aggregate_function' => AGGREGATE_NONE,
 			'time_period' => [
@@ -339,6 +341,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'min'					=> ['type' => API_NUMERIC, 'default' => ''],
 			'max'					=> ['type' => API_NUMERIC, 'default' => ''],
 			'decimal_places'		=> ['type' => API_INT32, 'in' => '0:10', 'default' => self::DEFAULT_DECIMAL_PLACES],
+			'go_to_history_values'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'highlights'			=> ['type' =>  API_OBJECTS, 'uniq' => [['pattern']], 'fields' => [
 				'color'					=> ['type' => API_COLOR, 'flags' => API_REQUIRED | API_NOT_EMPTY],
 				'pattern'				=> ['type' => API_REGEX, 'flags' => API_REQUIRED | API_NOT_EMPTY]

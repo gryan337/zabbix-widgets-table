@@ -1063,12 +1063,19 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 		$column_pos = 0;
 	}
 
-	$link = makeUrl($cell, $column);
+	if ($column['go_to_history_values']) {
+		$link = makeUrl($cell, $column);
 
-	$value_cell = (new CCol(
-		(new CDiv([$formatted_value, $link]))
-			->addClass('value-with-icon')
-	))
+		$value_cell = (new CCol(
+			(new CDiv([$formatted_value, $link]))
+				->addClass('value-with-icon')
+		));
+	}
+	else {
+		$value_cell = (new CCol(new CDiv($formatted_value)));
+	}
+
+	$value_cell
 		->setAttribute('units', $units)
 		->setAttribute('column-id', $column_pos)
 		->addClass(ZBX_STYLE_NOWRAP);
@@ -1412,12 +1419,19 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 	$styles[] = 'text-align: center';
 	$style = implode('; ', $styles);
 
-	$link = makeUrl($cell, $column);
+	if ($column['go_to_history_values']) {
+		$link = makeUrl($cell, $column);
 
-	$value_cell = (new CCol(
-		(new CDiv([$formatted_value, $link]))
-			->addClass('value-with-icon')
-	))
+		$value_cell = (new CCol(
+			(new CDiv([$formatted_value, $link]))
+				->addClass('value-with-icon')
+		));
+	}
+	else {
+		$value_cell = (new CCol(new CDiv($formatted_value)));
+	}
+
+	$value_cell
 		->addStyle($style)
 		->setAttribute('units', $units)
 		->addClass(ZBX_STYLE_NOWRAP);
@@ -1518,18 +1532,25 @@ function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
 
-	$link = makeUrl($cell, $column);
-
 	if ($trigger['problem']['acknowledged'] == EVENT_ACKNOWLEDGED) {
 		$formatted_value = [$formatted_value, (new CSpan())->addClass(ZBX_ICON_CHECK)];
 	}
 
 	$class = CSeverityHelper::getStyle((int) $trigger['priority']);
 
-	$value_cell = (new CCol(
-		(new CDiv([$formatted_value, $link]))
-			->addClass('value-with-icon')
-	))
+	if ($column['go_to_history_values']) {
+		$link = makeUrl($cell, $column);
+
+		$value_cell = (new CCol(
+			(new CDiv([$formatted_value, $link]))
+				->addClass('value-with-icon')
+		));
+	}
+	else {
+		$value_cell = (new CCol(new CDiv($formatted_value)));
+	}
+
+	$value_cell
 		->addClass($class)
 		->setAttribute('units', $units)
 		->addClass(ZBX_STYLE_CURSOR_POINTER)

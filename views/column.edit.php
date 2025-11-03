@@ -220,6 +220,20 @@ $form_grid->addItem([
 	))->addClass('js-decimals-row')
 ]);
 
+// Set if you want to add a link to take you to history values
+$form_grid->addItem([
+	(new CLabel([
+		_('Add link for history'),
+		makeHelpIcon([
+			_('Checking this box will add an external link icon to each table data cell, allowing you to see the historical values in a table')
+		])
+	]))->addClass('js-go-to-history-values'),
+	(new CFormField(
+		(new CCheckBox('go_to_history_values'))->setChecked($data['go_to_history_values'])
+	))->addClass('js-go-to-history-values')
+]);
+
+// Item patterns
 // Valuemap display override
 $form_grid->addItem([
 	(new CLabel([
