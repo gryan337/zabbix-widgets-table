@@ -105,7 +105,7 @@ class CWidgetTableModuleRME extends CWidget {
 		var colIndex = 0;
 
 		const allTds = this.#values_table.querySelectorAll('td');
-		const allThs = this.#values_table.querySelectorAll('th');
+		this.allThs = this.#values_table.querySelectorAll('th');
 
 		let id = 0;
 		allTds.forEach(td => {
@@ -142,7 +142,7 @@ class CWidgetTableModuleRME extends CWidget {
 			id++;
 		});
 
-		allThs.forEach((th) => {
+		this.allThs.forEach((th) => {
 			th.innerHTML += `<span class="new-arrow" id="arrow"></span>`;
 			th.setAttribute('style', `color: #4796c4; font-weight: bold;`);
 			th.classList.add('cursor-pointer');
@@ -191,7 +191,7 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#totalRows = this.#rowsArray.length;
 		this.#updateDisplay(false, true, true);
 
-		allThs.forEach((th) => {
+		this.allThs.forEach((th) => {
 			if (this.#th !== undefined) {
 				if (th.getAttribute('id') === this.#th.getAttribute('id')) {
 					setTimeout(() => {
@@ -999,6 +999,42 @@ class CWidgetTableModuleRME extends CWidget {
 
 	}
 
+	getActionsContextMenu({can_copy_widget, can_paste_widget}) {
+		const menu = super.getActionsContextMenu({can_copy_widget, can_paste_widget});
+
+		if (this.isEditMode()) {
+			return menu;
+		}
+
+		let menu_actions = null;
+
+		for (const search_menu_actions of menu) {
+			if ('label' in search_menu_actions && search_menu_actions.label === t('Actions')) {
+				menu_actions = search_menu_actions;
+				break;
+			}
+		}
+
+		if (menu_actions === null) {
+			menu_actions = {
+				label: t('Actions'),
+				items: []
+			};
+
+			menu.unshift(menu_actions);
+		}
+
+		menu_actions.items.push({
+			label: t('Download as csv'),
+			disabled: !this.#rowsArray,
+			clickCallback: () => {
+				this.exportTableRowsToCSV();
+			}
+		});
+
+		return menu;
+        }
+
 	checkAndRemarkSelected() {
 		if (this.#selected_hostid !== null) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
@@ -1292,7 +1328,7 @@ class CWidgetTableModuleRME extends CWidget {
 				const allTdsInRow = tr.querySelectorAll('td');
 
 				allTdsInRow.forEach((td, index) => {
-					const gauge = td.querySelector('z-bar-gauge');
+					const gauge = this._isBarGauge(td);
 					if (!gauge) return;
 
 					const info = getColumnInfo(td, columns);
@@ -2818,5 +2854,164 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
+	exportTableRowsToCSV(filename = 'export.csv') {
+		if (!this.#rowsArray || this.#rowsArray.length === 0) {
+			return;
+		}
+
+		const displayRows = this.#rowsArray
+			.filter(item => item.status === 'display')
+			.map(item => item.row);
+
+		if (displayRows.length === 0) {
+			return;
+		}
+
+		const baseHeaders = this.getHeaders();
+
+		const columnUnits = this.collectUnitsPerColumn(displayRows);
+
+		const headers = this.addUnitsToHeaders(baseHeaders, columnUnits);
+
+		const dataRows = displayRows.map(row => this.extractRowData(row).data);
+
+		const allData = [headers, ...dataRows];
+
+		const csvContent = this.arrayToCSV(allData);
+
+		this.downloadCSV(csvContent, filename);
+	}
+
+	getHeaders() {
+		const headers = [];
+
+		this.allThs.forEach(th => {
+			let headerText = '';
+
+			const clonedTh = th.cloneNode(true);
+
+			const filterIcon = clonedTh.querySelector('.filter-icon');
+			const arrow = clonedTh.querySelector('.new-arrow');
+			if (filterIcon) filterIcon.remove();
+			if (arrow) arrow.remove();
+
+			const spanWithTitle = clonedTh.querySelector('span[title]');
+			if (spanWithTitle) {
+				headerText = spanWithTitle.getAttribute('title');
+			}
+			else {
+				headerText = clonedTh.textContent.trim();
+			}
+
+			headers.push(headerText);
+		});
+
+		return headers;
+	}
+
+	extractRowData(rowElement) {
+		const data = [];
+		const units = [];
+		const cells = rowElement.querySelectorAll('td');
+
+		cells.forEach(cell => {
+			if (this._isSparkLine(cell) || this._isBarGauge(cell)) {
+				return;
+			}
+
+			let unitAttr = cell.getAttribute('units') || '';
+			if (unitAttr.startsWith('!')) {
+				unitAttr = unitAttr.substring(1);
+			}
+			units.push(unitAttr);
+
+			let value = '';
+			const hintboxContents = cell.getAttribute('data-hintbox-contents');
+
+			if (hintboxContents) {
+				const match = hintboxContents.match(/>([^<]+)</);
+				if (match && match[1]) {
+					value = match[1].trim();
+				}
+			}
+
+			if (!value) {
+				value = cell.textContent.trim();
+			}
+
+			data.push(value);
+		});
+
+		return { data, units };
+	}
+
+	collectUnitsPerColumn(displayRows) {
+		const columnUnits = [];
+
+		displayRows.forEach(row => {
+			const { units } = this.extractRowData(row);
+
+			units.forEach((unit, colIndex) => {
+				if (!columnUnits[colIndex]) {
+					columnUnits[colIndex] = new Set();
+				}
+
+				if (unit && unit !== '') {
+					columnUnits[colIndex].add(unit);
+				}
+			});
+		});
+
+		return columnUnits.map(unitSet => {
+			if (!unitSet || unitSet.size === 0) {
+				return '';
+			}
+
+			if (unitSet.size === 1) {
+				return Array.from(unitSet)[0];
+			}
+
+			return Array.from(unitSet).join(',');
+		});
+	}
+
+	addUnitsToHeaders(headers, columnUnits) {
+		return headers.map((header, index) => {
+			const unit = columnUnits[index];
+			if (unit && unit !== '') {
+				return `${header} (${unit})`;
+			}
+			return header;
+		});
+	}
+
+	downloadCSV(csvContent, filename) {
+		const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+		const link = document.createElement('a');
+
+		if (navigator.msSaveBlob) { // IE 10+
+			navigator.msSaveBlob(blob, filename);
+		}
+		else {
+			link.href = URL.createObjectURL(blob);
+			link.download = filename;
+			link.style.display = 'none';
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+		}
+	}
+
+	arrayToCSV(data) {
+		return data.map(row => {
+			return row.map(cell => {
+				const cellStr = String(cell);
+				if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+					return `"${cellStr.replace(/"/g, '""')}"`;
+				}
+				return cellStr;
+			}).join(',');
+		}).join('\n');
+	}
 
 }

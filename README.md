@@ -90,18 +90,19 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
   - Filter types: Contains, Equals, Starts/Ends with, Wildcard, Not Contains, Regex, and Boolean Expression.  
   - Green funnel = filter active, Red funnel = invalid regex.  
 - Footer row with **Sum** or **Average**.  
-- Column-specific overrides for aggregations (Sum, Avg, Min, Max).
+- Column-specific overrides for aggregations (Sum, Avg, Min, Max) that is applied per table cell.
 - Ability to customize how value mapped values are displayed.  
 - Column display option of URL added to allow for items represented as URLs to be clickable.  
 - URL display option allows for complete customization of the display text and generating fully customized URLs.  
-- Customizable item headers using Zabbix macros (e.g., regex replace).  
+- Customizable item headers using Zabbix built-in macros.  
 - Configuration control of autoselection of first host and item table cell for instant broadcasting.  
 - Reset row capability (broadcasts hostid `000000` to reset linked widgets).  
-- Support for **aggregations across multiple hosts/items**.
+- Support for **aggregations across multiple hosts/items** within a single table cell using **Aggregate all hosts** option.
 - Multi-cell selection (`Ctrl` + click, `Shift` + click) → broadcasts all selected itemids.  
 - **Groupings-only mode**: Use the widget as a **dashboard filter** for other tables.  
 - **Bar gauge proportions** in rows/columns as well as tooltip showing ratio to other table cells as a percentage.  
-- **Aggregate by item groupings** (not just hosts) for high-level overviews → drill down into details with clicks.
+- **Aggregate by item groupings** (not just hosts) for high-level overviews → drill down into details with clicks.  
+- Ability to download table data into CSV format from the actions context menu in the widget header.
 
 ---
 
@@ -128,7 +129,7 @@ High-level milestones and upcoming goals.
 
 ---
 
-## 📍 October 2025
+## 📍 Calendar year 2025
 
 - [ ] Draggable columns in configuration UI.  
 
