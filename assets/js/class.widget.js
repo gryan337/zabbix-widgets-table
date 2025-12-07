@@ -1986,6 +1986,9 @@ class CWidgetTableModuleRME extends CWidget {
 					if (this.#first_td_value_cell !== null) {
 						this.#first_td_value_cell.click();
 					}
+					else {
+						this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+					}
 				}
 				else {
 					this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
