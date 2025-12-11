@@ -1253,7 +1253,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			}
 
 			if ($data['bar_gauge_tooltip'] === WidgetForm::BAR_GAUGE_TOOLTIP_MAX) {
-				if ($columnar_max != 0) {
+				if (is_numeric($value) && is_numeric($columnar_max) && $columnar_max != 0) {
 					$temp_value = $value / $columnar_max * 100;
 				}
 				else {
@@ -1262,7 +1262,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				$tooltip_value = number_format($temp_value, 3, '.', '') . ' % of ' . $str_word . ' max';
 			}
 			else if ($data['bar_gauge_tooltip'] === WidgetForm::BAR_GAUGE_TOOLTIP_SUM) {
-				if ($columnar_sum != 0) {
+				if (is_numeric($value) && is_numeric($columnar_sum) && $columnar_sum != 0) {
 					$temp_value = $value / $columnar_sum * 100;
 				}
 				else {
