@@ -1850,7 +1850,7 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 	}
 
-	_markSelected(type) {
+	_markSelected(type, refresh = false) {
 		const tds = [];
 
 		this.#rowsArray.forEach(rowObj => {
