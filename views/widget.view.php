@@ -1524,6 +1524,10 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 
 	$col = (new CCol($link))->addStyle($style);
 
+	if ($is_view_value) {
+		return [(new CCol())->addStyle($style), $col];
+	}
+
 	return [$col];
 
 }
