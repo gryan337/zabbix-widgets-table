@@ -26,8 +26,6 @@ use Zabbix\Widgets\CWidgetField;
 
 class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
-	/** @property int $sparkline_max_samples  Limit of samples when requesting sparkline graph data for time period. */
-	protected int $sparkline_max_samples;
 	protected array $filteredItemids;
 	protected array $filteredTags;
 
@@ -75,7 +73,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		$item_cache = [];
 
 		$columns = $this->getPreparedColumns();
-		$this->sparkline_max_samples = ceil($this->getInput('contents_width') / count($columns));
 
 		$result = $this->normalizeItemFilter();
 		$this->filteredItemids = $result['filteredItemidArray'];
@@ -127,14 +124,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				$db_column_items = $new_db_column_items;
 			}
 
-			if ($column['display'] == CWidgetFieldColumnsList::DISPLAY_SPARKLINE) {
-				$config = $column + ['contents_width' => $this->sparkline_max_samples];
-				$db_sparkline_values = self::getItemSparklineValues($db_column_items, $config);
-			}
-			else {
-				$db_sparkline_values = [];
-			}
-
 			// Each column has different aggregation function and time period.
 			if ($this->fields_values['show_grouping_only']) {
 				$table = [];
@@ -143,7 +132,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 						Widget::CELL_HOSTID => $item['hostid'],
 						Widget::CELL_ITEMID => $itemid,
 						Widget::CELL_VALUE => 0,
-						Widget::CELL_SPARKLINE_VALUE => null,
 						Widget::CELL_METADATA => [
 							'name' => $item['name'],
 							'column_index' => $column['column_index'],
@@ -156,7 +144,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 			else {
 				$db_values = self::getItemValues($db_column_items, $column);
-				$table = self::makeColumnizedTable($db_column_items, $column, $db_values, $db_sparkline_values, $this->fields_values['layout']);
+				$table = self::makeColumnizedTable($db_column_items, $column, $db_values, $this->fields_values['layout']);
 				unset($db_values);
 			}
 
@@ -439,7 +427,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'font_color' => '',
 			'display_value_as' => CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC,
 			'display' => CWidgetFieldColumnsList::DISPLAY_AS_IS,
-			'sparkline' => CWidgetFieldColumnsList::SPARKLINE_DEFAULT,
 			'min' => '',
 			'max' => '',
 			'highlights' => [],
@@ -475,7 +462,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 			foreach ($this->fields_values['columns'] as $column_index => $column) {
 				$column += $default;
-				$column['sparkline'] += $default['sparkline'];
 				$column['column_index'] = $column_index;
 
 				$column['original_min'] = $column['min'];
@@ -688,55 +674,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		return $result;
 	}
 
-	/**
-	 * Return sparkline graph item values, applies data function SVG_GRAPH_MISSING_DATA_NONE on points for each item.
-	 *
-	 * @param array $items   Items required to get sparkline data for.
-	 * @param array $column  Column configuration with sparkline configuration data.
-	 *
-	 * @return array itemid as key, sparkline data array of arrays as value, itemid with no data will be not present.
-	 */
-	private static function getItemSparklineValues(array $items, array $column): array {
-		$result = [];
-		$sparkline = $column['sparkline'];
-
-		$items = self::addDataSource($items, $sparkline['time_period']['from_ts'],
-			['history' => $sparkline['history']] + $column
-		);
-
-		if (!$items) {
-			return $result;
-		}
-
-		$itemids_rows = Manager::History()->getGraphAggregationByWidth($items, $sparkline['time_period']['from_ts'],
-			$sparkline['time_period']['to_ts'], $column['contents_width']
-		);
-
-		foreach ($itemids_rows as $itemid => $rows) {
-			if (!$rows['data']) {
-				continue;
-			}
-
-			$result[$itemid] = [];
-			$points = array_column($rows['data'], 'avg', 'clock');
-			/**
-			 * Postgres may return entries in mixed 'clock' order, getMissingData for calculations
-			 * requires order by 'clock'.
-			 */
-			ksort($points);
-			$points += CSvgGraph::getMissingData($points, SVG_GRAPH_MISSING_DATA_NONE);
-			ksort($points);
-
-			foreach ($points as $ts => $value) {
-				$result[$itemid][] = [$ts, $value];
-			}
-		}
-
-		return $result;
-	}
 
 	private static function makeColumnizedTable(array $db_items, array $column, array $db_values,
-			array $db_sparkline_values, string $layout): array {
+			string $layout): array {
 		$columns_map = [];
 		foreach ($db_items as $itemid => $db_item) {
 			$value_type_group = match ((int) $db_item['value_type']) {
@@ -793,15 +733,10 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 							continue;
 						}
 
-						$sparkline_value = array_key_exists($itemid, $db_sparkline_values)
-							? $db_sparkline_values[$itemid]
-							: null;
-
 						$table[$hostid][$table_column_index] = [
 							Widget::CELL_HOSTID => $hostid,
 							Widget::CELL_ITEMID => $itemid,
 							Widget::CELL_VALUE => $value,
-							Widget::CELL_SPARKLINE_VALUE => $sparkline_value,
 							Widget::CELL_METADATA => [
 								'name' => $name,
 								'column_index' => $column['column_index'],
@@ -936,7 +871,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 							Widget::CELL_HOSTID => $hostid,
 							Widget::CELL_ITEMID => null,
 							Widget::CELL_VALUE => null,
-							Widget::CELL_SPARKLINE_VALUE => null,
 							Widget::CELL_METADATA => &$cell[Widget::CELL_METADATA]
 						];
 					}
@@ -1224,7 +1158,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 							Widget::CELL_HOSTID => $hostId,
 							Widget::CELL_ITEMID => (string)$data[Widget::CELL_ITEMID],
 							Widget::CELL_VALUE => $data[Widget::CELL_VALUE],
-							Widget::CELL_SPARKLINE_VALUE => $data[Widget::CELL_SPARKLINE_VALUE] ?? null,
 							Widget::CELL_METADATA => $data[Widget::CELL_METADATA],
 						];
 					}
@@ -1243,40 +1176,10 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 						$currentValues[] = $data[Widget::CELL_VALUE];
 						$aggregatedArray[$key][Widget::CELL_VALUE] = $this->applyAggregation($method, $currentValues);
 
-						if (!empty($data[Widget::CELL_SPARKLINE_VALUE])) {
-							if ($aggregatedArray[$key][Widget::CELL_SPARKLINE_VALUE] === null) {
-								$aggregatedArray[$key][Widget::CELL_SPARKLINE_VALUE] = $data[Widget::CELL_SPARKLINE_VALUE];
-							}
-							else {
-								foreach ($data[Widget::CELL_SPARKLINE_VALUE] as $subArray) {
-									$timestamp = $subArray[Widget::CELL_HOSTID];
-									$value = $subArray[1];
-									$timestampExists = false;
-									foreach ($aggregatedArray[$key][Widget::CELL_SPARKLINE_VALUE] as &$existingSubArray) {
-										if ($existingSubArray[Widget::CELL_HOSTID] == $timestamp) {
-											$timestampExists = true;
-											$existingSubArray[1] = $this->applyAggregation($method, [$existingSubArray[1], $value]);
-											break;
-										}
-									}
-
-									if (!$timestampExists) {
-										$aggregatedArray[$key][Widget::CELL_SPARKLINE_VALUE][] = $subArray;
-									}
-								}
-							}
-						}
 					}
 				}
 			}
 
-			foreach ($aggregatedArray as &$agg) {
-				if (is_array($agg[Widget::CELL_SPARKLINE_VALUE])) {
-					usort($agg[Widget::CELL_SPARKLINE_VALUE], function($a, $b) {
-						return $a[0] <=> $b[0];
-					});
-				}
-			}
 			$final_table = $aggregatedArray;
 		}
 		return $final_table;

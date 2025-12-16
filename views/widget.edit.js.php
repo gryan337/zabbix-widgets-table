@@ -5,7 +5,7 @@ use Modules\TableModuleRME\Includes\WidgetForm;
 ?>
 
 
-window.widget_tablemodulerme_form = new class extends CWidgetForm {
+window.widget_tablemodulerme_form = new class {
 
 	/**
 	 * Widget form.
@@ -36,7 +36,7 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 	#list_column_tmpl;
 
 	init({templateid}) {
-		this.#form = this.getForm();
+		this.#form = document.getElementById('widget-dialogue-form');
 		this.#list_columns = document.getElementById('list_columns');
 		this.#list_column_tmpl = new Template(this.#list_columns.querySelector('template').innerHTML);
 		this.#templateid = templateid;
@@ -54,8 +54,6 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 		jQuery(document.getElementById('hostids_')).on('change', () => this.#updateForm());
 		jQuery('[id^=layout_]').on('change', () => this.#updateForm());
 		this.#form.addEventListener('form_fields.changed', () => this.#updateForm());
-
-		this.ready();
 	}
 
 	/**
@@ -166,8 +164,6 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 
 	#triggerUpdate() {
 		this.#form.dispatchEvent(new CustomEvent('form_fields.changed', {detail: {}}));
-
-		this.registerUpdateEvent();
 	}
 
 	#processColumnsAction(e) {
@@ -201,6 +197,7 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 					this.#triggerUpdate();
 				});
 
+				column_popup.addEventListener('dialogue.close', this.#removeColorpicker);
 				break;
 
 			case 'edit':
@@ -225,6 +222,7 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 					this.#triggerUpdate();
 				});
 
+				column_popup.addEventListener('dialogue.close', this.#removeColorpicker);
 				break;
 
 			case 'remove':
@@ -284,19 +282,6 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 
 					break;
 
-				case 'sparkline':
-					for (const [key, value] of Object.entries(data_value)) {
-						if (key === 'time_period') {
-							for (const [k, v] of Object.entries(value)) {
-								column_data.append(this.#makeVar(`columns[${index}][sparkline][time_period][${k}]`, v));
-							}
-						}
-						else {
-							column_data.append(this.#makeVar(`columns[${index}][sparkline][${key}]`, value));
-						}
-					}
-					break;
-
 				case 'item_tags':
 					for (const [key, {operator, tag, value}] of Object.entries(data.item_tags)) {
 						column_data.append(this.#makeVar(`columns[${index}][item_tags][${key}][operator]`, operator));
@@ -324,5 +309,10 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 		input.setAttribute('value', value);
 
 		return input
+	}
+
+	// Need to remove function after sub-popups auto close.
+	#removeColorpicker() {
+		$('#color_picker').hide();
 	}
 };

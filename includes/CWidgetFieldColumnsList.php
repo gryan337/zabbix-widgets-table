@@ -7,7 +7,6 @@ use CWidgetsData;
 use DB;
 use Zabbix\Widgets\CWidgetField;
 use Zabbix\Widgets\Fields\CWidgetFieldTimePeriod;
-use Zabbix\Widgets\Fields\CWidgetFieldSparkline;
 
 class CWidgetFieldColumnsList extends CWidgetField {
 
@@ -28,7 +27,6 @@ class CWidgetFieldColumnsList extends CWidgetField {
 	public const DISPLAY_AS_IS = 1;
 	public const DISPLAY_BAR = 2;
 	public const DISPLAY_INDICATORS = 3;
-	public const DISPLAY_SPARKLINE = 6;
 
 	// Where to select data for aggregation function.
 	public const HISTORY_DATA_AUTO = 0;
@@ -43,18 +41,6 @@ class CWidgetFieldColumnsList extends CWidgetField {
 	public const VALUEMAP_AS_IS = 0;
 	public const VALUEMAP_VALUE = 1;
 	public const VALUEMAP_MAPPING = 2;
-
-	public const SPARKLINE_DEFAULT = [
-		'width'		=> 1,
-		'fill'		=> 3,
-		'color'		=> '42A5F5',
-		'time_period' => [
-			'data_source' => CWidgetFieldTimePeriod::DATA_SOURCE_DEFAULT,
-			'from' => 'now-1h',
-			'to' => 'now'
-		],
-		'history'	=> CWidgetFieldSparkline::DATA_SOURCE_AUTO
-	];
 
 
 	// Predefined colors for thresholds. Each next threshold takes next sequential value from palette.
@@ -100,23 +86,6 @@ class CWidgetFieldColumnsList extends CWidgetField {
 
 		foreach ($columns_values as $column_index => &$value) {
 			$fields = [];
-
-			if ($value['display_value_as'] == self::DISPLAY_VALUE_AS_NUMERIC
-					&& $value['display'] == self::DISPLAY_SPARKLINE) {
-				$sparkline = (new CWidgetFieldSparkline($this->name.'.'.$column_index.'.sparkline', null,
-					['color' => ['use_default' => false]]
-				))
-					->setInType(CWidgetsData::DATA_TYPE_TIME_PERIOD)
-					->acceptDashboard()
-					->setDefault(CWidgetFieldColumnsList::SPARKLINE_DEFAULT)
-					->acceptWidget();
-
-				if (array_key_exists('sparkline', $value)) {
-					$sparkline->setValue($value['sparkline']);
-				}
-
-				$fields['sparkline'] = $sparkline;
-			}
 
 			if ($value['aggregate_function'] != AGGREGATE_NONE) {
 				$time_period_field = (new CWidgetFieldTimePeriod($this->name.'.'.$column_index.'.time_period',
@@ -320,7 +289,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'display_value_as'		=> ['type' => API_INT32, 'in' => implode(',', [self::DISPLAY_VALUE_AS_NUMERIC, self::DISPLAY_VALUE_AS_TEXT, self::DISPLAY_VALUE_AS_URL]), 'default' => self::DISPLAY_VALUE_AS_NUMERIC],
 			'display'				=> ['type' => API_MULTIPLE, 'rules' => [
 											['if' => ['field' => 'display_value_as', 'in' => self::DISPLAY_VALUE_AS_NUMERIC],
-												'type' => API_INT32, 'default' => self::DISPLAY_AS_IS, 'in' => implode(',', [self::DISPLAY_AS_IS, self::DISPLAY_BAR, self::DISPLAY_INDICATORS, self::DISPLAY_SPARKLINE])],
+												'type' => API_INT32, 'default' => self::DISPLAY_AS_IS, 'in' => implode(',', [self::DISPLAY_AS_IS, self::DISPLAY_BAR, self::DISPLAY_INDICATORS])],
 											['else' => true,
 												'type' => API_INT32]
 			]],
@@ -335,7 +304,6 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'url_open_in'			=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'history'				=> ['type' => API_INT32, 'default' => self::HISTORY_DATA_AUTO, 'in' => implode(',', [self::HISTORY_DATA_AUTO, self::HISTORY_DATA_HISTORY, self::HISTORY_DATA_TRENDS])],
 			'include_itemids'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
-			'sparkline'				=> ['type' => API_ANY],
 			'base_color'			=> ['type' => API_COLOR, 'default' => ''],
 			'font_color'			=> ['type' => API_COLOR, 'default' => ''],
 			'min'					=> ['type' => API_NUMERIC, 'default' => ''],

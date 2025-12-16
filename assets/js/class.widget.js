@@ -1054,7 +1054,6 @@ class CWidgetTableModuleRME extends CWidget {
 
 	onResize() {
 		if (this._state === WIDGET_STATE_ACTIVE) {
-			this.#recalculateSvgSparklines();
 		}
 	}
 
@@ -1261,7 +1260,7 @@ class CWidgetTableModuleRME extends CWidget {
 					const allTdsInRow = tr.querySelectorAll('td');
 
 					allTdsInRow.forEach((td, index) => {
-						if (this._isBarGauge(td) || this._isSparkLine(td)) return;
+						if (this._isBarGauge(td)) return;
 						let value = null;
 
 						const hintboxContent = td.getAttribute('data-hintbox-contents');
@@ -1549,14 +1548,6 @@ class CWidgetTableModuleRME extends CWidget {
 
 	}
 
-	#recalculateSvgSparklines() {
-		requestAnimationFrame(() => {
-			this.#values_table?.querySelectorAll('z-sparkline').forEach(el => {
-				el.attributeChangedCallback('width', null, el.offsetWidth);
-			});
-		});
-	}
-
 	#processItemIds() {
 		if (this.#selected_items.length === 1) {
 			const item = this.#selected_items[0];
@@ -1796,7 +1787,6 @@ class CWidgetTableModuleRME extends CWidget {
 			});
 
 			this.#recalculateCanvasSize();
-			this.#recalculateSvgSparklines();
 
 			if (scrollToTop) {
 				this._contents.scrollTop = 0;
@@ -1850,7 +1840,7 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 	}
 
-	_markSelected(type) {
+	_markSelected(type, refresh = false) {
 		const tds = [];
 
 		this.#rowsArray.forEach(rowObj => {
@@ -1923,10 +1913,6 @@ class CWidgetTableModuleRME extends CWidget {
 					if (this._isDoubleSpanColumn(prevTd)) {
 						if (this._isBarGauge(prevTd)) {
 							td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
-						}
-						else if (this._isSparkLine(prevTd)) {
-							td.style = this.#cssStyleMap.get(cell_key);
-							prevTd.style = ''
 						}
 					}
 					else {
@@ -2007,15 +1993,11 @@ class CWidgetTableModuleRME extends CWidget {
 			return null;
 		}
 
-		return (this._isBarGauge(td) || this._isSparkLine(td));
+		return (this._isBarGauge(td));
 	}
 
 	_isBarGauge(td) {
 		return td.querySelector('z-bar-gauge');
-	}
-
-	_isSparkLine(td) {
-		return td.querySelector('z-sparkline');
 	}
 
 	_handleDateStr(x, regex) {
@@ -2918,7 +2900,7 @@ class CWidgetTableModuleRME extends CWidget {
 		const cells = rowElement.querySelectorAll('td');
 
 		cells.forEach(cell => {
-			if (this._isSparkLine(cell) || this._isBarGauge(cell)) {
+			if (this._isBarGauge(cell)) {
 				return;
 			}
 

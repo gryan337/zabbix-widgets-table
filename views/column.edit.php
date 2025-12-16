@@ -7,7 +7,6 @@
  */
 
 use Modules\TableModuleRME\Includes\CWidgetFieldColumnsList;
-use Zabbix\Widgets\Fields\CWidgetFieldSparkline;
 
 $form = (new CForm())
 	->setId('tablemodulerme_column_edit_form')
@@ -20,6 +19,8 @@ $form = (new CForm())
 $form->addItem((new CSubmitButton())->addClass(ZBX_STYLE_FORM_SUBMIT_HIDDEN));
 
 $form_grid = new CFormGrid();
+
+$scripts = [];
 
 if (array_key_exists('edit', $data)) {
 	$form->addVar('edit', 1);
@@ -104,21 +105,13 @@ $form_grid
 // Base color.
 $form_grid->addItem([
 	new CLabel(_('Base color'), 'lbl_base_color'),
-	new CFormField(
-		(new CColorPicker('base_color'))
-			->setColor($data['base_color'])
-			->allowEmpty()
-	)
+	new CFormField(new CColor('base_color', $data['base_color']))
 ]);
 
 // Font color.
 $form_grid->addItem([
 	new CLabel(_('Font color'), 'lbl_font_color'),
-	new CFormField(
-		(new CColorPicker('font_color'))
-			->setColor($data['font_color'])
-			->allowEmpty()
-	)
+	new CFormField(new CColor('font_color', $data['font_color']))
 ]);
 
 // Display value as.
@@ -141,23 +134,8 @@ $form_grid->addItem([
 			->addValue(_('As is'), CWidgetFieldColumnsList::DISPLAY_AS_IS)
 			->addValue(_('Bar'), CWidgetFieldColumnsList::DISPLAY_BAR)
 			->addValue(_('Indicators'), CWidgetFieldColumnsList::DISPLAY_INDICATORS)
-			->addValue(_('Sparkline'), CWidgetFieldColumnsList::DISPLAY_SPARKLINE)
 			->setModern()
 	))->addClass('js-display-row')
-]);
-
-// Sparkline.
-$sparkline = (new CWidgetFieldSparklineView(
-	(new CWidgetFieldSparkline('sparkline', _('Sparkline')))
-		->setInType(CWidgetsData::DATA_TYPE_TIME_PERIOD)
-		->acceptDashboard()
-		->acceptWidget()
-		->setValue($data['sparkline'])
-))->setFormName($form->getName());
-
-$form_grid->addItem([
-	$sparkline->getLabel()->addClass('js-sparkline-row'),
-	$sparkline->getView()->addClass('js-sparkline-row')
 ]);
 
 // Min.
@@ -193,9 +171,7 @@ $thresholds = (new CDiv([
 		)),
 	(new CTemplateTag('thresholds-row-tmpl'))
 		->addItem((new CRow([
-			(new CColorPicker('thresholds[#{rowNum}][color]'))
-				->setColor('#{color}')
-				->allowEmpty(),
+			(new CColor('thresholds[#{rowNum}][color]', '#{color}'))->appendColorPickerJs(false),
 			(new CTextBox('thresholds[#{rowNum}][threshold]', '#{threshold}', false))
 				->setWidth(ZBX_TEXTAREA_TINY_WIDTH)
 				->setAriaRequired(),
@@ -270,9 +246,7 @@ $highlights = (new CDiv([
 		)),
 	(new CTemplateTag('highlights-row-tmpl'))
 		->addItem((new CRow([
-			(new CColorPicker('highlights[#{rowNum}][color]'))
-				->setColor('#{color}')
-				->allowEmpty(),
+			(new CColor('highlights[#{rowNum}][color]', '#{color}'))->appendColorPickerJs(false),
 			(new CTextBox('highlights[#{rowNum}][pattern]', '#{pattern}', false))
 				->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
 				->setAriaRequired(),
@@ -479,7 +453,7 @@ $form
 
 $output = [
 	'header' => array_key_exists('edit', $data) ? _('Update column') : _('New column'),
-	'script_inline' => $sparkline->getJavaScript().$this->readJsFile('column.edit.js.php', null, ''),
+	'script_inline' => implode('', $scripts).$this->readJsFile('column.edit.js.php', null, ''),
 	'body' => $form->toString(),
 	'buttons' => [
 		[

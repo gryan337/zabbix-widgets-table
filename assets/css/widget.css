@@ -29,9 +29,6 @@ div.dashboard-widget-tablemodulerme .link-action {
 div.dashboard-widget-tablemodulerme z-bar-gauge {
   min-width: 64px;
   height: 20px; }
-div.dashboard-widget-tablemodulerme z-sparkline {
-  min-width: 64px;
-  height: 20px; }
 .new-arrow {
   border: 0;
   border-left: 4px solid transparent;

@@ -37,7 +37,6 @@ class ColumnEditTableRme extends CController {
 			'font_color' =>				'string',
 			'display_value_as' =>		'int32',
 			'display' =>				'int32',
-			'sparkline' =>				'array',
 			'min' =>					'string',
 			'max' =>					'string',
 			'thresholds' =>				'array',
@@ -84,7 +83,6 @@ class ColumnEditTableRme extends CController {
 
 		if (!$this->hasInput('edit') && !$this->hasInput('update')) {
 			$input += self::getColumnDefaults();
-			$input['sparkline'] = array_replace(CWidgetFieldColumnsList::SPARKLINE_DEFAULT, $input['sparkline']);
 		}
 
 		unset($input['edit'], $input['update'], $input['templateid']);
@@ -123,8 +121,6 @@ class ColumnEditTableRme extends CController {
 					'debug_mode' => $this->getDebugMode()
 				]
 			] + $input + self::getColumnDefaults();
-
-			$data['sparkline'] = array_replace(CWidgetFieldColumnsList::SPARKLINE_DEFAULT, $data['sparkline']);
 
 			$data['time_period_field'] = (new CWidgetFieldTimePeriod('time_period', _('Time period')))
 				->setDefaultPeriod(['from' => 'now-1h', 'to' => 'now'])
@@ -201,7 +197,6 @@ class ColumnEditTableRme extends CController {
 				'url_display_override' => '',
 				'url_custom_override' => '',
 				'url_open_in' => 0,
-				'sparkline' => CWidgetFieldColumnsList::SPARKLINE_DEFAULT,
 				'min' => '',
 				'max' => '',
 				'highlights' => [],

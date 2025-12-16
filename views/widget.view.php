@@ -28,8 +28,7 @@ else {
 
 	$class = '';
 	foreach ($data['configuration'] as $config) {
-		if ($config['display'] === CWidgetFieldColumnsList::DISPLAY_SPARKLINE ||
-				$config['display'] === CWidgetFieldColumnsList::DISPLAY_AS_IS) {
+		if ($config['display'] === CWidgetFieldColumnsList::DISPLAY_AS_IS) {
 			$class = ZBX_STYLE_CENTER;
 			break;
 		}
@@ -103,7 +102,6 @@ else {
 		$is_view_value = [];
 		foreach ($data['configuration'] as $column_index => $column) {
 			switch ($column['display']) {
-				case CWidgetFieldColumnsList::DISPLAY_SPARKLINE:
 				case CWidgetFieldColumnsList::DISPLAY_INDICATORS:
 				case CWidgetFieldColumnsList::DISPLAY_BAR:
 					$is_view_value[$column_index] = 1;
@@ -418,9 +416,7 @@ else {
 					foreach ($temp_itemids as $titemids) {
 						$dm_itemids[] = [
 							'itemid' => $titemids,
-							'color' => $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['display'] === CWidgetFieldColumnsList::DISPLAY_SPARKLINE
-								? $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['sparkline']['color']
-								: $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['base_color']
+							'color' => $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['base_color']
 						];
 					}
 				}
@@ -1140,48 +1136,6 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			}
 
 			return [(new CCol())->addStyle($style), $value_cell];
-
-		case CWidgetFieldColumnsList::DISPLAY_SPARKLINE:
-			if ($column['thresholds']) {
-				foreach ($column['thresholds'] as $threshold) {
-					if ($value < $threshold['threshold']) {
-						break;
-					}
-
-					foreach ($styles as $key => $style) {
-						if (strpos($style, 'background-color:') === 0) {
-							unset($styles[$key]);
-							break;
-						}
-					}
-					
-					$styles[] = 'background-color: #' . $threshold['color'];
-				}
-			}
-
-			$style = implode('; ', $styles);
-		
-			$value_cell->addStyle($style);
-			$sparkline_value = $cell[Widget::CELL_SPARKLINE_VALUE] ?? [];
-			$sparkline = (new CSparkline())
-				->setHeight(20)
-				->setColor('#'.$column['sparkline']['color'])
-				->setLineWidth($column['sparkline']['width'])
-				->setFill($column['sparkline']['fill'])
-				->setValue($sparkline_value)
-				->setTimePeriodFrom($column['sparkline']['time_period']['from_ts'])
-				->setTimePeriodTo($column['sparkline']['time_period']['to_ts']);
-
-			$sparkline_cell = (new CCol($sparkline))->setAttribute('column-id', $column_pos);
-
-			if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
-				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
-					if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
-						return [$sparkline_cell, $value_cell];
-					}
-				}
-			}
-			return [$sparkline_cell->addClass(ZBX_STYLE_CURSOR_POINTER), $value_cell];
 
 		case CWidgetFieldColumnsList::DISPLAY_INDICATORS:
 		case CWidgetFieldColumnsList::DISPLAY_BAR:
