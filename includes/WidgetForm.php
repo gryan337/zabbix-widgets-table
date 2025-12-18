@@ -160,6 +160,9 @@ class WidgetForm extends CWidgetForm {
 				new CWidgetFieldCheckBox('autoselect_first', _('Autoselect first cell'))
 			)
 			->addField(
+				new CWidgetFieldCheckBox('use_host_storage', _('Select host from storage'))
+			)
+			->addField(
 				(new CWidgetFieldRadioButtonList('footer', _('Show footer row'), [
 					self::FOOTER_NONE => _('No footer'),
 					self::FOOTER_SUM => _('Sum'),
