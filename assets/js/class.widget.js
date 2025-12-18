@@ -67,6 +67,43 @@ class CWidgetTableModuleRME extends CWidget {
 	#clearFiltersClickedWithSelections = false;
 	#filterTooltipIds = new Set();
 
+	static #hasManualSelection = false;
+	static #sessionStorageInitialized = false;
+	#sessionKey = null;
+
+	static {
+		// This runs once when the class is first loaded
+		if (!CWidgetTableModuleRME.#sessionStorageInitialized) {
+			CWidgetTableModuleRME.#clearAllWidgetReferences();
+			CWidgetTableModuleRME.#sessionStorageInitialized = true;
+
+			// Clear on page unload/navigation
+			window.addEventListener('beforeunload', () => {
+				CWidgetTableModuleRME.#clearAllWidgetReferences();
+			});
+
+			// Also clear on page hide (for mobile/table)
+			window.addEventListener('pagehide', () => {
+				CWidgetTableModuleRME.#clearAllWidgetReferences();
+			});
+		}
+	}
+
+	static #clearAllWidgetReferences() {
+		try {
+			const keys = Object.keys(sessionStorage);
+			keys.forEach(key => {
+				if (key.startsWith('widget_references_')) {
+					sessionStorage.removeItem(key);
+				}
+			});
+			CWidgetTableModuleRME.#hasManualSelection = false;
+		}
+		catch (e) {
+			console.error('Failed to clear session storage:', e);
+		}
+	}
+
 	processUpdateResponse(response) {
 		super.processUpdateResponse(response);
 	}
@@ -83,12 +120,19 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	setContents(response) {
+		if (!this.#sessionKey) {
+			const dashboardId = this._dashboard?.dashboardid || 'default';
+			this.#sessionKey = `widget_references_${dashboardId}`;
+		}
+
 		if (response.body.includes('no-data-message')) {
-			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
-			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
-			super.setContents(response);
-			this.#removePaginationControls();
-			return;
+			setTimeout(() => {
+				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
+				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+				super.setContents(response);
+				this.#removePaginationControls();
+				return;
+			}, 0);
 		}
 
 		super.setContents(response)
@@ -995,8 +1039,55 @@ class CWidgetTableModuleRME extends CWidget {
 		this.boundMouseUp = this.handleMouseUpTi.bind(this);
 		this.attachListeners();
 
+		if (this._fields.use_host_storage && CWidgetTableModuleRME.#hasManualSelection) {
+			let references = this.getReferenceFromSession(this.#sessionKey);
+			if (references) {
+				let reference_session = JSON.parse(references);
+				if (reference_session['hostids']) {
+					this.#selected_hostid = reference_session['hostids'][0];
+				}
+			}
+		}
+
 		this.checkAndRemarkSelected();
 
+	}
+
+	getReferenceFromSession(key) {
+		try {
+			return sessionStorage.getItem(key);
+		}
+		catch (e) {
+			console.error('Session storage access failed:', e);
+			return null;
+		}
+	}
+
+	setReferenceInSession(key, id_type, id) {
+		try {
+			CWidgetTableModuleRME.#hasManualSelection = true;
+
+			let existing = this.getReferenceFromSession(key);
+			let reference;
+
+			if (existing) {
+				reference = JSON.parse(existing);
+				reference[id_type] = [id];
+			}
+			else {
+				reference = {
+					hostids: [],
+					hostgroupids: [],
+					itemids: []
+				};
+				reference[id_type] = [id];
+			}
+
+			sessionStorage.setItem(key, JSON.stringify(reference));
+		}
+		catch (e) {
+			console.error('Session storage write failed:', e);
+		}
 	}
 
 	getActionsContextMenu({can_copy_widget, can_paste_widget}) {
@@ -1663,6 +1754,9 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 			this._markSelected(this.#dataset_host);
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
+			if (this._fields.use_host_storage) {
+				this.setReferenceInSession(this.#sessionKey, "hostids", this.#selected_hostid);
+			}
 		}
 
 		this.#lastClickedCell = tdClicked;

@@ -156,6 +156,16 @@ $form
 			)
 	)
 	->addField(
+		(new CWidgetFieldCheckBoxView($data['fields']['use_host_storage']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('Checking this box will cause the widget to autoselect the host from session storage in the browser.'), BR(),
+					_('Host selections are stored in a session storage when you select a host cell from this widget within a dashboard, and this checkbox is checked.')
+				])
+			)
+			->addRowClass('field_use_host_storage')
+	)
+	->addField(
 		(new CWidgetFieldRadioButtonListView($data['fields']['footer']))
 			->setFieldHint(
 				makeHelpIcon([
