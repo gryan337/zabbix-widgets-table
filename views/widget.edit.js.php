@@ -103,6 +103,13 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 			}
 		}
 		
+		for (const use_host_storage_field of this.#form.querySelectorAll('.field_use_host_storage')) {
+			use_host_storage.style.display = vertical_layout ? 'none' : '';
+			for (const input of use_host_storage_field.querySelectorAll('input')) {
+				input.disabled = vertical_layout;
+			}
+		}
+
 		const order_by_host =
 			this.#form.querySelector('[name=item_ordering_order_by]:checked').value == <?= WidgetForm::ORDERBY_HOST ?>;
 
