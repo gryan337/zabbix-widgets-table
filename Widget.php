@@ -15,6 +15,6 @@ class Widget extends CWidget {
 	public const CELL_SPARKLINE_VALUE = 4;
 
 	public function getDefaultName(): string {
-		return _('Table');
+		return _('RME Table');
 	}
 }
