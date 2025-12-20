@@ -14,6 +14,6 @@ class Widget extends CWidget {
 	public const CELL_METADATA = 3;
 
 	public function getDefaultName(): string {
-		return _('Table');
+		return _('RME Table');
 	}
 }
