@@ -49,12 +49,6 @@ window.tablemodulerme_column_edit_form = new class {
 				element.addEventListener('change', () => this.#updateForm());
 			});
 
-		this.#form.addEventListener('change', ({target}) => {
-			if (target.matches('[type="text"]')) {
-				target.value = target.value.trim();
-			}
-		});
-
 		colorPalette.setThemeColors(colors);
 		
 		const parentForm = document.getElementsByClassName('modal-widget-configuration').item(0);
@@ -69,12 +63,12 @@ window.tablemodulerme_column_edit_form = new class {
 				allow_empty: true,
 				dataCallback: (row_data) => {
 					if (!('color' in row_data)) {
-						const color_pickers = this.#form.querySelectorAll(`.${ZBX_STYLE_COLOR_PICKER}`);
+						const colors = this.#form.querySelectorAll('.<?= ZBX_STYLE_COLOR_PICKER ?> input');
 						const used_colors = [];
 
-						for (const color_picker of color_pickers) {
-							if (color_picker.color !== '') {
-								used_colors.push(color_picker.color);
+						for (const color of colors) {
+							if (color.value !== '') {
+								used_colors.push(color.value);
 							}
 						}
 
@@ -82,8 +76,19 @@ window.tablemodulerme_column_edit_form = new class {
 					}
 				}
 			})
-			.on('afteradd.dynamicRows', () => this.#updateForm())
+			.on('afteradd.dynamicRows', e => {
+				const $colorpicker = $('tr.form_row:last input[name$="[color]"]', e.target);
+
+				$colorpicker.colorpicker({appendTo: $colorpicker.closest('.input-color-picker')});
+
+				this.#updateForm();
+			})
 			.on('afterremove.dynamicRows', () => this.#updateForm())
+			.on('change', (e) => e.target.value = e.target.value.trim());
+
+		for (const colorpicker of this.#thresholds_table.querySelectorAll('tr.form_row input[name$="[color]"]')) {
+			$(colorpicker).colorpicker({appendTo: $(colorpicker).closest('.input-color-picker')});
+		}
 
 		// Initialize highlights table.
 		$(this.#highlights_table)
@@ -93,12 +98,12 @@ window.tablemodulerme_column_edit_form = new class {
 				allow_empty: true,
 				dataCallback: (row_data) => {
 					if (!('color' in row_data)) {
-						const color_pickers = this.#form.querySelectorAll(`.${ZBX_STYLE_COLOR_PICKER}`);
+						const colors = this.#form.querySelectorAll('.<?= ZBX_STYLE_COLOR_PICKER ?> input');
 						const used_colors = [];
 
-						for (const color_picker of color_pickers) {
-							if (color_picker.color !== '') {
-								used_colors.push(color_picker.color);
+						for (const color of colors) {
+							if (color.value !== '') {
+								used_colors.push(color.value);
 							}
 						}
 
@@ -106,8 +111,18 @@ window.tablemodulerme_column_edit_form = new class {
 					}
 				}
 			})
-			.on('afteradd.dynamicRows', () => this.#updateForm())
+			.on('afteradd.dynamicRows', e => {
+				const $colorpicker = $('tr.form_row:last input[name$="[color]"]', e.target);
+
+				$colorpicker.colorpicker({appendTo: $colorpicker.closest('.input-color-picker')});
+
+				this.#updateForm();
+			})
 			.on('afterremove.dynamicRows', () => this.#updateForm());
+
+		for (const colorpicker of this.#highlights_table.querySelectorAll('tr.form_row input[name$="[color]"]')) {
+			$(colorpicker).colorpicker({appendTo: $(colorpicker).closest('.input-color-picker')});
+		}
 
 		// Initialize Advanced configuration collapsible.
 		const collapsible = this.#form.querySelector(`fieldset.<?= ZBX_STYLE_COLLAPSIBLE ?>`);

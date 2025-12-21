@@ -104,21 +104,13 @@ $form_grid
 // Base color.
 $form_grid->addItem([
 	new CLabel(_('Base color'), 'lbl_base_color'),
-	new CFormField(
-		(new CColorPicker('base_color'))
-			->setColor($data['base_color'])
-			->allowEmpty()
-	)
+	new CFormField(new CColor('base_color', $data['base_color']))
 ]);
 
 // Font color.
 $form_grid->addItem([
 	new CLabel(_('Font color'), 'lbl_font_color'),
-	new CFormField(
-		(new CColorPicker('font_color'))
-			->setColor($data['font_color'])
-			->allowEmpty()
-	)
+	new CFormField(new CColor('font_color', $data['font_color']))
 ]);
 
 // Display value as.
@@ -193,9 +185,7 @@ $thresholds = (new CDiv([
 		)),
 	(new CTemplateTag('thresholds-row-tmpl'))
 		->addItem((new CRow([
-			(new CColorPicker('thresholds[#{rowNum}][color]'))
-				->setColor('#{color}')
-				->allowEmpty(),
+			(new CColor('highlights[#{rowNum}][color]', '#{color}'))->appendColorPickerJs(false),
 			(new CTextBox('thresholds[#{rowNum}][threshold]', '#{threshold}', false))
 				->setWidth(ZBX_TEXTAREA_TINY_WIDTH)
 				->setAriaRequired(),
@@ -270,9 +260,7 @@ $highlights = (new CDiv([
 		)),
 	(new CTemplateTag('highlights-row-tmpl'))
 		->addItem((new CRow([
-			(new CColorPicker('highlights[#{rowNum}][color]'))
-				->setColor('#{color}')
-				->allowEmpty(),
+			(new CColor('highlights[#{rowNum}][color]', '#{color}'))->appendColorPickerJs(false),
 			(new CTextBox('highlights[#{rowNum}][pattern]', '#{pattern}', false))
 				->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
 				->setAriaRequired(),

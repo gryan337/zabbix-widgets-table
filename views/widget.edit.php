@@ -258,7 +258,7 @@ $form
 			)
 	)
 	->includeJsFile('widget.edit.js.php')
-	->initFormJs('widget_tablemodulerme_form.init('.json_encode([
+	->addJavaScript('widget_tablemodulerme_form.init('.json_encode([
 		'templateid' => $data['templateid']
 	], JSON_THROW_ON_ERROR).');')
 	->show();
