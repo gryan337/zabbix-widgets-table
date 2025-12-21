@@ -43,3 +43,110 @@ div.dashboard-widget-tablemodulerme z-sparkline {
   border-top-color: transparent;
   border-bottom-color: transparent;
   line-height: 0; }
+
+.menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--button-color);
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+.menu-btn::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 -5px 0 currentColor, 0 5px 0 currentColor;
+}
+
+.value-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.value-with-icon a.ext-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 0px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--button-color);
+  vertical-align: middle;
+  position: relative;
+  border-radius: 3px;
+}
+
+.value-with-icon a.ext-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+a.ext-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 0px;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+  border-radius: 3px;
+  color: var(--button-color, currentColor);
+  vertical-align: middle;
+}
+
+a.ext-btn:hover {
+  background: var(--button-hover-bg);
+  color: var(--button-hover-color);
+}
+
+a.ext-btn:active {
+  background: var(--button-active-bg);
+}
+
+a.ext-btn:focus-visible {
+  outline: 2px solid rgba(0,0,0,0.25);
+  outline-offset: 2px;
+}
+
+.ext-btn .ext-icon {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+
+[theme="blue-theme"],
+[theme="hc-light"] {
+  --button-color: #555;
+  --button-hover-color: #000;
+  --button-hover-bg: #ccc;
+}
+
+[theme="dark-theme"],
+[theme="hc-dark"] {
+  --button-color: #bbb;
+  --button-hover-color: #fff;
+  --button-hover-bg: #555;
+}

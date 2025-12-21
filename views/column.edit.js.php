@@ -43,11 +43,17 @@ window.tablemodulerme_column_edit_form = new class {
 
 		this.#form
 			.querySelectorAll(
-				'[name="display_value_as"], [name="aggregate_function"], [name="column_agg_method"], [name="display"], [name="history"]'
+				'[name="display_value_as"], [name="aggregate_function"], [name="column_agg_method"], [name="display"], [name="history"], [name="url_display_mode"]'
 			)
 			.forEach(element => {
 				element.addEventListener('change', () => this.#updateForm());
 			});
+
+		this.#form.addEventListener('change', ({target}) => {
+			if (target.matches('[type="text"]')) {
+				target.value = target.value.trim();
+			}
+		});
 
 		colorPalette.setThemeColors(colors);
 		
@@ -63,12 +69,12 @@ window.tablemodulerme_column_edit_form = new class {
 				allow_empty: true,
 				dataCallback: (row_data) => {
 					if (!('color' in row_data)) {
-						const colors = this.#form.querySelectorAll('.<?= ZBX_STYLE_COLOR_PICKER ?> input');
+						const color_pickers = this.#form.querySelectorAll(`.${ZBX_STYLE_COLOR_PICKER}`);
 						const used_colors = [];
 
-						for (const color of colors) {
-							if (color.value !== '') {
-								used_colors.push(color.value);
+						for (const color_picker of color_pickers) {
+							if (color_picker.color !== '') {
+								used_colors.push(color_picker.color);
 							}
 						}
 
@@ -76,19 +82,8 @@ window.tablemodulerme_column_edit_form = new class {
 					}
 				}
 			})
-			.on('afteradd.dynamicRows', e => {
-				const $colorpicker = $('tr.form_row:last input[name$="[color]"]', e.target);
-
-				$colorpicker.colorpicker({appendTo: $colorpicker.closest('.input-color-picker')});
-
-				this.#updateForm();
-			})
+			.on('afteradd.dynamicRows', () => this.#updateForm())
 			.on('afterremove.dynamicRows', () => this.#updateForm())
-			.on('change', (e) => e.target.value = e.target.value.trim());
-
-		for (const colorpicker of this.#thresholds_table.querySelectorAll('tr.form_row input[name$="[color]"]')) {
-			$(colorpicker).colorpicker({appendTo: $(colorpicker).closest('.input-color-picker')});
-		}
 
 		// Initialize highlights table.
 		$(this.#highlights_table)
@@ -98,12 +93,12 @@ window.tablemodulerme_column_edit_form = new class {
 				allow_empty: true,
 				dataCallback: (row_data) => {
 					if (!('color' in row_data)) {
-						const colors = this.#form.querySelectorAll('.<?= ZBX_STYLE_COLOR_PICKER ?> input');
+						const color_pickers = this.#form.querySelectorAll(`.${ZBX_STYLE_COLOR_PICKER}`);
 						const used_colors = [];
 
-						for (const color of colors) {
-							if (color.value !== '') {
-								used_colors.push(color.value);
+						for (const color_picker of color_pickers) {
+							if (color_picker.color !== '') {
+								used_colors.push(color_picker.color);
 							}
 						}
 
@@ -111,18 +106,8 @@ window.tablemodulerme_column_edit_form = new class {
 					}
 				}
 			})
-			.on('afteradd.dynamicRows', e => {
-				const $colorpicker = $('tr.form_row:last input[name$="[color]"]', e.target);
-
-				$colorpicker.colorpicker({appendTo: $colorpicker.closest('.input-color-picker')});
-
-				this.#updateForm();
-			})
+			.on('afteradd.dynamicRows', () => this.#updateForm())
 			.on('afterremove.dynamicRows', () => this.#updateForm());
-
-		for (const colorpicker of this.#highlights_table.querySelectorAll('tr.form_row input[name$="[color]"]')) {
-			$(colorpicker).colorpicker({appendTo: $(colorpicker).closest('.input-color-picker')});
-		}
 
 		// Initialize Advanced configuration collapsible.
 		const collapsible = this.#form.querySelector(`fieldset.<?= ZBX_STYLE_COLLAPSIBLE ?>`);
@@ -164,11 +149,14 @@ window.tablemodulerme_column_edit_form = new class {
 	#updateForm() {
 		const display_value_as = this.#form.querySelector('[name=display_value_as]:checked').value;
 		const display = this.#form.querySelector('[name=display]:checked').value;
-		
+		const url_display_mode = this.#form.querySelector('[name=url_display_mode]:checked').value;
+
+		// Column title	
 		for (const element of this.#form.querySelectorAll('.js-column-title')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
 
+		// Broadcast in grouped cell
 		for (const element of this.#form.querySelectorAll('.js-broadcast-in-group-cell')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
@@ -220,6 +208,43 @@ window.tablemodulerme_column_edit_form = new class {
 			}
 		}
 
+		// URL display options.
+		const display_url = display_value_as == <?= CWidgetFieldColumnsList::DISPLAY_VALUE_AS_URL ?>;
+		const url_override_show = display_value_as == <?= CWidgetFieldColumnsList::DISPLAY_VALUE_AS_URL ?> &&
+			url_display_mode == <?= CWidgetFieldColumnsList::URL_DISPLAY_CUSTOM ?>;
+
+		for (const element of this.#form.querySelectorAll('.js-url-display-mode')) {
+			element.style.display = display_url ? '' : 'none';
+
+			for (const input of element.querySelectorAll('input')) {
+				input.disabled = !display_url;
+			}
+		}
+
+		for (const element of this.#form.querySelectorAll('.js-url-display-override')) {
+			element.style.display = url_override_show ? '' : 'none';
+
+			for (const input of element.querySelectorAll('input')) {
+				input.disabled = !url_override_show;
+			}
+		}
+
+		for (const element of this.#form.querySelectorAll('.js-url-custom-override')) {
+			element.style.display = url_override_show ? '' : 'none';
+
+			for (const input of element.querySelectorAll('input')) {
+				input.disabled = !url_override_show;
+			}
+		}
+
+		for (const element of this.#form.querySelectorAll('.js-url-open-in')) {
+			element.style.display = display_url ? '' : 'none';
+
+			for (const input of element.querySelectorAll('input')) {
+				input.disabled = !display_url;
+			}
+		}
+
 		// Thresholds.
 		const thresholds_show = display_value_as == <?= CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC ?>;
 		for (const element of this.#form.querySelectorAll('.js-thresholds-row')) {
@@ -239,7 +264,8 @@ window.tablemodulerme_column_edit_form = new class {
 				input.disabled = !decimals_show;
 			}
 		}
-		
+
+		// Column aggregation.		
 		for (const element of this.#form.querySelectorAll('.js-column-agg-row')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
@@ -272,11 +298,13 @@ window.tablemodulerme_column_edit_form = new class {
 				input.disabled = !history_show;
 			}
 		}
-		
+
+		// Override footer.
 		for (const element of this.#form.querySelectorAll('.js-override-footer')) {
 			element.style.display = (this.tgt.style.display == 'none') ? 'none' : '';
 		}
 
+		// Option for including itemids encoding in cell for broadcasting
 		const column_pattern_selection = this.#form.querySelector('button[id=column_patterns_aggregation]');
 		for (const element of this.#form.querySelectorAll('.js-include-itemids')) {
 			if (column_pattern_selection.innerText === 'not used' || this.tgt.style.display == 'none') {
@@ -295,12 +323,12 @@ window.tablemodulerme_column_edit_form = new class {
 	}
 
 	submit() {
-		if (this.all_hosts_aggregated.nextElementSibling.querySelector('[id="aggregate_all_hosts"]').checked &&
+		if (this.all_hosts_aggregated?.nextElementSibling.querySelector('[id="aggregate_all_hosts"]').checked &&
 				$('#column_agg_method input[type="hidden"]').val() === '0') {
 			if (!this.aggregation_error) {
 				const title = 'Form configuration error';
-				const message = ['A \'Column patterns aggregation\' (under Advanced configuration) is required when using \'Aggregate All Hosts\' from the main form'];
-				const message_box = makeMessageBox('bad', message, title)[0];
+				const messages = ['A \'Column patterns aggregation\' (under Advanced configuration) is required when using \'Aggregate all hosts\' from the main form'];
+				const message_box = makeMessageBox('bad', messages, title)[0];
 				this.#form.parentNode.insertBefore(message_box, this.#form);
 				this.aggregation_error = true;
 			}

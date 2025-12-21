@@ -2,18 +2,21 @@
 	"manifest_version": 2.0,
 	"id": "tablemodulerme",
 	"type": "widget",
-	"name": "Table",
+	"name": "RME Table",
 	"namespace": "TableModuleRME",
 	"version": "1.0",
-	"author": "",
+	"author": "RME",
 	"description": "A flexible table widget for the Zabbix Dashboards",
 	"widget": {
 		"in": {
 			"hostids": {
-				"type": "_hostids"
+				"type": "_hostid"
 			},
 			"groupids": {
 				"type": "_hostgroupids"
+			},
+			"itemid": {
+				"type": "_itemid"
 			}
 		},
 		"js_class": "CWidgetTableModuleRME",

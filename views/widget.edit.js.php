@@ -5,7 +5,7 @@ use Modules\TableModuleRME\Includes\WidgetForm;
 ?>
 
 
-window.widget_tablemodulerme_form = new class {
+window.widget_tablemodulerme_form = new class extends CWidgetForm {
 
 	/**
 	 * Widget form.
@@ -36,7 +36,7 @@ window.widget_tablemodulerme_form = new class {
 	#list_column_tmpl;
 
 	init({templateid}) {
-		this.#form = document.getElementById('widget-dialogue-form');
+		this.#form = this.getForm();
 		this.#list_columns = document.getElementById('list_columns');
 		this.#list_column_tmpl = new Template(this.#list_columns.querySelector('template').innerHTML);
 		this.#templateid = templateid;
@@ -54,6 +54,8 @@ window.widget_tablemodulerme_form = new class {
 		jQuery(document.getElementById('hostids_')).on('change', () => this.#updateForm());
 		jQuery('[id^=layout_]').on('change', () => this.#updateForm());
 		this.#form.addEventListener('form_fields.changed', () => this.#updateForm());
+
+		this.ready();
 	}
 
 	/**
@@ -64,33 +66,50 @@ window.widget_tablemodulerme_form = new class {
 		const vertical_layout = this.#form.querySelector('#layout_1').checked;
 		const item_grouping_table = this.#form.querySelector('[id=item_group_by-table]');
 		const item_grouping_table_rows = item_grouping_table.querySelectorAll(':scope > tbody > tr');
+
 		for (const grouping_field of this.#form.querySelectorAll('.field_item_group_by')) {
-			if (!column_per_pattern) {
-				grouping_field.style.display = 'none';
+			grouping_field.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of grouping_field.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
 			}
-			else {
-				grouping_field.style.display = '';
+		}
+
+		for (const grouping_delimiter of this.#form.querySelectorAll('.field_grouping_delimiter')) {
+			grouping_delimiter.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of grouping_delimiter.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
+				input.setAttribute('data-no-trim', '1');
 			}
 		}
 
 		for (const aggregate_all_field of this.#form.querySelectorAll('.field_aggregate_all_hosts')) {
-			if (!column_per_pattern) {
-				aggregate_all_field.style.display = 'none';
-			}
-			else {
-				aggregate_all_field.style.display = '';
+			aggregate_all_field.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of aggregate_all_field.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
 			}
 		}
 		
+		for (const show_grouping_only_field of this.#form.querySelectorAll('.field_show_grouping_only')) {
+			show_grouping_only_field.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of show_grouping_only_field.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
+			}
+		}
+
 		for (const bc_hostid_field of this.#form.querySelectorAll('.field_no_broadcast_hostid')) {
-			if (vertical_layout) {
-				bc_hostid_field.style.display = 'none';
-			}
-			else {
-				bc_hostid_field.style.display = '';
+			bc_hostid_field.style.display = vertical_layout ? 'none' : '';
+			for (const input of bc_hostid_field.querySelectorAll('input')) {
+				input.disabled = vertical_layout;
 			}
 		}
 		
+		for (const use_host_storage_field of this.#form.querySelectorAll('.field_use_host_storage')) {
+			use_host_storage.style.display = vertical_layout ? 'none' : '';
+			for (const input of use_host_storage_field.querySelectorAll('input')) {
+				input.disabled = vertical_layout;
+			}
+		}
+
 		const order_by_host =
 			this.#form.querySelector('[name=item_ordering_order_by]:checked').value == <?= WidgetForm::ORDERBY_HOST ?>;
 
@@ -154,6 +173,8 @@ window.widget_tablemodulerme_form = new class {
 
 	#triggerUpdate() {
 		this.#form.dispatchEvent(new CustomEvent('form_fields.changed', {detail: {}}));
+
+		this.registerUpdateEvent();
 	}
 
 	#processColumnsAction(e) {
@@ -187,7 +208,6 @@ window.widget_tablemodulerme_form = new class {
 					this.#triggerUpdate();
 				});
 
-				column_popup.addEventListener('dialogue.close', this.#removeColorpicker);
 				break;
 
 			case 'edit':
@@ -212,7 +232,6 @@ window.widget_tablemodulerme_form = new class {
 					this.#triggerUpdate();
 				});
 
-				column_popup.addEventListener('dialogue.close', this.#removeColorpicker);
 				break;
 
 			case 'remove':
@@ -312,10 +331,5 @@ window.widget_tablemodulerme_form = new class {
 		input.setAttribute('value', value);
 
 		return input
-	}
-
-	// Need to remove function after sub-popups auto close.
-	#removeColorpicker() {
-		$('#color_picker').hide();
 	}
 };

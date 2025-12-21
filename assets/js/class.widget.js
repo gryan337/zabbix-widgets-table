@@ -33,9 +33,8 @@ class CWidgetTableModuleRME extends CWidget {
 	#dataset_item = 'item';
 	#dataset_host = 'host';
 
-	#selected_itemid = null;
 	#selected_hostid = null;
-	#selected_name = null;
+	#selected_items = [];
 
 	#null_id = '000000';
 
@@ -64,6 +63,47 @@ class CWidgetTableModuleRME extends CWidget {
 		allSelected: false
 	};
 
+	#lastClickedCell = null;
+	#clearFiltersClickedWithSelections = false;
+	#filterTooltipIds = new Set();
+
+	static #hasManualSelection = false;
+	static #sessionStorageInitialized = false;
+	#sessionKey = null;
+
+	static {
+		// This runs once when the class is first loaded
+		if (!CWidgetTableModuleRME.#sessionStorageInitialized) {
+			CWidgetTableModuleRME.#clearAllWidgetReferences();
+			CWidgetTableModuleRME.#sessionStorageInitialized = true;
+
+			// Clear on page unload/navigation
+			window.addEventListener('beforeunload', () => {
+				CWidgetTableModuleRME.#clearAllWidgetReferences();
+			});
+
+			// Also clear on page hide (for mobile/table)
+			window.addEventListener('pagehide', () => {
+				CWidgetTableModuleRME.#clearAllWidgetReferences();
+			});
+		}
+	}
+
+	static #clearAllWidgetReferences() {
+		try {
+			const keys = Object.keys(sessionStorage);
+			keys.forEach(key => {
+				if (key.startsWith('widget_references_')) {
+					sessionStorage.removeItem(key);
+				}
+			});
+			CWidgetTableModuleRME.#hasManualSelection = false;
+		}
+		catch (e) {
+			console.error('Failed to clear session storage:', e);
+		}
+	}
+
 	processUpdateResponse(response) {
 		super.processUpdateResponse(response);
 	}
@@ -80,11 +120,19 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	setContents(response) {
+		if (!this.#sessionKey) {
+			const dashboardId = this._dashboard?.dashboardid || 'default';
+			this.#sessionKey = `widget_references_${dashboardId}`;
+		}
+
 		if (response.body.includes('no-data-message')) {
-			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
-			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
-			super.setContents(response);
-			return;
+			setTimeout(() => {
+				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
+				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+				super.setContents(response);
+				this.#removePaginationControls();
+				return;
+			}, 0);
 		}
 
 		super.setContents(response)
@@ -101,7 +149,7 @@ class CWidgetTableModuleRME extends CWidget {
 		var colIndex = 0;
 
 		const allTds = this.#values_table.querySelectorAll('td');
-		const allThs = this.#values_table.querySelectorAll('th');
+		this.allThs = this.#values_table.querySelectorAll('th');
 
 		let id = 0;
 		allTds.forEach(td => {
@@ -138,7 +186,7 @@ class CWidgetTableModuleRME extends CWidget {
 			id++;
 		});
 
-		allThs.forEach((th) => {
+		this.allThs.forEach((th) => {
 			th.innerHTML += `<span class="new-arrow" id="arrow"></span>`;
 			th.setAttribute('style', `color: #4796c4; font-weight: bold;`);
 			th.classList.add('cursor-pointer');
@@ -173,14 +221,21 @@ class CWidgetTableModuleRME extends CWidget {
 				}, 0);
 			}
 			else if (target && target.tagName === 'TD') {
-				this.#handleCellClick(target);
+				this.#handleCellClick(target, event);
+			}
+		});
+
+		this.#values_table.addEventListener('mousedown', (event) => {
+			if (event.shiftKey) {
+				event.preventDefault();
+				event.stopPropagation();
 			}
 		});
 
 		this.#totalRows = this.#rowsArray.length;
 		this.#updateDisplay(false, true, true);
 
-		allThs.forEach((th) => {
+		this.allThs.forEach((th) => {
 			if (this.#th !== undefined) {
 				if (th.getAttribute('id') === this.#th.getAttribute('id')) {
 					setTimeout(() => {
@@ -299,29 +354,41 @@ class CWidgetTableModuleRME extends CWidget {
 			hiddenInput.type = 'hidden';
 			filterTypeContainer.appendChild(hiddenInput);
 
-			const button = document.createElement('button');
-			button.type = 'button';
-			filterTypeContainer.appendChild(button);
+			const filterButton = document.createElement('button');
+			filterButton.type = 'button';
+			filterTypeContainer.appendChild(filterButton);
 
 			const options = [
-				{ value: 'contains', label: 'Contains' },
-				{ value: 'equals', label: 'Equals' },
-				{ value: 'starts with', label: 'Starts with' },
-				{ value: 'ends with', label: 'Ends with' },
-				{ value: 'wildcard', label: 'Wildcard' },
-				{ value: 'does not contain', label: 'Does not contain' },
-				{ value: 'regex', label: 'Regex' }
+				{ value: 'contains', label: 'Contains', help: 'Filters items that contain the specified text.' },
+				{ value: 'equals', label: 'Equals', help: 'Filters items that exactly match the specified text.' },
+				{ value: 'starts with', label: 'Starts with', help: 'Filters items that start with the specified text.' },
+				{ value: 'ends with', label: 'Ends with', help: 'Filters items that end with the specified text.' },
+				{ value: 'wildcard', label: 'Wildcard', help: 'Filters items that match the specified wildcarded (*) pattern.\nMultiple wildcards (*) are supported.' },
+				{ value: 'does not contain', label: 'Does not contain', help: 'Filters items that do not contain the specified text.' },
+				{ value: 'regex', label: 'Regex', help: 'Filters items that match the specified regular expression.' },
+				{ value: 'boolean', label: 'Boolean Expr', help: 'Filters items that match the specified boolean expression.\nSupports \'AND\', \'OR\', \'AND NOT\', \'OR NOT\', and parentheses\ni.e. (TERMA OR TERMB) AND TERMCD AND NOT TERMCDE' }
 			];
 
 			const initialValue = this.#filterState?.type || 'contains';
 			const initialLabel = options.find(o => o.value === initialValue)?.label || 'Contains';
 
 			hiddenInput.value = initialValue;
-			button.textContent = initialLabel;
+			filterButton.textContent = initialLabel;
 
-			const list = document.createElement('ul');
-			list.className = 'list';
-			list.style.display = 'none';
+			const filterList = document.createElement('ul');
+			filterList.className = 'list';
+			filterList.style.display = 'none';
+			filterList.tabIndex = -1;
+
+			if (this.#filterTooltipIds) {
+				this.#filterTooltipIds.forEach(id => {
+					const oldTooltip = document.getElementById(id);
+					if (oldTooltip) {
+						oldTooltip.remove();
+					}
+				});
+			}
+			this.#filterTooltipIds = new Set();
 
 			options.forEach(opt => {
 				const li = document.createElement('li');
@@ -330,30 +397,151 @@ class CWidgetTableModuleRME extends CWidget {
 				li.dataset.label = opt.label;
 				li.addEventListener('click', () => {
 					event.stopPropagation();
-					list.style.display = 'none';
+					filterList.style.display = 'none';
 					hiddenInput.value = li.dataset.value;
-					button.textContent = li.dataset.label;
+					filterButton.textContent = li.dataset.label;
 					searchInput.dispatchEvent(new Event('input'));
 					updateWarningIcon();
 					updateClearFiltersButton();
 					this.#filterState.type = opt;
+					setupInputHandler();
 				});
-				list.appendChild(li);
+
+				const helpIcon = document.createElement('span');
+				helpIcon.className = 'help-icon';
+				helpIcon.textContent = '?';
+				helpIcon.dataset.help = opt.help;
+				li.appendChild(helpIcon);
+				filterList.appendChild(li);
+
+				const filterTooltipId = `${this.#values_table.id}-${this._widgetid}-${opt.label}-tooltip`;
+				const filterTooltip = document.createElement('div');
+				filterTooltip.id = filterTooltipId;
+				filterTooltip.className = 'filter-tooltip';
+				filterTooltip.textContent = opt.help;
+				filterTooltip.style.display = 'none';
+				document.body.appendChild(filterTooltip);
+
+				this.#filterTooltipIds.add(filterTooltipId);
+
+				helpIcon.addEventListener('mouseover', (e) => {
+					const rect = helpIcon.getBoundingClientRect();
+					filterTooltip.style.left = `${rect.left + window.scrollX + rect.width + 10}px`;
+					filterTooltip.style.top = `${rect.top + window.scrollY + 15}px`;
+					filterTooltip.style.display = 'block';
+				});
+
+				helpIcon.addEventListener('mouseout', () => {
+					filterTooltip.style.display = 'none';
+				});
 			});
 
-			filterTypeContainer.appendChild(list);
+			filterTypeContainer.appendChild(filterList);
 
-			button.addEventListener('click', () => {
-				list.style.display = list.style.display === 'none' ? 'block' : 'none';
+			filterButton.addEventListener('click', () => {
+				event.stopPropagation();
+				filterList.style.display = filterList.style.display === 'none' ? 'block' : 'none';
+			});
+
+			let currentIndex = -1;
+
+			filterButton.setAttribute('aria-haspopup', 'listbox');
+			filterButton.setAttribute('aria-expanded', 'false');
+			filterList.setAttribute('role', 'listbox');
+			filterList.querySelectorAll('li').forEach(li => li.setAttribute('role', 'option'));
+
+			function openList() {
+				filterList.style.display = 'block';
+				filterButton.setAttribute('aria-expanded', 'true');
+				filterList.focus();
+			}
+
+			function closeList() {
+				filterList.style.display = 'none';
+				filterButton.setAttribute('aria-expanded', 'false');
+				currentIndex = -1;
+			}
+
+			function focusItem(index) {
+				const items = filterList.querySelectorAll('li');
+				if (items.length === 0) return;
+				items.forEach(li => li.classList.remove('focused'));
+				if (index >= 0 && index < items.length) {
+					currentIndex = index;
+					items[currentIndex].classList.add('focused');
+					items[currentIndex].scrollIntoView({ block: 'nearest' });
+				}
+			}
+
+			filterButton.addEventListener('keydown', (e) => {
+				const items = filterList.querySelectorAll('li');
+				switch (e.key) {
+					case ' ':
+					case 'Enter':
+						e.preventDefault();
+						if (filterList.style.display === 'none') {
+							openList();
+							focusItem(0);
+						}
+						else {
+							closeList();
+						}
+						break;
+					case 'ArrowDown':
+						e.preventDefault();
+						openList();
+						focusItem(0);
+						break;
+					case 'ArrowUp':
+						e.preventDefault();
+						openList();
+						focusItem(items.length - 1);
+						break;
+				}
+			});
+
+			filterList.addEventListener('keydown', (e) => {
+				const items = filterList.querySelectorAll('li');
+				if (items.length === 0) return;
+
+				switch (e.key) {
+					case 'ArrowDown':
+						e.preventDefault();
+						focusItem((currentIndex + 1) % items.length);
+						break;
+					case 'ArrowUp':
+						e.preventDefault();
+						focusItem((currentIndex - 1 + items.length) % items.length);
+						break;
+					case 'Enter':
+					case ' ':
+						e.preventDefault();
+						if (currentIndex >= 0) {
+							items[currentIndex].click();
+							closeList();
+							filterButton.focus();
+						}
+						break;
+					case 'Escape':
+						e.preventDefault();
+						closeList();
+						filterButton.focus();
+						break;
+					case 'Tab':
+						closeList();
+						break;
+				}
+			});
+
+			filterList.querySelectorAll('li').forEach((li, i) => {
+				li.addEventListener('mouseenter', () => focusItem(i));
 			});
 
 			this.dropdownOutsideClickHandler = (e) => {
 				if (!filterTypeContainer.contains(e.target)) {
-					list.style.display = 'none';
+					filterList.style.display = 'none';
 				}
 			};
-
-			filterControls.appendChild(filterTypeContainer);
 
 			const searchInput = document.createElement('input');
 			searchInput.type = 'text';
@@ -367,10 +555,6 @@ class CWidgetTableModuleRME extends CWidget {
 				searchInput.value = '';
 				searchInput.dispatchEvent(new Event('input'));
 
-				this.#filterState.checked = [];
-				isAllSelected = false;
-				toggleButton.textContent = 'Select All';
-
 				renderVisibleCheckboxes();
 				updateSummary();
 				updateWarningIcon();
@@ -378,6 +562,7 @@ class CWidgetTableModuleRME extends CWidget {
 				lastCheckedCheckbox = null;
 			});
 
+			filterControls.appendChild(filterTypeContainer);
 			filterControls.appendChild(searchInput);
 			filterControls.appendChild(clearBtn);
 
@@ -408,7 +593,6 @@ class CWidgetTableModuleRME extends CWidget {
 			toggleButton.style.background = '#455a64';
 			toggleButton.style.color = '#eee';
 			toggleButton.style.fontWeight = 'bold';
-			toggleButton.className = 'toggle-button';
 
 			toggleButton.addEventListener('click', () => {
 				let valuesToCheck;
@@ -422,7 +606,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				isAllSelected = valuesToCheck.length > 0 && valuesToCheck.every(value => {
 					return this.#filterState.checked?.includes(String(value).toLowerCase());
-				});;
+				});
 
 				if (isAllSelected) {
 					this.#filterState.checked = [];
@@ -516,6 +700,12 @@ class CWidgetTableModuleRME extends CWidget {
 				updateWarningIcon();
 				updateClearFiltersButton();
 				lastCheckedCheckbox = null;
+				if ((this.#selected_items.length > 0 && this.#selected_items[0].itemid !== this.#null_id) ||
+						(this.#selected_hostid !== this.#null_id && this.#selected_hostid !== null)) {
+					this.#clearFiltersClickedWithSelections = true;
+					this.#selected_items = [{ itemid: this.#null_id, name: null }];
+					this.#selected_hostid = this.#null_id;
+				}
 			});
 
 			const warningSvg = `
@@ -581,7 +771,7 @@ class CWidgetTableModuleRME extends CWidget {
 			const calculatedWidth = Math.min(Math.max(maxWidth + 150, 400), 800);
 			popup.style.width = `${calculatedWidth}px`;
 
-			const visibleCount = 50;
+			const visibleCount = 25;
 			let startIndex = 0;
 			const scrollContainer = document.createElement('div');
 			scrollContainer.style.maxHeight = '300px';
@@ -618,6 +808,7 @@ class CWidgetTableModuleRME extends CWidget {
 				const filteredValuesLowerCase = filteredValues.map(v => String(v).toLowerCase());
 
 				this.#filterState.checked = this.#filterState.checked?.filter(v => filteredValuesLowerCase.includes(v));
+				this.#filterState.search = query;
 
 				isAllSelected = filteredValues.length > 0 && filteredValues.every(v => this.#filterState.checked?.includes(String(v).toLowerCase()));
 
@@ -630,11 +821,25 @@ class CWidgetTableModuleRME extends CWidget {
 				spacer.style.height = `${filteredValues.length * 30}px`
 			};
 
-			const inputHandler = sortedValues.length > 250
-				? this.debounce(this.handleInput, 300)
-				: this.handleInput;
+			const setupInputHandler = () => {
+				const filterMode = hiddenInput.value;
 
-			searchInput.addEventListener('input', inputHandler);
+				searchInput.removeEventListener('input', currentInputHandler);
+
+				const newInputHandler = filterMode === 'boolean'
+					? this.debounce(this.handleInput, 1000)
+					: (sortedValues.length > 250
+						? this.debounce(this.handleInput, 300)
+						: this.handleInput);
+
+				searchInput.addEventListener('input', newInputHandler);
+
+				currentInputHandler = newInputHandler;
+			};
+
+			let currentInputHandler;
+
+			setupInputHandler();
 
 			const renderVisibleCheckboxes = () => {
 				const scrollTop = scrollContainer.scrollTop;
@@ -730,7 +935,7 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 				}
 
-				isAllSelected = (this.#filterState.checked?.length == sortedValues.length || 0 === sortedValues.length);
+				isAllSelected = (this.#filterState.checked?.length == filteredValues.length || 0 === sortedValues.length);
 
 				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 
@@ -738,7 +943,6 @@ class CWidgetTableModuleRME extends CWidget {
 				updateWarningIcon();
 				updateClearFiltersButton();
 			});
-
 
 			const updateSummary = () => {
 				const checked = this.#filterState.checked?.length || 0;
@@ -781,6 +985,8 @@ class CWidgetTableModuleRME extends CWidget {
 
 				popup.style.visibility = 'visible';
 				popup.style.display = 'flex';
+
+				requestAnimationFrame(() => searchInput.focus());
 				this._pauseUpdating();
 			});
 
@@ -805,10 +1011,7 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			const updateClearFiltersButton = () => {
-				const hasChecked = this.#filterState.checked.length > 0;
-				const hasSearch = searchInput.value.trim() !== '';
-
-				if (hasChecked || hasSearch) {
+				if (this.#filterState.checked.length > 0 || this.#filterState.search !== '') {
 					clearFiltersButton.style.visibility = 'visible';
 				}
 				else {
@@ -836,6 +1039,94 @@ class CWidgetTableModuleRME extends CWidget {
 		this.boundMouseUp = this.handleMouseUpTi.bind(this);
 		this.attachListeners();
 
+		if (this._fields.use_host_storage && CWidgetTableModuleRME.#hasManualSelection) {
+			let references = this.getReferenceFromSession(this.#sessionKey);
+			if (references) {
+				let reference_session = JSON.parse(references);
+				if (reference_session['hostids']) {
+					this.#selected_hostid = reference_session['hostids'][0];
+				}
+			}
+		}
+
+		this.checkAndRemarkSelected();
+
+	}
+
+	getReferenceFromSession(key) {
+		try {
+			return sessionStorage.getItem(key);
+		}
+		catch (e) {
+			console.error('Session storage access failed:', e);
+			return null;
+		}
+	}
+
+	setReferenceInSession(key, id_type, id) {
+		try {
+			CWidgetTableModuleRME.#hasManualSelection = true;
+
+			let existing = this.getReferenceFromSession(key);
+			let reference;
+
+			if (existing) {
+				reference = JSON.parse(existing);
+				reference[id_type] = [id];
+			}
+			else {
+				reference = {
+					hostids: [],
+					hostgroupids: [],
+					itemids: []
+				};
+				reference[id_type] = [id];
+			}
+
+			sessionStorage.setItem(key, JSON.stringify(reference));
+		}
+		catch (e) {
+			console.error('Session storage write failed:', e);
+		}
+	}
+
+	getActionsContextMenu({can_copy_widget, can_paste_widget}) {
+		const menu = super.getActionsContextMenu({can_copy_widget, can_paste_widget});
+
+		if (this.isEditMode()) {
+			return menu;
+		}
+
+		let menu_actions = null;
+
+		for (const search_menu_actions of menu) {
+			if ('label' in search_menu_actions && search_menu_actions.label === t('Actions')) {
+				menu_actions = search_menu_actions;
+				break;
+			}
+		}
+
+		if (menu_actions === null) {
+			menu_actions = {
+				label: t('Actions'),
+				items: []
+			};
+
+			menu.unshift(menu_actions);
+		}
+
+		menu_actions.items.push({
+			label: t('Download as csv'),
+			disabled: !this.#rowsArray,
+			clickCallback: () => {
+				this.exportTableRowsToCSV();
+			}
+		});
+
+		return menu;
+        }
+
+	checkAndRemarkSelected() {
 		if (this.#selected_hostid !== null) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
 			this._markSelected(this.#dataset_host);
@@ -844,14 +1135,18 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#first_td_host_cell.click();
 		}
 
-		if (this.#selected_itemid !== null) {
-			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#selected_itemid);
-			this._markSelected(this.#dataset_item);
+		if (this.#selected_items.length > 0) {
+			this._markSelected(this.#dataset_item, true);
 		}
 		else if (this.#first_td_value_cell !== null && this._fields.autoselect_first) {
 			this.#first_td_value_cell.click();
 		}
+	}
 
+	onResize() {
+		if (this._state === WIDGET_STATE_ACTIVE) {
+			this.#recalculateSvgSparklines();
+		}
 	}
 
 	debounce(fn, delay) {
@@ -862,12 +1157,6 @@ class CWidgetTableModuleRME extends CWidget {
 		};
 	}
 
-	onResize() {
-		if (this._state === WIDGET_STATE_ACTIVE) {
-			this.#recalculateSvgSparklines();
-		}
-	}
-
 	closeFilterPopup(e) {
 		const popup = document.getElementById(this.#popupId);
 		const filterIcon = this._target.getElementsByClassName('filter-icon').item(0);
@@ -875,6 +1164,14 @@ class CWidgetTableModuleRME extends CWidget {
 			if (!popup.contains(e.target) && !filterIcon.contains(e.target)) {
 				popup.style.display = 'none';
 				this._resumeUpdating();
+				if (this.#clearFiltersClickedWithSelections) {
+					filterIcon.classList.remove('active');
+					filterIcon.classList.remove('filter-error');
+					filterIcon.title = 'Click to filter this column';
+					this.#filterApplied = false;
+					this.checkAndRemarkSelected();
+					this.#clearFiltersClickedWithSelections = false;
+				}
 			}
 		}
 	}
@@ -908,7 +1205,7 @@ class CWidgetTableModuleRME extends CWidget {
 		this.offsetX = 0;
 		this.offsetY = 0;
 
-		handle.style.cursor = 'move';
+		handle.style.cursor = 'grab';
 	}
 
 	handleMouseDownTi(e) {
@@ -922,6 +1219,7 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		this.isDragging = true;
+		this.handle.style.cursor = 'grabbing';
 		const rect = this.popup.getBoundingClientRect();
 		this.offsetX = e.clientX - rect.left;
 		this.offsetY = e.clientY - rect.top;
@@ -930,6 +1228,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 	handleMouseMoveTi(e) {
 		if (this.isDragging) {
+			this.handle.style.cursor = 'grabbing';
 			this.popup.style.left = `${e.clientX - this.offsetX}px`;
 			this.popup.style.top = `${e.clientY - this.offsetY}px`;
 		}
@@ -937,6 +1236,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 	handleMouseUpTi(e) {
 		this.isDragging = false;
+		this.handle.style.cursor = 'grab';
 		document.body.style.userSelect = '';
 	}
 
@@ -958,6 +1258,23 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
+	#filterSelectedItems() {
+		this.#selected_items = this.#selected_items.filter(selectedItem => {
+			return this.#rowsArray.some(rowObj => {
+				if (rowObj.status === 'display') {
+					const menuElements = rowObj.row.querySelectorAll(`td [data-menu]`);
+					for (const menuElement of menuElements) {
+						const menuData = JSON.parse(menuElement.dataset.menu);
+						if (menuData.itemid === selectedItem.item || menuData.name === selectedItem.name) {
+							return true;
+						}
+					}
+				}
+				return false;
+			});
+		});
+	}
+
 	#applyFilter() {
 		function getColumnInfo(td, columns) {
 			const indexStr = td.getAttribute('column-id');
@@ -972,14 +1289,26 @@ class CWidgetTableModuleRME extends CWidget {
 			return { indexNum, columnDef };
 		}
 
-		function resolveMinMax(columnDef, dynamicStats, indexNum) {
+		function resolveMinMaxSum(columnDef, dynamicStats, indexNum) {
 			const staticMin = columnDef.min !== undefined && columnDef.min !== '' ? parseFloat(columnDef.min) : null;
 			const staticMax = columnDef.max !== undefined && columnDef.max !== '' ? parseFloat(columnDef.max) : null;
 
 			const min = staticMin !== null ? staticMin : dynamicStats[indexNum]?.min;
 			const max = staticMax !== null ? staticMax : dynamicStats[indexNum]?.max;
+			const sum = dynamicStats[indexNum]?.sum;
 
-			return { min, max };
+			return { min, max, sum };
+		}
+
+		function extractValueFromHintbox(hintboxContent) {
+			const match = hintboxContent.match(/<div class="hintbox-wrap">(.*?)<\/div>/);
+			if (match && match[1]) {
+				const numericValue = parseFloat(match[1]);
+				if (!isNaN(numericValue)) {
+					return numericValue;
+				}
+			}
+			return null;
 		}
 
 		if (!this.#filterState) return;
@@ -1018,57 +1347,120 @@ class CWidgetTableModuleRME extends CWidget {
 
 			rowObj.status = showRow ? 'display' : 'hidden';
 
-			if (rowObj.status === 'display') {
+			if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
+				if (rowObj.status === 'display') {
+					const allTdsInRow = tr.querySelectorAll('td');
+
+					allTdsInRow.forEach((td, index) => {
+						if (this._isBarGauge(td) || this._isSparkLine(td)) return;
+						let value = null;
+
+						const hintboxContent = td.getAttribute('data-hintbox-contents');
+						if (hintboxContent) {
+							value = extractValueFromHintbox(hintboxContent);
+						}
+
+						if (value === null) return;
+
+						const info = getColumnInfo(td, columns);
+						if (!info) return;
+
+						const { indexNum, columnDef } = info;
+
+						const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
+						const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
+
+						if (!this._isNumeric(value)) return;
+
+						if (!columnStats[indexNum]) {
+							columnStats[indexNum] = {
+								min: hasStaticMin ? columnDef.min : value,
+								max: hasStaticMax ? columnDef.max : value,
+								sum: value
+							};
+						}
+						else {
+							columnStats[indexNum].sum += value;
+							if (!hasStaticMin) {
+								columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
+							}
+
+							if (!hasStaticMax) {
+								columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
+							}
+						}
+					});
+				}
+			}
+		});
+
+		const selectedItemsBefore = [...this.#selected_items];
+
+		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+		this.#filterSelectedItems();
+
+		if (selectedItemsBefore.length > 0 && this.#selected_items.length === 0) {
+			this.#selected_items = [{ itemid: this.#null_id, name: null }];
+		}
+
+		if (selectedItemsBefore.length === 1 &&
+				this.#selected_items.length === 1 &&
+				this.#selected_items[0].itemid === this.#null_id &&
+				selectedItemsBefore[0].itemid === this.#null_id &&
+				!this.#clearFiltersClickedWithSelections) {
+		}
+		else {
+			this.checkAndRemarkSelected();
+		}
+
+		if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
+			displayedRows.forEach(rowObj => {
+				const tr = rowObj.row;
 				const allTdsInRow = tr.querySelectorAll('td');
 
 				allTdsInRow.forEach((td, index) => {
-					const gauge = td.querySelector('z-bar-gauge');
+					const gauge = this._isBarGauge(td);
 					if (!gauge) return;
 
 					const info = getColumnInfo(td, columns);
 					if (!info) return;
 
 					const { indexNum, columnDef } = info;
+					const { min, max, sum } = resolveMinMaxSum(columnDef, columnStats, indexNum);
 
-					const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
-					const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
-					if (hasStaticMin && hasStaticMax) return;
+					if (min === undefined || max === undefined) return;
 
-					if (!this._isNumeric(gauge.value)) return;
-					const value = parseFloat(gauge.value);
+					const bgValue = parseFloat(gauge.getAttribute('value'));
 
-					if (!columnStats[indexNum]) {
-						columnStats[indexNum] = { min: value, max: value };
+					let newTooltipValue = null;
+					let hintStrValue = '';
+					let formatted = newTooltipValue;
+					if (this._fields.bar_gauge_tooltip === 0) {
+						newTooltipValue = bgValue / max * 100;
+						hintStrValue = ' % of column max';
+						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
+						gauge.setAttribute('max', max);
+					}
+					else if (this._fields.bar_gauge_tooltip === 1) {
+						newTooltipValue = bgValue / sum * 100;
+						hintStrValue = ' % of column sum';
+						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
+						gauge.setAttribute('max', sum);
 					}
 					else {
-						columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
-						columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
+						gauge.setAttribute('max', max);
 					}
+
+					if (formatted !== null) {
+						const oldHint = td.getAttribute('data-hintbox-contents');
+						const newHint = oldHint.replace(/>.*?</, `>${formatted}<`);
+						td.setAttribute('data-hintbox-contents', newHint);
+					}
+
+					gauge.setAttribute('min', min);
 				});
-			}
-		});
-
-		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
-
-		displayedRows.forEach(rowObj => {
-			const tr = rowObj.row;
-			const allTdsInRow = tr.querySelectorAll('td');
-
-			allTdsInRow.forEach((td, index) => {
-				const gauge = td.querySelector('z-bar-gauge');
-				if (!gauge) return;
-
-				const info = getColumnInfo(td, columns);
-				if (!info) return;
-
-				const { indexNum, columnDef } = info;
-				const { min, max } = resolveMinMax(columnDef, columnStats, indexNum);
-
-				if (min === undefined || max === undefined) return;
-				gauge.setAttribute('min', min);
-				gauge.setAttribute('max', max);
 			});
-		});
+		}
 
 		this.#totalRows = displayedRows.length;
 		this.#currentPage = 1;
@@ -1099,7 +1491,7 @@ class CWidgetTableModuleRME extends CWidget {
 				else {
 					filterIcon.classList.remove('active');
 					filterIcon.classList.remove('filter-error');
-					filterIcon.title = '';
+					filterIcon.title = 'Click to filter this column';
 					this.#filterApplied = false;
 				}
 			}
@@ -1117,6 +1509,89 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		switch (filterMode) {
+			case 'boolean': {
+				if (searchValue === '') return false;
+				const tokenize = expr => {
+					const tokens = [];
+					const regex = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|(\bAND\b|\bOR\b|\bNOT\b)|([()])|([^()\s]+)/gi;
+					let match;
+					while ((match = regex.exec(expr)) !== null) {
+						if (match[1] !== undefined) tokens.push(match[1]);
+						else if (match[2] !== undefined) tokens.push(match[2]);
+						else if (match[3] !== undefined) tokens.push(match[3].toUpperCase());
+						else if (match[4] !== undefined) tokens.push(match[4]);
+						else if (match[5] !== undefined) tokens.push(match[5]);
+					}
+					return tokens;
+				};
+
+				const parseExpression = tokens => {
+					const parseTerm = () => {
+						let node = parseFactor();
+						while (tokens[0] === 'AND') {
+							tokens.shift();
+							node = { op: 'AND', left: node, right: parseFactor() };
+						}
+						return node;
+					};
+
+					const parseFactor = () => {
+						const tok = tokens.shift();
+						if (tok === '(') {
+							const node = parseExpression(tokens);
+							if (tokens[0] === ')') tokens.shift();
+							return node;
+						}
+						if (tok === 'NOT') {
+							return { op: 'NOT', value: parseFactor() };
+						}
+						return tok;
+					};
+
+					let node = parseTerm();
+					while (tokens[0] === 'OR') {
+						tokens.shift();
+						node = { op: 'OR', left: node, right: parseTerm() };
+					}
+					return node;
+				};
+
+				const evaluateNode = (node, text) => {
+					if (node === undefined || (typeof node === 'object' && node.op === undefined)) {
+						return false;
+					}
+
+					if (typeof node === 'string') {
+						const term = caseSensitive ? node : node.toLowerCase();
+						const isRegex = term.startsWith('^') || term.endsWith('$') || /[.*+?()[\]|]/.test(term);
+						try {
+							return isRegex
+								? new RegExp(term, caseSensitive ? '' : 'i').test(text)
+								: text.includes(term);
+						}
+						catch {
+							return false;
+						}
+					}
+					switch (node.op) {
+						case 'AND': return evaluateNode(node.left, text) && evaluateNode(node.right, text);
+						case 'OR':  return evaluateNode(node.left, text) || evaluateNode(node.right, text);
+						case 'NOT': return !evaluateNode(node.value, text);
+					}
+
+					return false;
+				};
+
+				try {
+					const tokens = tokenize(searchValue);
+					const ast = parseExpression(tokens);
+					return evaluateNode(ast, text);
+				}
+				catch (e) {
+					console.error('Boolean filter parse error:', e);
+					return false;
+				}
+			}
 			case 'equals':
 				return text === searchValue;
 			case 'starts with':
@@ -1167,52 +1642,167 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#recalculateSvgSparklines() {
 		requestAnimationFrame(() => {
-			this.#values_table.querySelectorAll('z-sparkline').forEach(el => {
+			this.#values_table?.querySelectorAll('z-sparkline').forEach(el => {
 				el.attributeChangedCallback('width', null, el.offsetWidth);
 			});
 		});
 	}
 
+	#processItemIds() {
+		if (this.#selected_items.length === 1) {
+			const item = this.#selected_items[0];
+			try {
+				const obj = JSON.parse(item.itemid);
+				obj[0].tags = item.tags;
+				return JSON.stringify(obj);
+			}
+			catch {
+				return item.itemid;
+			}
+		}
 
-	#handleCellClick(td) {
+		const uniqueItems = new Set();
+
+		this.#selected_items.forEach(item => {
+			if (typeof item.itemid === 'number') {
+				const itemKey = `${item.itemid}-`;
+				if (!uniqueItems.has(itemKey)) {
+					uniqueItems.add(itemKey);
+				}
+			}
+			else if (typeof item.itemid === 'string' && item.itemid.startsWith('[')) {
+				const parsedItems = JSON.parse(item.itemid);
+				parsedItems.forEach(parsedItem => {
+					const itemKey = `${parsedItem.itemid}-${parsedItem.color}`;
+					if (!uniqueItems.has(itemKey)) {
+						uniqueItems.add(itemKey);
+					}
+				});
+			}
+		});
+
+		const resultArray = Array.from(uniqueItems).map(itemKey => {
+			const [itemid, color] = itemKey.split('-');
+			return { itemid, color: color || '' };
+		});
+
+		return JSON.stringify(resultArray);
+	}
+
+	#handleCellClick(td, event=false) {
+		if (event && event.target?.closest('.menu-btn')) {
+			return;
+		}
+
+		const extBtn = event.target?.closest('.ext-btn');
+		if (extBtn) {
+			const href = extBtn.getAttribute('href');
+			const target = extBtn.getAttribute('target') || '_self';
+			window.open(href, target);
+			return;
+		}
+
 		let tdClicked = td;
 		var nextTd = tdClicked.nextElementSibling;
 		var previousTd = tdClicked.previousElementSibling;
-		var element = td.querySelector(this.#menu_selector);
 
+		let element = td.querySelector(this.#menu_selector);
 		if (this._isDoubleSpanColumn(tdClicked)) {
 			element = nextTd.querySelector(this.#menu_selector);
 		}
 
-		if (element !== null) {
-			var dataset = JSON.parse(element.dataset.menu);
-			if (dataset?.type === this.#dataset_item) {
-				if (this.#selected_itemid === dataset.itemid) {
-					this.#selected_itemid = 0;
-					this.#selected_name = null;
+		if (!element) return;
+
+		const dataset = JSON.parse(element.dataset.menu);
+
+		if (dataset?.type === this.#dataset_item) {
+			const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
+
+			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags };
+
+			const key = `${dataset.itemid}__${dataset.name}`;
+			const index = this.#selected_items.findIndex(
+				item => `${item.itemid}__${item.name}` === key
+			);
+
+			if (event && event.ctrlKey) {
+				const before = this.#selected_items.length;
+				this.#selected_items = this.#selected_items.filter(
+					item => `${item.itemid}__${item.name}` !== key
+				);
+
+				if (this.#selected_items.length === before) {
+					this.#selected_items.push(selectedItem);
+				}
+			}
+			else if (event && event.shiftKey) {
+				this.#selectRange(tdClicked);
+			}
+			else {
+				const allMatch = this.#selected_items.length > 0 &&
+					this.#selected_items.every(item => `${item.itemid}__${item.name}` === key);
+
+				if (index !== -1 && allMatch) {
+					this.#selected_items = [{ itemid: this.#null_id, name: null }];
 				}
 				else {
-					this.#selected_itemid = dataset.itemid;
-					this.#selected_name = dataset.name;
+					this.#selected_items = [selectedItem];
 				}
-				this._markSelected(this.#dataset_item);
-				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#selected_itemid);
 			}
-			else if (dataset?.type === this.#dataset_host) {
-				if (this.#selected_hostid === dataset.hostid) {
-					this.#selected_hostid = this.#null_id;
-				}
-				else {
-					this.#selected_hostid = dataset.hostid;
-				}
-				this._markSelected(this.#dataset_host);
-				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
+
+			this._markSelected(this.#dataset_item);
+			const itemsSelected = this.#processItemIds();
+			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, itemsSelected);
+		}
+		else if (dataset?.type === this.#dataset_host) {
+			if (this.#selected_hostid === dataset.hostid) {
+				this.#selected_hostid = this.#null_id;
 			}
+			else {
+				this.#selected_hostid = dataset.hostid;
+			}
+			this._markSelected(this.#dataset_host);
+			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
+			if (this._fields.use_host_storage) {
+				this.setReferenceInSession(this.#sessionKey, "hostids", this.#selected_hostid);
+			}
+		}
+
+		this.#lastClickedCell = tdClicked;
+	}
+
+	#selectRange(td) {
+		if (!this.#lastClickedCell) return;
+
+		const startIndex = this.#lastClickedCell.parentNode.rowIndex;
+		const endIndex = td.parentNode.rowIndex;
+		const columnIndex = this.#lastClickedCell.cellIndex;
+
+		const start = Math.min(startIndex, endIndex);
+		const end = Math.max(startIndex, endIndex);
+
+		for (let i = start; i <= end; i++) {
+			const cell = this.#values_table.rows[i].cells[columnIndex];
+			let element = cell.querySelector(this.#menu_selector);
+			if (this._isDoubleSpanColumn(cell)) {
+				element = cell.nextElementSibling.querySelector(this.#menu_selector);
+			}
+
+			if (!element) continue;
+
+			const dataset = JSON.parse(element.dataset.menu);
+			const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
+			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags };
+
+			this.#selected_items.push(selectedItem);
 		}
 	}
 
 	#removePaginationControls() {
-		const paginationElements = this.#parent_container.querySelectorAll('.pagination-controls');
+		const paginationElements = this.#parent_container
+			? this.#parent_container.querySelectorAll('.pagination-controls')
+			: [];
+
 		paginationElements.forEach(element => {
 			element.remove();
 		});
@@ -1274,6 +1864,12 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
+		const maxPages = Math.ceil(visibleRows.length / this.#rowsPerPage);
+
+		if (this.#currentPage > maxPages) {
+			this.#currentPage = 1;
+		}
+
 		const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
 		const endIndex = Math.min(startIndex + this.#rowsPerPage, visibleRows.length);
 		const displayedRows = visibleRows.slice(startIndex, endIndex);
@@ -1348,106 +1944,158 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 	}
 
-	_markSelected(type) {
+	_markSelected(type, refresh = false) {
 		const tds = [];
+
 		this.#rowsArray.forEach(rowObj => {
 			const tr = rowObj.row;
-			const allTdElements = tr.querySelectorAll('td');
-			allTdElements.forEach(td => {
-				tds.push(td);
-			});
+			tr.querySelectorAll('td').forEach(td => tds.push(td));
 		});
+
 		var prevTd = null;
 		let hasItemMarking = false;
 		let hasHostMarking = false;
 		var tdsToMark = [];
-		tds.forEach(td => {
-			var origStyle = td.style.cssText;
+		const nameTracking = [];
+		const actualsFound = [];
+
+		const isItemSelected = (dataset) => {
+			return this.#selected_items.some(item =>
+				item.itemid === dataset.itemid && item.name === dataset.name
+			);
+		};
+
+		const hasName = (dataset) => {
+			return this.#selected_items.some(item =>
+				item.name === dataset.name
+			);
+		};
+
+		for (const td of tds) {
+			const origStyle = td.style.cssText;
 			var element = td.querySelector(this.#menu_selector);
-			if (element !== null) {
-				const dataset = JSON.parse(element.dataset.menu);
-				const cell_key = dataset?.itemid + "_" + td.getAttribute('id');
-				if (dataset?.type === this.#dataset_host) {
-					if (type === this.#dataset_item) {
-					}
-					else if (dataset?.hostid === this.#selected_hostid) {
-						hasHostMarking = true;
-						td.style.backgroundColor = this.host_bg_color;
-						td.style.color = this.font_color;
-					}
-					else {
-						td.style.backgroundColor = td.style.color = '';
-					}
+
+			if (!element) {
+				prevTd = td;
+				continue;
+			}
+
+			const dataset = JSON.parse(element.dataset.menu);
+			const cell_key = dataset?.itemid + "_" + td.getAttribute('id');
+
+			if (dataset?.type === this.#dataset_host) {
+				if (type === this.#dataset_item) continue;
+
+				if (dataset.hostid === this.#selected_hostid) {
+					hasHostMarking = true;
+					td.style.backgroundColor = this.host_bg_color;
+					td.style.color = this.font_color;
 				}
-				else if (dataset?.type === this.#dataset_item) {
-					if (type === this.#dataset_host) {
-					}
-					else if (dataset?.itemid === this.#selected_itemid || dataset?.name === this.#selected_name) {
-						if (dataset?.itemid === this.#selected_itemid) {
-							if (this._isDoubleSpanColumn(prevTd)) {
-								td.style.backgroundColor = prevTd.style.backgroundColor = this.bg_color;
-								td.style.color = prevTd.style.color = this.font_color;
-							}
-							else {
-								td.style.backgroundColor = this.bg_color;
-								td.style.color = this.font_color;
-							}
-							hasItemMarking = true;
-						}
-						else {
-							if (this._isDoubleSpanColumn(prevTd)) {
-								if (this._isBarGauge(prevTd)) {
-									td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
-								}
-								else if (this._isSparkLine(prevTd)) {
-									td.style = this.#cssStyleMap.get(cell_key);
-									prevTd.style = ''
-								}
-								tdsToMark.push(td);
-								tdsToMark.push(prevTd);
-							}
-							else {
-								td.style = this.#cssStyleMap.get(cell_key);
-								tdsToMark.push(td);
-							}
-						}
-					}
-					else {
-						if (this._isDoubleSpanColumn(prevTd)) {
-							if (this._isBarGauge(prevTd)) {
-								td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
-							}
-							else if (this._isSparkLine(prevTd)) {
-								td.style = this.#cssStyleMap.get(cell_key);
-								prevTd.style = ''
-							}
-						}
-						else {
-							td.style = this.#cssStyleMap.get(cell_key);
-						}
-					}
+				else {
+					td.style.backgroundColor = td.style.color = '';
 				}
 			}
+
+			else if (dataset?.type === this.#dataset_item) {
+				if (type === this.#dataset_host) continue;
+
+				if (isItemSelected(dataset)) {
+					hasItemMarking = true;
+					const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
+					actualsFound.push({ itemid: dataset.itemid, name: dataset.name, tags: tags });
+
+					if (this._isDoubleSpanColumn(prevTd)) {
+						td.style.backgroundColor = prevTd.style.backgroundColor = this.bg_color;
+						td.style.color = prevTd.style.color = this.font_color;
+					}
+					else {
+						td.style.backgroundColor = this.bg_color;
+						td.style.color = this.font_color;
+					}
+				}
+				else {
+					if (this._isDoubleSpanColumn(prevTd)) {
+						if (this._isBarGauge(prevTd)) {
+							td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
+						}
+						else if (this._isSparkLine(prevTd)) {
+							td.style = this.#cssStyleMap.get(cell_key);
+							prevTd.style = ''
+						}
+					}
+					else {
+						td.style = this.#cssStyleMap.get(cell_key);
+					}
+				}
+
+				if (hasName(dataset) && !nameTracking.includes(dataset.name)) {
+					tdsToMark.push(td);
+					nameTracking.push(dataset.name);
+				}
+			}
+
 			prevTd = td;
-		});
+		}
 
 		if (!hasHostMarking && type === this.#dataset_host) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
 		}
 
-		if (!hasItemMarking && tdsToMark.length > 0) {
-			for (const tm of tdsToMark) {
-				this.#handleCellClick(tm);
-				return;
-			}
-		}
+		if (type === this.#dataset_item) {
+			if (!hasItemMarking) {
+				if (tdsToMark.length > 0) {
+					tdsToMark.forEach((td, index) => {
+						const ctrlClickEvent = new MouseEvent('click', {
+							bubbles: true,
+							cancelable: true,
+							ctrlKey: index !== 0,
+							view: window
+						});
 
-		if (!hasItemMarking && type === this.#dataset_item) {
-			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+						this.#handleCellClick(td, ctrlClickEvent);
+					});
+				}
+				else if (this._fields.autoselect_first &&
+						refresh &&
+						this.#selected_items[0]['itemid'] !== this.#null_id) {
+					this.#first_td_value_cell = null;
+					const allTds = this.#values_table.querySelectorAll('td');
+					for (const td of allTds) {
+						let element = td.querySelector(this.#menu_selector);
+						if (element) {
+							if (this._isDoubleSpanColumn(td)) {
+								const newTd = td.nextElementSibling;
+								element = newTd.querySelector(this.#menu_selector);
+							}
+
+							const dataset = JSON.parse(element.dataset.menu);
+
+							if (dataset.itemid) {
+								this.#first_td_value_cell = td;
+								break;
+							}
+						}
+					}
+
+					if (this.#first_td_value_cell !== null) {
+						this.#first_td_value_cell.click();
+					}
+					else {
+						this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+					}
+				}
+				else {
+					this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+				}
+			}
+			else {
+				this.#selected_items = actualsFound;
+				const itemsSelected = this.#processItemIds();
+				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, itemsSelected);
+			}
 		}
 	}
 
-	
 	_isDoubleSpanColumn(td) {
 		if (td === null) {
 			return null;
@@ -1687,7 +2335,7 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		}
 
-		const prelimValues = sortableRows.map(rowObj => this._getNumValue(rowObj, columnIndex, false, true));
+		const prelimValues = sortableRows.map(rowObj => this._getNumValue(rowObj.row, columnIndex, false, true));
 		const allNumeric = !prelimValues.some(obj => obj.type === 'text');
 
 		const rowsWithValues = sortableRows.map(rowObj => ({
@@ -1724,11 +2372,12 @@ class CWidgetTableModuleRME extends CWidget {
 			row.querySelector('td[footer-row]')
 		);
 
+		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
+		
 		if (!footerRowObj) {
 			return;
 		}
 
-		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
 		const footerRow = footerRowObj.row;
 		const footerCells = Array.from(footerRow.querySelectorAll('td'));
 
@@ -1848,11 +2497,15 @@ class CWidgetTableModuleRME extends CWidget {
 		const h = Math.floor((sec % (3600 * 24)) / 3600);
 		const m = Math.floor((sec % 3600) / 60);
 		const s = Math.floor(sec % 60);
+		const ms = Math.round((sec % 1) * 1000);
+
 		const parts = [];
 		if (d) parts.push(`${d}d`);
 		if (h) parts.push(`${h}h`);
 		if (m && parts.length < 3) parts.push(`${m}m`);
 		if (s && parts.length < 3) parts.push(`${s}s`);
+		if (ms && parts.length < 3) parts.push(`${ms}ms`);
+
 		return parts.slice(0, 3).join(" ");
 	}
 
@@ -1867,7 +2520,6 @@ class CWidgetTableModuleRME extends CWidget {
 		return `${h}:${m}:${s}`;
 	}
 
-
 	#addColumnFilterCSS() {
 		if ($('style.column-filter-styles').length === 0) {
 			const styleColumnFilters = document.createElement('style');
@@ -1876,11 +2528,10 @@ class CWidgetTableModuleRME extends CWidget {
 				.filter-popup {
 					position: absolute;
 					z-index: 999;
-					background: #1e1e1e;
+					background: var(--checkbox-bg);
 					border: 1px solid #333;
 					box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
-					color: #e0e0e0;
-					font-family: Sans serif;
+					font-family: Arial, Tahoma, Verdana, sans-serif;
 					border-radius: 4px;
 					min-width: 400px;
 					max-width: 800px;
@@ -1897,11 +2548,10 @@ class CWidgetTableModuleRME extends CWidget {
 					gap: 6px;
 					padding: 8px;
 					border-bottom: 1px solid #333;
-					background: #2a2a2a;
+					background: var(--main-bg);
 				}
 				.filter-popup-header-title {
 					font-weight: bold;
-					color: #ccc;
 					font-size: 14px;
 					margin-bottom: 4px;
 				}
@@ -1911,9 +2561,7 @@ class CWidgetTableModuleRME extends CWidget {
 					gap: 6px;
 				}
 				.filter-popup-controls input {
-					font-family: Sans serif;
-					background: #1e1e1e;
-					color: #fff;
+					background: var(--input-bg);
 					border: 1px solid #555;
 					border-radius: 3px;
 					padding: 4px 8px;
@@ -1924,7 +2572,6 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 				.filter-popup-controls .clear-btn {
 					cursor: pointer;
-					color: #aaa;
 					font-size: 11px;
 				}
 				.filter-popup-checkboxes {
@@ -1945,7 +2592,7 @@ class CWidgetTableModuleRME extends CWidget {
 					-moz-appearance: none;
 					width: 16px;
 					height: 16px;
-					border: 2px solid #9ca3af;
+					border: 2px solid var(--checkbox-border);
 					border-radius: 4px;
 					background-color: white;
 					cursor: pointer;
@@ -1961,7 +2608,7 @@ class CWidgetTableModuleRME extends CWidget {
 				.filter-popup-checkboxes input[type="checkbox"]:checked::after {
 					content: '';
 					position: absolute;
-					top: 1px;
+					top: 0px;
 					left: 4px;
 					width: 5px;
 					height: 9px;
@@ -1973,14 +2620,14 @@ class CWidgetTableModuleRME extends CWidget {
 				.filter-popup-footer {
 					border-top: 1px solid #333;
 					padding: 8px;
-					background: #2a2a2a;
+					background: var(--main-bg);
 					display: flex;
 					flex-direction: column;
 					gap: 6px;
 					font-size: 12px;
 				}
 				.filter-popup-footer button {
-					background: #3a8fd1;
+					background: #2c72d3;
 					color: white;
 					border: none;
 					padding: 6px 12px;
@@ -2020,7 +2667,7 @@ class CWidgetTableModuleRME extends CWidget {
 					margin-top: 10px;
 				}
 				.filter-icon.active svg path {
-					stroke: #4ade80;
+					stroke: #4ad380;
 				}
 				.filter-icon.active {
 					border-radius: 2px;
@@ -2045,8 +2692,8 @@ class CWidgetTableModuleRME extends CWidget {
 					display: block;
 				}
 				.custom-tooltip {
-					background-color: #383838;
-					color: #f2f2f2;
+					background-color: var(--warning-tooltip-bg);
+					border: 1px solid #ccc;
 					padding: 4px 8px;
 					border-radius: 3px;
 					font-size: 12px;
@@ -2057,7 +2704,7 @@ class CWidgetTableModuleRME extends CWidget {
 					border: 0.5px solid #4e4e4e;
 					border-radius: 8px;
 					padding: 8px;
-					background-color: #2b2b2b;
+					background-color: var(--main-bg);
 					display: flex;
 					flex-direction: column;
 					gap: 6px;
@@ -2067,18 +2714,12 @@ class CWidgetTableModuleRME extends CWidget {
 					justify-content: space-between;
 					align-items: center;
 				}
-				.toggle-button {
-					background-color: #455a64;
-					color: #eee;
-					font-weight: bold;
-					padding: 6px 12px;
-				}
 				.custom-select {
 					position: relative;
 					display: inline-block;
-					font-family: Sans serif;
+					font-family: Arial, Tahoma, Verdana, sans-serif;
 					font-size: 12px;
-					width: 125px;
+					width: 130px;
 				}
 				.custom-select input[type="hidden"] {
 					display: none;
@@ -2092,8 +2733,8 @@ class CWidgetTableModuleRME extends CWidget {
 					white-space: pre;
 					font-size: 12px;
 					line-height: initial;
-					color: #f2f2f2;
-					background-color: #1e1e1e;
+					color: var(--filter-type-text);
+					background-color: var(--filter-type-bg);
 					border: 1px solid #4f4f4f;
 					cursor: pointer;
 					border-radius: 0;
@@ -2101,8 +2742,8 @@ class CWidgetTableModuleRME extends CWidget {
 				.custom-select > button:hover,
 				.custom-select > button:focus,
 				.custom-select > button:active {
-					color: #f2f2f2;
-					background-color: #383838;
+					color: var(--filter-type-text);
+					background-color: var(--filter-type-bg-selected);
 					border-color: #4f4f4f;
 					outline: none;
 				}
@@ -2121,9 +2762,9 @@ class CWidgetTableModuleRME extends CWidget {
 					top: 100%;
 					left: 0;
 					right: 0;
-					background-color: #1e1e1e;
+					background-color: var(--checkbox-bg);
 					border: 1px solid #4f4f4f;
-					max-height: 200px;
+					max-height: 300px;
 					overflow-y: auto;
 					z-index: 10000;
 					margin: 0;
@@ -2134,7 +2775,11 @@ class CWidgetTableModuleRME extends CWidget {
 				.custom-select .list li {
 					padding: 4px 8px;
 					cursor: pointer;
-					color: #f2f2f2;
+					color: var(--filter-type-text);
+					position: relative;
+					display: flex;
+					justify-content: space-between;
+					align-items: center;
 				}
 				.custom-select .list li:hover,
 				.custom-select .list li.hover {
@@ -2142,18 +2787,83 @@ class CWidgetTableModuleRME extends CWidget {
 					border-color: #4f4f4f;
 					color: #f2f2f2;
 				}
+				.custom-select .list li.focused {
+					background-color: #007bff;
+					color: white;
+				}
 				.custom-select .list::-webkit-scrollbar {
 					width: 9px;
 				}
 				.custom-select .list::-webkit-scrollbar-thumb {
 					background-color: #383838;
-					border: 1px solid #2b2b2b;
+					border: 1px solid var(--main-bg);
 				}
 				.custom-select .list::-webkit-scrollbar-track {
 					background-color: #1f1f1f;
 				}
+				.help-icon {
+					cursor: pointer;
+					color: #fff;
+					background-color: #9a6104;
+					border-radius: 50%;
+					width: 13px;
+					height: 13px;
+					display: flex;
+					justify-content: center;
+					align-items: center;
+					font-size: 11px;
+					line-height: 1;
+					margin-left: 8px;
+				}
+				.filter-tooltip {
+					position: absolute;
+					background-color: #9a6104;
+					color: #fff;
+					padding: 5px;
+					border-radius: 3px;
+					display: none;
+					z-index: 10001;
+					white-space: pre-wrap;
+					max-width: 400px;
+					pointer-events: none;
+				}
 			`;
 			document.head.appendChild(styleColumnFilters);
+
+			const root = document.documentElement;
+			switch (this.#theme) {
+				case 'hc-dark':
+					root.style.setProperty('--checkbox-bg', '#000000');
+					root.style.setProperty('--input-bg', '#000000');
+					root.style.setProperty('--filter-type-bg', '#000000');
+					root.style.setProperty('--filter-type-bg-selected', '#0a0a0a');
+					root.style.setProperty('--filter-type-text', '#f2f2f2');
+					root.style.setProperty('--warning-tooltip-bg', '#383838');
+					root.style.setProperty('--checkbox-border', '#9ca3af');
+					root.style.setProperty('--main-bg', '#1d1d1d');
+					break;
+				case 'dark-theme':
+					root.style.setProperty('--checkbox-bg', '#1e1e1e');
+					root.style.setProperty('--input-bg', '#1e1e1e');
+					root.style.setProperty('--filter-type-bg', '#1e1e1e');
+					root.style.setProperty('--filter-type-bg-selected', '#383838');
+					root.style.setProperty('--filter-type-text', '#f2f2f2');
+					root.style.setProperty('--warning-tooltip-bg', '#383838');
+					root.style.setProperty('--checkbox-border', '#9ca3af');
+					root.style.setProperty('--main-bg', '#2a2a2a');
+					break;
+				case 'hc-light':
+				case 'blue-theme':
+					root.style.setProperty('--checkbox-bg', '#ececec');
+					root.style.setProperty('--input-bg', '#ffffff');
+					root.style.setProperty('--filter-type-bg', '#ffffff');
+					root.style.setProperty('--filter-type-bg-selected', '#ffffff');
+					root.style.setProperty('--filter-type-text', '#000000');
+					root.style.setProperty('--warning-tooltip-bg', '#ffffff');
+					root.style.setProperty('--checkbox-border', '#5a616f');
+					root.style.setProperty('--main-bg', '#ffffff');
+					break;
+			}
 		}
 	}
 
@@ -2208,7 +2918,7 @@ class CWidgetTableModuleRME extends CWidget {
 				html[theme="blue-theme"] .is-loading.widget-blur::after,
 				html[theme="hc-light"] .is-loading.widget-blur::before,
 				html[theme="hc-light"] .is-loading.widget-blur::after {
-					background-color: rgba(140, 140, 140, 1.0);
+					background-color: rgba(255, 255, 255, 1.0);
 				}
 				html[theme="hc-dark"] .is-loading.widget-blur::before,
 				html[theme="hc-dark"] .is-loading.widget-blur::after {
@@ -2220,9 +2930,8 @@ class CWidgetTableModuleRME extends CWidget {
 			`;
 			document.head.appendChild(stylePagination);
 
-			var theme = jQuery('html').attr('theme');
 			const root = document.documentElement;
-			switch (theme) {
+			switch (this.#theme) {
 				case 'dark-theme':
 					root.style.setProperty('--pagination-bg', 'var(--pagination-bg-dark)');
 					root.style.setProperty('--page-num', 'var(--page-num-dark)');
@@ -2242,5 +2951,164 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
+	exportTableRowsToCSV(filename = 'export.csv') {
+		if (!this.#rowsArray || this.#rowsArray.length === 0) {
+			return;
+		}
+
+		const displayRows = this.#rowsArray
+			.filter(item => item.status === 'display')
+			.map(item => item.row);
+
+		if (displayRows.length === 0) {
+			return;
+		}
+
+		const baseHeaders = this.getHeaders();
+
+		const columnUnits = this.collectUnitsPerColumn(displayRows);
+
+		const headers = this.addUnitsToHeaders(baseHeaders, columnUnits);
+
+		const dataRows = displayRows.map(row => this.extractRowData(row).data);
+
+		const allData = [headers, ...dataRows];
+
+		const csvContent = this.arrayToCSV(allData);
+
+		this.downloadCSV(csvContent, filename);
+	}
+
+	getHeaders() {
+		const headers = [];
+
+		this.allThs.forEach(th => {
+			let headerText = '';
+
+			const clonedTh = th.cloneNode(true);
+
+			const filterIcon = clonedTh.querySelector('.filter-icon');
+			const arrow = clonedTh.querySelector('.new-arrow');
+			if (filterIcon) filterIcon.remove();
+			if (arrow) arrow.remove();
+
+			const spanWithTitle = clonedTh.querySelector('span[title]');
+			if (spanWithTitle) {
+				headerText = spanWithTitle.getAttribute('title');
+			}
+			else {
+				headerText = clonedTh.textContent.trim();
+			}
+
+			headers.push(headerText);
+		});
+
+		return headers;
+	}
+
+	extractRowData(rowElement) {
+		const data = [];
+		const units = [];
+		const cells = rowElement.querySelectorAll('td');
+
+		cells.forEach(cell => {
+			if (this._isSparkLine(cell) || this._isBarGauge(cell)) {
+				return;
+			}
+
+			let unitAttr = cell.getAttribute('units') || '';
+			if (unitAttr.startsWith('!')) {
+				unitAttr = unitAttr.substring(1);
+			}
+			units.push(unitAttr);
+
+			let value = '';
+			const hintboxContents = cell.getAttribute('data-hintbox-contents');
+
+			if (hintboxContents) {
+				const match = hintboxContents.match(/>([^<]+)</);
+				if (match && match[1]) {
+					value = match[1].trim();
+				}
+			}
+
+			if (!value) {
+				value = cell.textContent.trim();
+			}
+
+			data.push(value);
+		});
+
+		return { data, units };
+	}
+
+	collectUnitsPerColumn(displayRows) {
+		const columnUnits = [];
+
+		displayRows.forEach(row => {
+			const { units } = this.extractRowData(row);
+
+			units.forEach((unit, colIndex) => {
+				if (!columnUnits[colIndex]) {
+					columnUnits[colIndex] = new Set();
+				}
+
+				if (unit && unit !== '') {
+					columnUnits[colIndex].add(unit);
+				}
+			});
+		});
+
+		return columnUnits.map(unitSet => {
+			if (!unitSet || unitSet.size === 0) {
+				return '';
+			}
+
+			if (unitSet.size === 1) {
+				return Array.from(unitSet)[0];
+			}
+
+			return Array.from(unitSet).join(',');
+		});
+	}
+
+	addUnitsToHeaders(headers, columnUnits) {
+		return headers.map((header, index) => {
+			const unit = columnUnits[index];
+			if (unit && unit !== '') {
+				return `${header} (${unit})`;
+			}
+			return header;
+		});
+	}
+
+	downloadCSV(csvContent, filename) {
+		const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+		const link = document.createElement('a');
+
+		if (navigator.msSaveBlob) { // IE 10+
+			navigator.msSaveBlob(blob, filename);
+		}
+		else {
+			link.href = URL.createObjectURL(blob);
+			link.download = filename;
+			link.style.display = 'none';
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+		}
+	}
+
+	arrayToCSV(data) {
+		return data.map(row => {
+			return row.map(cell => {
+				const cellStr = String(cell);
+				if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+					return `"${cellStr.replace(/"/g, '""')}"`;
+				}
+				return cellStr;
+			}).join(',');
+		}).join('\n');
+	}
 
 }
