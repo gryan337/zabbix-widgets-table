@@ -2615,19 +2615,12 @@ class CWidgetTableModuleRME extends CWidget {
 		// Create bound handlers specific to this popup
 		const boundMouseDown = (e) => this.handleMouseDownTi(e, popupId, popup, handle);
 
-		const boundMouseMove = (e) => this.handleMouseMoveTi(e, popupId, popup);
-		const boundMouseUp = (e) => this.handleMouseUpTi(e, popupId, handle);
-
 		// Store handlers so we can remove them later if needed
 		handle._dragHandlers = {
-			mouseDown: boundMouseDown,
-			mouseMove: boundMouseMove,
-			mouseUp: boundMouseUp
+			mouseDown: boundMouseDown
 		};
 
 		handle.addEventListener('mousedown', boundMouseDown);
-		handle.addEventListener('mousemove', boundMouseMove);
-		handle.addEventListener('mouseup', boundMouseUp);
 	}
 
 	handleMouseDownTi(e, popupId, popup, handle) {
@@ -2652,6 +2645,14 @@ class CWidgetTableModuleRME extends CWidget {
 		state.offsetY = e.clientY - rect.top;
 
 		document.body.style.userSelect = 'none';
+
+		// Create bound handlers for this drag session
+		const boundMouseMove = (e) => this.handleMouseMoveTi(e, popupId, popup);
+		const boundMouseUp = (e) => this.handleMouseUpTi(e, popupId, handle, boundMouseMove, boundMouseUp);
+
+		// Attach to document so they fire even when cursor leaves the popup
+		document.addEventListener('mousemove', boundMouseMove);
+		document.addEventListener('mouseup', boundMouseUp);
 	}
 
 	handleMouseMoveTi(e, popupId, popup) {
@@ -2662,13 +2663,17 @@ class CWidgetTableModuleRME extends CWidget {
 		popup.style.top = `${e.clientY - state.offsetY}px`;
 	}
 
-	handleMouseUpTi(e, popupId, handle) {
+	handleMouseUpTi(e, popupId, handle, mouseMoveHandler, mouseUpHandler) {
 		const state = this.#draggableStates.get(popupId);
 		if (!state) return;
 
 		state.isDragging = false;
 		handle.style.cursor = 'grab';
 		document.body.style.userSelect = '';
+
+		// Remove the document listeners
+		document.removeEventListener('mousemove', mouseMoveHandler);
+		document.removeEventListener('mouseup', mouseUpHandler);
 	}
 
 	// ========== Cell Click and Selection Methods ========== //
@@ -3574,6 +3579,12 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	setContents(response) {
+		// Set session storage key for this dashboard
+		if (!this.#sessionKey) {
+			const dashboardId = this._dashboard?.dashboardid || 'default';
+			this.#sessionKey = `widget_references_${dashboardId}`;
+		}
+
 		// Set flag to prevent scroll handler from interfering
 		this.#isUpdatingDisplay = true;
 
