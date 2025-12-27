@@ -1,6 +1,8 @@
 
 class CWidgetTableModuleRME extends CWidget {
 
+	#SHADOW_DOM_RENDER_DELAY = 250;
+
 	#seconds_per_day = 86400;
 	#seconds_per_hour = 3600;
 	#seconds_per_min = 60;
@@ -53,19 +55,21 @@ class CWidgetTableModuleRME extends CWidget {
 	#paginationElement;
 	#rowsArray = [];
 
-	#popupId = null;
-	#tooltipId = null;
-	#filterApplied = false;
-	#filterState = {
-		type: 'Contains',
-		search: '',
-		checked: [],
-		allSelected: false
-	};
+	#filterStates = new Map();
+	#activeFilters = new Set();
+	#columnTypes = new Map();
+	#draggableStates = new Map();
+	#popupIds = new Set();
 
 	#lastClickedCell = null;
 	#clearFiltersClickedWithSelections = false;
 	#filterTooltipIds = new Set();
+
+	#scrollPosition = { top: 0, left: 0 };
+	#scrollContainer = null;
+	#isUpdatingDisplay = false;
+
+	#isUserInitiatedFilterChange = false;
 
 	static #hasManualSelection = false;
 	static #sessionStorageInitialized = false;
@@ -104,1049 +108,7 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
-	processUpdateResponse(response) {
-		super.processUpdateResponse(response);
-	}
-
-	getUpdateRequestData() {
-		const request_data = super.getUpdateRequestData();
-		if (request_data?.fields?.groupids?.length === 1 && request_data.fields.groupids.includes(this.#null_id)) {
-			request_data.fields.groupids = [];
-		}
-		if (request_data?.fields?.hostids?.length === 1 && request_data.fields.hostids.includes(this.#null_id)) {
-			request_data.fields.hostids = [];
-		}
-		return request_data;
-	}
-
-	setContents(response) {
-		if (!this.#sessionKey) {
-			const dashboardId = this._dashboard?.dashboardid || 'default';
-			this.#sessionKey = `widget_references_${dashboardId}`;
-		}
-
-		if (response.body.includes('no-data-message')) {
-			setTimeout(() => {
-				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
-				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
-				super.setContents(response);
-				this.#removePaginationControls();
-				return;
-			}, 0);
-		}
-
-		super.setContents(response)
-
-		this.detachListeners();
-
-		if (this.#theme === null) {
-			this.getTheme();
-		}
-
-		this.#values_table = this._target.getElementsByClassName('list-table').item(0);
-		this.#parent_container = this.#values_table.closest('.dashboard-grid-widget-container');
-		const allRows = Array.from(this.#values_table.querySelectorAll('tbody tr'));
-		var colIndex = 0;
-
-		const allTds = this.#values_table.querySelectorAll('td');
-		this.allThs = this.#values_table.querySelectorAll('th');
-
-		let id = 0;
-		allTds.forEach(td => {
-			td.setAttribute('id', id);
-			let key = td.innerText.trim();
-			let element = td.querySelector(this.#menu_selector);
-			if (element) {
-				if (this._isDoubleSpanColumn(td)) {
-					newTd = td.nextElementSibling;
-					element = newTd.querySelector(this.#menu_selector);
-				}
-				const dataset = JSON.parse(element.dataset.menu);
-				try {
-					if (dataset.itemid) {
-						if (this.#first_td_value_cell === null) {
-							this.#first_td_value_cell = td;
-						}
-						key = dataset.itemid;
-					}
-					else if (dataset.hostid) {
-						if (this.#first_td_host_cell === null) {
-							this.#first_td_host_cell = td;
-						}
-						key = dataset.hostid;
-					}
-				}
-				catch (error) {
-					console.log('Fail', td)
-				}
-			}
-			key = [key, td.getAttribute('id')].join("_");
-			let style = td.getAttribute('style') || '';
-			this.#cssStyleMap.set(key, style);
-			id++;
-		});
-
-		this.allThs.forEach((th) => {
-			th.innerHTML += `<span class="new-arrow" id="arrow"></span>`;
-			th.setAttribute('style', `color: #4796c4; font-weight: bold;`);
-			th.classList.add('cursor-pointer');
-
-			const colspan = th.hasAttribute('colspan') ? parseFloat(th.getAttribute('colspan')) : 1;
-			th.id = colIndex + colspan - 1;
-
-			colIndex = parseFloat(th.id) + 1;
-		});
-
-		this.#rowsArray = allRows.map(row => {
-			return {
-				row,
-				status: 'display'
-			};
-		});
-
-		this.#values_table.addEventListener('click', (event) => {
-			if (event.target.closest('.filter-icon')) {
-				return;
-			}
-
-			const target = event.target.closest('th') || event.target.closest('td');
-
-			if (target && target.tagName === 'TH') {
-				this.#parent_container.classList.add('is-loading');
-				setTimeout(() => {
-					this.#th = target;
-					const span = this.#getSetSpans(target);
-					const ascending = !('sort' in target.dataset) || target.dataset.sort != 'asc';
-					this.#sortTable(target, ascending, span);
-				}, 0);
-			}
-			else if (target && target.tagName === 'TD') {
-				this.#handleCellClick(target, event);
-			}
-		});
-
-		this.#values_table.addEventListener('mousedown', (event) => {
-			if (event.shiftKey) {
-				event.preventDefault();
-				event.stopPropagation();
-			}
-		});
-
-		this.#totalRows = this.#rowsArray.length;
-		this.#updateDisplay(false, true, true);
-
-		this.allThs.forEach((th) => {
-			if (this.#th !== undefined) {
-				if (th.getAttribute('id') === this.#th.getAttribute('id')) {
-					setTimeout(() => {
-						const span = this.#getSetSpans(th);
-						const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
-						this.#sortTable(th, ascending, span, true);
-						this.#th = th;
-					}, this.#timeout);
-				}
-			}
-		});
-
-		this.#removePaginationControls();
-		if (this.#totalRows > this.#rowsPerPage) {
-			this.#displayPaginationControls();
-			this.#addPaginationCSS();
-		}
-
-		this.#addColumnFilterCSS();
-		const firstTh = this.#values_table.querySelector('thead th');
-		if (firstTh && !firstTh.querySelector('.filter-icon')) {
-			let lastCheckedCheckbox = null;
-			const filterValues = new Set();
-			this.#rowsArray.forEach(rowObj => {
-				const tr = rowObj.row;
-				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
-				const td = tr.querySelector('td:first-child');
-				if (td) filterValues.add(td.textContent.trim());
-			});
-
-			const valuesArray = Array.from(filterValues);
-
-			const isNumeric = val => /^-?\d+(\.\d+)?$/.test(val.trim());
-			const isIPv4 = val => /^(\d{1,3}\.){3}\d{1,3}$/.test(val.trim());
-			const isAll = (arr, testFn) => arr.every(testFn);
-
-			const ipToNum = ip => {
-				const octets = ip.trim().split('.');
-				if (octets.length !== 4) return NaN;
-
-				const nums = octets.map(octet => parseInt(octet, 10));
-				if (nums.some(num => isNaN(num) || num < 0 || num > 255)) return NaN;
-
-				return (nums[0] * 256 ** 3) + (nums[1] * 256 ** 2) + (nums[2] * 256) + nums[3];
-			};
-
-			let sortedValues;
-			if (isAll(valuesArray, isNumeric)) {
-				sortedValues = valuesArray.sort((a, b) => parseFloat(a) - parseFloat(b));
-			}
-			else if (isAll(valuesArray, isIPv4)) {
-				sortedValues = valuesArray.sort((a, b) => ipToNum(a) - ipToNum(b));
-			}
-			else if (isAll(valuesArray, val => typeof val === 'string')) {
-				sortedValues = valuesArray.sort((a, b) => a.localeCompare(b));
-			}
-			else {
-				sortedValues = valuesArray.sort((a, b) => {
-					const getTypeRank = v => isNumeric(v) ? 0 : isIPv4(v) ? 1 : 2;
-					const rankA = getTypeRank(a);
-					const rankB = getTypeRank(b);
-					if (rankA !== rankB) return rankA - rankB;
-					if (rankA === 0) return parseFloat(a) - parseFloat(b);
-					if (rankA === 1) return ipToNum(a) - ipToNum(b);
-					return a.localeCompare(b);
-				});
-			}
-			let filteredValues = sortedValues;
-
-			const filterIcon = document.createElement('span');
-			filterIcon.className = 'filter-icon';
-			filterIcon.style.cursor = 'pointer';
-			filterIcon.style.display = 'inline-flex';
-			filterIcon.style.alignItems = 'center';
-			filterIcon.style.justifyContent = 'center';
-			filterIcon.style.marginLeft = '2px';
-			filterIcon.style.width = '18px';
-			filterIcon.style.height = '18px';
-			filterIcon.style.verticalAlign = 'middle';
-			filterIcon.style.position = 'relative';
-			filterIcon.style.top = '0';
-			filterIcon.title = 'Click to filter this column';
-
-			filterIcon.innerHTML = `
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
-				</svg>
-			`;
-
-			const popup = document.createElement('div');
-			popup.style.display = 'none';
-			popup.className = 'filter-popup';
-			popup.id = this.#values_table.id + '-' + this._widgetid + '-popup';
-			
-			if (this.#popupId !== null) {
-				const oldPopup = document.getElementById(this.#popupId);
-				if (oldPopup) {
-					oldPopup.remove();
-				}
-			}
-			this.#popupId = popup.id;
-
-			const header = document.createElement('div');
-			header.className = 'filter-popup-header';
-			const headerTitle = document.createElement('div');
-			headerTitle.className = 'filter-popup-header-title';
-			headerTitle.textContent = 'Filter column values';
-
-			const filterControls = document.createElement('div');
-			filterControls.className = 'filter-popup-controls';
-
-			const filterTypeContainer = document.createElement('div');
-			filterTypeContainer.className = 'custom-select';
-
-			const hiddenInput = document.createElement('input');
-			hiddenInput.type = 'hidden';
-			filterTypeContainer.appendChild(hiddenInput);
-
-			const filterButton = document.createElement('button');
-			filterButton.type = 'button';
-			filterTypeContainer.appendChild(filterButton);
-
-			const options = [
-				{ value: 'contains', label: 'Contains', help: 'Filters items that contain the specified text.' },
-				{ value: 'equals', label: 'Equals', help: 'Filters items that exactly match the specified text.' },
-				{ value: 'starts with', label: 'Starts with', help: 'Filters items that start with the specified text.' },
-				{ value: 'ends with', label: 'Ends with', help: 'Filters items that end with the specified text.' },
-				{ value: 'wildcard', label: 'Wildcard', help: 'Filters items that match the specified wildcarded (*) pattern.\nMultiple wildcards (*) are supported.' },
-				{ value: 'does not contain', label: 'Does not contain', help: 'Filters items that do not contain the specified text.' },
-				{ value: 'regex', label: 'Regex', help: 'Filters items that match the specified regular expression.' },
-				{ value: 'boolean', label: 'Boolean Expr', help: 'Filters items that match the specified boolean expression.\nSupports \'AND\', \'OR\', \'AND NOT\', \'OR NOT\', and parentheses\ni.e. (TERMA OR TERMB) AND TERMCD AND NOT TERMCDE' }
-			];
-
-			const initialValue = this.#filterState?.type || 'contains';
-			const initialLabel = options.find(o => o.value === initialValue)?.label || 'Contains';
-
-			hiddenInput.value = initialValue;
-			filterButton.textContent = initialLabel;
-
-			const filterList = document.createElement('ul');
-			filterList.className = 'list';
-			filterList.style.display = 'none';
-			filterList.tabIndex = -1;
-
-			if (this.#filterTooltipIds) {
-				this.#filterTooltipIds.forEach(id => {
-					const oldTooltip = document.getElementById(id);
-					if (oldTooltip) {
-						oldTooltip.remove();
-					}
-				});
-			}
-			this.#filterTooltipIds = new Set();
-
-			options.forEach(opt => {
-				const li = document.createElement('li');
-				li.textContent = opt.label;
-				li.dataset.value = opt.value;
-				li.dataset.label = opt.label;
-				li.addEventListener('click', () => {
-					event.stopPropagation();
-					filterList.style.display = 'none';
-					hiddenInput.value = li.dataset.value;
-					filterButton.textContent = li.dataset.label;
-					searchInput.dispatchEvent(new Event('input'));
-					updateWarningIcon();
-					updateClearFiltersButton();
-					this.#filterState.type = opt;
-					setupInputHandler();
-				});
-
-				const helpIcon = document.createElement('span');
-				helpIcon.className = 'help-icon';
-				helpIcon.textContent = '?';
-				helpIcon.dataset.help = opt.help;
-				li.appendChild(helpIcon);
-				filterList.appendChild(li);
-
-				const filterTooltipId = `${this.#values_table.id}-${this._widgetid}-${opt.label}-tooltip`;
-				const filterTooltip = document.createElement('div');
-				filterTooltip.id = filterTooltipId;
-				filterTooltip.className = 'filter-tooltip';
-				filterTooltip.textContent = opt.help;
-				filterTooltip.style.display = 'none';
-				document.body.appendChild(filterTooltip);
-
-				this.#filterTooltipIds.add(filterTooltipId);
-
-				helpIcon.addEventListener('mouseover', (e) => {
-					const rect = helpIcon.getBoundingClientRect();
-					filterTooltip.style.left = `${rect.left + window.scrollX + rect.width + 10}px`;
-					filterTooltip.style.top = `${rect.top + window.scrollY + 15}px`;
-					filterTooltip.style.display = 'block';
-				});
-
-				helpIcon.addEventListener('mouseout', () => {
-					filterTooltip.style.display = 'none';
-				});
-			});
-
-			filterTypeContainer.appendChild(filterList);
-
-			filterButton.addEventListener('click', () => {
-				event.stopPropagation();
-				filterList.style.display = filterList.style.display === 'none' ? 'block' : 'none';
-			});
-
-			let currentIndex = -1;
-
-			filterButton.setAttribute('aria-haspopup', 'listbox');
-			filterButton.setAttribute('aria-expanded', 'false');
-			filterList.setAttribute('role', 'listbox');
-			filterList.querySelectorAll('li').forEach(li => li.setAttribute('role', 'option'));
-
-			function openList() {
-				filterList.style.display = 'block';
-				filterButton.setAttribute('aria-expanded', 'true');
-				filterList.focus();
-			}
-
-			function closeList() {
-				filterList.style.display = 'none';
-				filterButton.setAttribute('aria-expanded', 'false');
-				currentIndex = -1;
-			}
-
-			function focusItem(index) {
-				const items = filterList.querySelectorAll('li');
-				if (items.length === 0) return;
-				items.forEach(li => li.classList.remove('focused'));
-				if (index >= 0 && index < items.length) {
-					currentIndex = index;
-					items[currentIndex].classList.add('focused');
-					items[currentIndex].scrollIntoView({ block: 'nearest' });
-				}
-			}
-
-			filterButton.addEventListener('keydown', (e) => {
-				const items = filterList.querySelectorAll('li');
-				switch (e.key) {
-					case ' ':
-					case 'Enter':
-						e.preventDefault();
-						if (filterList.style.display === 'none') {
-							openList();
-							focusItem(0);
-						}
-						else {
-							closeList();
-						}
-						break;
-					case 'ArrowDown':
-						e.preventDefault();
-						openList();
-						focusItem(0);
-						break;
-					case 'ArrowUp':
-						e.preventDefault();
-						openList();
-						focusItem(items.length - 1);
-						break;
-				}
-			});
-
-			filterList.addEventListener('keydown', (e) => {
-				const items = filterList.querySelectorAll('li');
-				if (items.length === 0) return;
-
-				switch (e.key) {
-					case 'ArrowDown':
-						e.preventDefault();
-						focusItem((currentIndex + 1) % items.length);
-						break;
-					case 'ArrowUp':
-						e.preventDefault();
-						focusItem((currentIndex - 1 + items.length) % items.length);
-						break;
-					case 'Enter':
-					case ' ':
-						e.preventDefault();
-						if (currentIndex >= 0) {
-							items[currentIndex].click();
-							closeList();
-							filterButton.focus();
-						}
-						break;
-					case 'Escape':
-						e.preventDefault();
-						closeList();
-						filterButton.focus();
-						break;
-					case 'Tab':
-						closeList();
-						break;
-				}
-			});
-
-			filterList.querySelectorAll('li').forEach((li, i) => {
-				li.addEventListener('mouseenter', () => focusItem(i));
-			});
-
-			this.dropdownOutsideClickHandler = (e) => {
-				if (!filterTypeContainer.contains(e.target)) {
-					filterList.style.display = 'none';
-				}
-			};
-
-			const searchInput = document.createElement('input');
-			searchInput.type = 'text';
-			searchInput.placeholder = 'Search...';
-			searchInput.value = this.#filterState?.search || '';
-
-			const clearBtn = document.createElement('span');
-			clearBtn.className = 'clear-btn';
-			clearBtn.textContent = '✕ Clear';
-			clearBtn.addEventListener('click', () => {
-				searchInput.value = '';
-				searchInput.dispatchEvent(new Event('input'));
-
-				renderVisibleCheckboxes();
-				updateSummary();
-				updateWarningIcon();
-				updateClearFiltersButton();
-				lastCheckedCheckbox = null;
-			});
-
-			filterControls.appendChild(filterTypeContainer);
-			filterControls.appendChild(searchInput);
-			filterControls.appendChild(clearBtn);
-
-			header.appendChild(headerTitle);
-			header.appendChild(filterControls);
-
-			const checkboxContainer = document.createElement('div');
-			checkboxContainer.className = 'filter-popup-checkboxes';
-
-			const footer = document.createElement('div');
-			footer.className = 'filter-popup-footer';
-
-			const sectionContainer = document.createElement('div');
-			sectionContainer.className = 'section-container';
-
-			const summary = document.createElement('div');
-			summary.className = 'summary';
-			summary.textContent = '0 selected';
-			sectionContainer.appendChild(summary);
-
-			const toggleRow = document.createElement('div');
-			toggleRow.style.marginTop = '6px';
-			toggleRow.className = 'toggle-row';
-
-			const toggleButton = document.createElement('button');
-			let isAllSelected = this.#filterState?.allSelected || false;
-			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
-			toggleButton.style.background = '#455a64';
-			toggleButton.style.color = '#eee';
-			toggleButton.style.fontWeight = 'bold';
-
-			toggleButton.addEventListener('click', () => {
-				let valuesToCheck;
-
-				if (filterValues.length !== sortedValues.length || filteredValues.some((v, i) => v !== sortedValues[i])) {
-					valuesToCheck = filteredValues;
-				}
-				else {
-					valuesToCheck = sortedValues;
-				}
-
-				isAllSelected = valuesToCheck.length > 0 && valuesToCheck.every(value => {
-					return this.#filterState.checked?.includes(String(value).toLowerCase());
-				});
-
-				if (isAllSelected) {
-					this.#filterState.checked = [];
-					isAllSelected = false;
-					toggleButton.textContent = 'Select All';
-				}
-				else {
-					this.#filterState.checked = valuesToCheck.map(value => String(value).toLowerCase());
-					isAllSelected = true;
-					toggleButton.textContent = 'Uncheck All';
-				}
-
-				renderVisibleCheckboxes();
-				updateSummary();
-				updateWarningIcon();
-				updateClearFiltersButton();
-			});
-
-			toggleRow.appendChild(toggleButton);
-			sectionContainer.appendChild(toggleRow);
-			footer.appendChild(sectionContainer);
-
-			const gap = document.createElement('div');
-			gap.style.height = '2px';
-			footer.appendChild(gap);
-
-			const buttonsRow = document.createElement('div');
-			buttonsRow.style.display = 'flex';
-			buttonsRow.style.justifyContent = 'flex-start';
-			buttonsRow.style.gap = '8px';
-			buttonsRow.style.paddingLeft = '10px';
-
-			const applyButton = document.createElement('button');
-			applyButton.textContent = 'Apply';
-			applyButton.style.minWidth = '80px';
-			applyButton.style.padding = '6px 12px';
-
-			applyButton.addEventListener('click', () => {
-				popup.style.display = 'none';
-			
-				const checkedValues = this.#filterState?.checked || [];
-			
-				const hasCheckedValues = checkedValues.length > 0;
-				const query = searchInput.value.trim();
-				const type = hiddenInput.value;
-			
-				this.#filterState = {
-					search: query,
-					type,
-					checked: hasCheckedValues ? checkedValues : [],
-					allSelected: isAllSelected
-				};
-			
-				this.#applyFilter();
-				this._resumeUpdating();
-			});
-
-			searchInput.addEventListener('keydown', (e) => {
-				if (e.key === 'Enter') {
-					e.preventDefault();
-					applyButton.click();
-				}
-			});
-
-			const resetButton = document.createElement('button');
-			resetButton.textContent = 'Cancel';
-			resetButton.className = 'cancel';
-			resetButton.style.minWidth = '80px';
-			resetButton.style.padding = '6px 12px';
-			resetButton.addEventListener('click', () => {
-				popup.style.display = 'none';
-				this._resumeUpdating();
-			});
-
-			const clearFiltersButton = document.createElement('button');
-			clearFiltersButton.textContent = 'Clear Filters';
-			clearFiltersButton.className = 'clear-filters';
-			clearFiltersButton.style.padding = '6px 12px';
-
-			clearFiltersButton.addEventListener('click', () => {
-				searchInput.value = '';
-				searchInput.dispatchEvent(new Event('input'));
-
-				this.#filterState.checked = [];
-
-				isAllSelected = false;
-				toggleButton.textContent = 'Select All';
-
-				renderVisibleCheckboxes();
-				updateSummary();
-				updateWarningIcon();
-				updateClearFiltersButton();
-				lastCheckedCheckbox = null;
-				if ((this.#selected_items.length > 0 && this.#selected_items[0].itemid !== this.#null_id) ||
-						(this.#selected_hostid !== this.#null_id && this.#selected_hostid !== null)) {
-					this.#clearFiltersClickedWithSelections = true;
-					this.#selected_items = [{ itemid: this.#null_id, name: null }];
-					this.#selected_hostid = this.#null_id;
-				}
-			});
-
-			const warningSvg = `
-				<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
-					<path d="M12 3C12.3 3 12.6 3.15 12.78 3.44L21.53 18.61C21.95 19.33 21.4 20.25 20.53 20.25H3.47C2.6 20.25 2.05 19.33 2.47 18.61L11.22 3.44C11.4 3.15 11.7 3 12 3Z" fill="#fef08a" stroke="#eab308" stroke-width="1.25"/>
-					<circle cx="12" cy="16" r="1.25" fill="#92400e"/>
-					<rect x="11.25" y="9" width="1.5" height="4.5" rx="0.75" fill="#92400e"/>
-				</svg>
-			`;
-
-			const tooltip = document.createElement('div');
-			tooltip.id = this.#values_table.id + '-' + this._widgetid + '-tooltip';
-			tooltip.className = 'custom-tooltip';
-			tooltip.textContent = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
-			tooltip.style.position = 'absolute';
-			tooltip.style.display = 'none';
-			tooltip.style.pointerEvents = 'none';
-			document.body.appendChild(tooltip);
-
-			if (this.#tooltipId !== null) {
-				const oldTooltip = document.getElementById(this.#tooltipId);
-				if (oldTooltip) {
-					oldTooltip.remove();
-				}
-			}
-			this.#tooltipId = tooltip.id;
-
-			const warningIcon = document.createElement('span');
-			warningIcon.className = 'filter-warning-icon';
-			warningIcon.style.display = 'none';
-			warningIcon.innerHTML = warningSvg;
-
-			buttonsRow.appendChild(applyButton);
-			buttonsRow.appendChild(resetButton);
-			buttonsRow.appendChild(clearFiltersButton);
-			buttonsRow.appendChild(warningIcon);
-			footer.appendChild(buttonsRow);
-
-			warningIcon.addEventListener('mouseenter', (e) => {
-				const rect = warningIcon.getBoundingClientRect();
-				tooltip.style.top = `${rect.top - rect.height - 8}px`;
-				tooltip.style.left = `${rect.left + rect.width / 2}px`;
-				tooltip.style.transform = 'translateX(-50%)';
-				tooltip.style.display = 'block';
-			});
-
-			warningIcon.addEventListener('mouseleave', () => {
-				tooltip.style.display = 'none';
-			});
-
-			const tempSpan = document.createElement('span');
-			tempSpan.style.visibility = 'hidden';
-			tempSpan.style.position = 'absolute';
-			tempSpan.style.whiteSpace = 'nowrap';
-			tempSpan.style.font = '13px Sans serif';
-			document.body.appendChild(tempSpan);
-			let maxWidth = 0;
-			for (const value of sortedValues) {
-				tempSpan.textContent = value;
-				maxWidth = Math.max(maxWidth, tempSpan.offsetWidth);
-			}
-			document.body.removeChild(tempSpan);
-			const calculatedWidth = Math.min(Math.max(maxWidth + 150, 400), 800);
-			popup.style.width = `${calculatedWidth}px`;
-
-			const visibleCount = 25;
-			let startIndex = 0;
-			const scrollContainer = document.createElement('div');
-			scrollContainer.style.maxHeight = '300px';
-			scrollContainer.style.minHeight = '100px';
-			scrollContainer.style.overflowY = 'auto';
-			scrollContainer.style.overflowX = 'hidden';
-			scrollContainer.style.position = 'relative';
-			scrollContainer.style.paddingRight = '6px';
-			scrollContainer.style.boxSizing = 'border-box';
-			const spacer = document.createElement('div');
-			spacer.style.height = `${sortedValues.length * 30}px`;
-			spacer.style.position = 'relative';
-			checkboxContainer.style.position = 'absolute';
-			checkboxContainer.style.width = '100%';
-			checkboxContainer.style.top = '0';
-			checkboxContainer.style.left = '0';
-			checkboxContainer.style.right = '0';
-			checkboxContainer.style.display = 'block';
-			scrollContainer.appendChild(spacer);
-			spacer.appendChild(checkboxContainer);
-			popup.appendChild(header);
-			popup.appendChild(scrollContainer);
-			popup.appendChild(footer);
-
-			this.handleInput = () => {
-				scrollContainer.scrollTop = 0;
-				const query = searchInput.value.toLowerCase();
-
-				filteredValues = sortedValues.filter(v => {
-					const text = String(v).toLowerCase();
-					return this.#matchesFilter(text, query, hiddenInput.value);
-				});
-
-				const filteredValuesLowerCase = filteredValues.map(v => String(v).toLowerCase());
-
-				this.#filterState.checked = this.#filterState.checked?.filter(v => filteredValuesLowerCase.includes(v));
-				this.#filterState.search = query;
-
-				isAllSelected = filteredValues.length > 0 && filteredValues.every(v => this.#filterState.checked?.includes(String(v).toLowerCase()));
-
-				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
-
-				renderVisibleCheckboxes()
-				updateSummary();
-				updateWarningIcon();
-				updateClearFiltersButton();
-				spacer.style.height = `${filteredValues.length * 30}px`
-			};
-
-			const setupInputHandler = () => {
-				const filterMode = hiddenInput.value;
-
-				searchInput.removeEventListener('input', currentInputHandler);
-
-				const newInputHandler = filterMode === 'boolean'
-					? this.debounce(this.handleInput, 1000)
-					: (sortedValues.length > 250
-						? this.debounce(this.handleInput, 300)
-						: this.handleInput);
-
-				searchInput.addEventListener('input', newInputHandler);
-
-				currentInputHandler = newInputHandler;
-			};
-
-			let currentInputHandler;
-
-			setupInputHandler();
-
-			const renderVisibleCheckboxes = () => {
-				const scrollTop = scrollContainer.scrollTop;
-				startIndex = Math.floor(scrollTop / 30);
-				checkboxContainer.style.top = `${startIndex * 30}px`;
-				const endIndex = Math.min(startIndex + visibleCount, filteredValues.length);
-
-				checkboxContainer.innerHTML = '';
-
-				for (let i = startIndex; i < endIndex; i++) {
-					const value = filteredValues[i];
-					const id = `filter_${String(value).replace(/[^a-zA-Z0-9]/g, '_')}`;
-					const label = document.createElement('label');
-					label.classList.add('custom-checkbox');
-					label.innerHTML = `
-						<input type="checkbox" id="${id}" value="${value}">
-						<span>${value}</span>
-					`;
-
-					const checkbox = label.querySelector('input[type="checkbox"]');
-
-					checkbox.checked = this.#filterState?.checked?.includes(String(value).toLowerCase());
-
-					label.setAttribute('data-index', i);
-					checkboxContainer.appendChild(label);
-				}
-			};
-
-			function getIndexOfCheckbox(checkbox) {
-				const value = checkbox.value;
-				return filteredValues.indexOf(value);
-			}
-
-			function updateFilterState(cb, val, isChecked) {
-				if (isChecked) {
-					if (!this.#filterState.checked.includes(val)) {
-						this.#filterState.checked.push(val);
-					}
-				}
-				else {
-					this.#filterState.checked = this.#filterState.checked.filter(v => v !== val);
-				}
-			}
-
-			scrollContainer.addEventListener('scroll', () => {
-				renderVisibleCheckboxes();
-			});
-			renderVisibleCheckboxes();
-
-			checkboxContainer.addEventListener('change', (event) => {
-				const cb = event.target;
-				const val = cb.value.toLowerCase();
-				const isChecked = cb.checked;
-				const label = cb.closest('label');
-
-				updateFilterState.call(this, cb, val, isChecked);
-
-				lastCheckedCheckbox = cb;
-				isAllSelected = (this.#filterState.checked.length === sortedValues.length);
-
-				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
-
-				updateSummary();
-				updateWarningIcon();
-				updateClearFiltersButton();
-			});
-
-			checkboxContainer.addEventListener('click', (event) => {
-				const cb = event.target;
-				if (cb.type !== 'checkbox') return;
-
-				const val = cb.value.toLowerCase();
-				const isChecked = cb.checked;
-				const label = cb.closest('label');
-				const checkboxIndex = parseInt(label.getAttribute('data-index'), 10);
-
-				if (event.shiftKey && lastCheckedCheckbox) {
-					event.preventDefault();
-					event.stopPropagation();
-					const lastCheckedIndex = getIndexOfCheckbox(lastCheckedCheckbox);
-					if (lastCheckedIndex !== -1) {
-						const [from, to] = [Math.min(lastCheckedIndex, checkboxIndex), Math.max(lastCheckedIndex, checkboxIndex)];
-
-						for (let j = from; j <= to; j++) {
-							const value = filteredValues[j];
-							const elementVal = String(value).toLowerCase();
-							if (!this.#filterState.checked.includes(elementVal)) {
-								this.#filterState.checked.push(elementVal);
-							}
-						}
-
-						renderVisibleCheckboxes();
-					}
-				}
-
-				isAllSelected = (this.#filterState.checked?.length == filteredValues.length || 0 === sortedValues.length);
-
-				toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
-
-				updateSummary();
-				updateWarningIcon();
-				updateClearFiltersButton();
-			});
-
-			const updateSummary = () => {
-				const checked = this.#filterState.checked?.length || 0;
-				summary.textContent = `${checked} selected`;
-			}
-
-			updateSummary();
-			document.body.appendChild(popup);
-
-			filterIcon.addEventListener('click', () => {
-				if (popup.style.display === 'flex') {
-					popup.style.display = 'none';
-					return;
-				}
-
-				popup.style.visibility = 'hidden';
-				popup.style.display = 'flex';
-				popup.style.left = '0px';
-				popup.style.top = '0px';
-
-				const rect = filterIcon.getBoundingClientRect();
-				const popupHeight = popup.offsetHeight;
-				const popupWidth = popup.offsetWidth;
-				const padding = 10;
-
-				let topPos = rect.bottom + 5;
-				if (topPos + popupHeight > window.innerHeight - padding) {
-					topPos = rect.top - popupHeight - 5;
-					if (topPos < padding) topPos = padding;
-				}
-
-				let leftPos = rect.left;
-				if (leftPos + popupWidth > window.innerWidth - padding) {
-					leftPos = window.innerWidth - popupWidth - padding;
-					if (leftPos < padding) leftPos = padding;
-				}
-
-				popup.style.left = `${leftPos}px`;
-				popup.style.top = `${topPos}px`;
-
-				popup.style.visibility = 'visible';
-				popup.style.display = 'flex';
-
-				requestAnimationFrame(() => searchInput.focus());
-				this._pauseUpdating();
-			});
-
-			const arrowSpan = firstTh.querySelector('span#arrow');
-			if (arrowSpan) {
-				firstTh.insertBefore(filterIcon, arrowSpan);
-			}
-			else {
-				firstTh.insertBefore(filterIcon, firstTh.firstChild);
-			}
-
-			function updateWarningIcon() {
-				const checkboxes = popup.querySelectorAll('.filter-popup-checkboxes input[type="checkbox"]');
-				const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
-				const hasSearchText = searchInput.value.trim() !== '';
-				if (anyChecked && hasSearchText) {
-					warningIcon.style.display = 'flex';
-				}
-				else {
-					warningIcon.style.display = 'none';
-				}
-			}
-
-			const updateClearFiltersButton = () => {
-				if (this.#filterState.checked.length > 0 || this.#filterState.search !== '') {
-					clearFiltersButton.style.visibility = 'visible';
-				}
-				else {
-					clearFiltersButton.style.visibility = 'hidden';
-				}
-			}
-
-			if (this.#filterApplied) {
-				this.#applyFilter();
-				updateClearFiltersButton();
-			}
-
-			if (searchInput.value !== '') {
-				searchInput.dispatchEvent(new Event('input'));
-			}
-
-			updateClearFiltersButton();
-			this.makeDraggable(popup, header);
-
-		}
-
-		this.closeFilterPopupHandler = this.closeFilterPopup.bind(this);
-		this.boundMouseDown = this.handleMouseDownTi.bind(this);
-		this.boundMouseMove = this.handleMouseMoveTi.bind(this);
-		this.boundMouseUp = this.handleMouseUpTi.bind(this);
-		this.attachListeners();
-
-		if (this._fields.use_host_storage && CWidgetTableModuleRME.#hasManualSelection) {
-			let references = this.getReferenceFromSession(this.#sessionKey);
-			if (references) {
-				let reference_session = JSON.parse(references);
-				if (reference_session['hostids']) {
-					this.#selected_hostid = reference_session['hostids'][0];
-				}
-			}
-		}
-
-		this.checkAndRemarkSelected();
-
-	}
-
-	getReferenceFromSession(key) {
-		try {
-			return sessionStorage.getItem(key);
-		}
-		catch (e) {
-			console.error('Session storage access failed:', e);
-			return null;
-		}
-	}
-
-	setReferenceInSession(key, id_type, id) {
-		try {
-			CWidgetTableModuleRME.#hasManualSelection = true;
-
-			let existing = this.getReferenceFromSession(key);
-			let reference;
-
-			if (existing) {
-				reference = JSON.parse(existing);
-				reference[id_type] = [id];
-			}
-			else {
-				reference = {
-					hostids: [],
-					hostgroupids: [],
-					itemids: []
-				};
-				reference[id_type] = [id];
-			}
-
-			sessionStorage.setItem(key, JSON.stringify(reference));
-		}
-		catch (e) {
-			console.error('Session storage write failed:', e);
-		}
-	}
-
-	getActionsContextMenu({can_copy_widget, can_paste_widget}) {
-		const menu = super.getActionsContextMenu({can_copy_widget, can_paste_widget});
-
-		if (this.isEditMode()) {
-			return menu;
-		}
-
-		let menu_actions = null;
-
-		for (const search_menu_actions of menu) {
-			if ('label' in search_menu_actions && search_menu_actions.label === t('Actions')) {
-				menu_actions = search_menu_actions;
-				break;
-			}
-		}
-
-		if (menu_actions === null) {
-			menu_actions = {
-				label: t('Actions'),
-				items: []
-			};
-
-			menu.unshift(menu_actions);
-		}
-
-		menu_actions.items.push({
-			label: t('Download as csv'),
-			disabled: !this.#rowsArray,
-			clickCallback: () => {
-				this.exportTableRowsToCSV();
-			}
-		});
-
-		return menu;
-        }
-
-	checkAndRemarkSelected() {
-		if (this.#selected_hostid !== null) {
-			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
-			this._markSelected(this.#dataset_host);
-		}
-		else if (this.#first_td_host_cell !== null && this._fields.autoselect_first) {
-			this.#first_td_host_cell.click();
-		}
-
-		if (this.#selected_items.length > 0) {
-			this._markSelected(this.#dataset_item, true);
-		}
-		else if (this.#first_td_value_cell !== null && this._fields.autoselect_first) {
-			this.#first_td_value_cell.click();
-		}
-	}
-
-	onResize() {
-		if (this._state === WIDGET_STATE_ACTIVE) {
-		}
-	}
+	// ========== Utility Methods (must be defined first) ========== //
 
 	debounce(fn, delay) {
 		let timeoutId;
@@ -1154,89 +116,6 @@ class CWidgetTableModuleRME extends CWidget {
 			clearTimeout(timeoutId);
 			timeoutId = setTimeout(() => fn(...args), delay);
 		};
-	}
-
-	closeFilterPopup(e) {
-		const popup = document.getElementById(this.#popupId);
-		const filterIcon = this._target.getElementsByClassName('filter-icon').item(0);
-		if (popup && filterIcon) {
-			if (!popup.contains(e.target) && !filterIcon.contains(e.target)) {
-				popup.style.display = 'none';
-				this._resumeUpdating();
-				if (this.#clearFiltersClickedWithSelections) {
-					filterIcon.classList.remove('active');
-					filterIcon.classList.remove('filter-error');
-					filterIcon.title = 'Click to filter this column';
-					this.#filterApplied = false;
-					this.checkAndRemarkSelected();
-					this.#clearFiltersClickedWithSelections = false;
-				}
-			}
-		}
-	}
-
-	attachListeners() {
-		document.addEventListener('click', this.closeFilterPopupHandler);
-		document.addEventListener('click', this.dropdownOutsideClickHandler);
-
-		if (this.handle && this.popup) {
-			this.handle.addEventListener('mousedown', this.boundMouseDown);
-			document.addEventListener('mousemove', this.boundMouseMove);
-			document.addEventListener('mouseup', this.boundMouseUp);
-		}
-	}
-
-	detachListeners() {
-		document.removeEventListener('click', this.closeFilterPopupHandler);
-		document.removeEventListener('click', this.dropdownOutsideClickHandler);
-
-		if (this.handle && this.boundMouseDown) {
-			this.handle.removeEventListener('mousedown', this.boundMouseDown);
-		}
-		document.removeEventListener('mousemove', this.boundMouseMove);
-		document.removeEventListener('mouseup', this.boundMouseUp);
-	}
-
-	makeDraggable(popup, handle) {
-		this.popup = popup;
-		this.handle = handle
-		this.isDragging = false;
-		this.offsetX = 0;
-		this.offsetY = 0;
-
-		handle.style.cursor = 'grab';
-	}
-
-	handleMouseDownTi(e) {
-		if (
-			e.target.tagName === 'INPUT' ||
-			e.target.tagName === 'SELECT' ||
-			e.target.tagName === 'BUTTON' ||
-			e.target.classList.contains('clear-btn')
-		) {
-			return;
-		}
-
-		this.isDragging = true;
-		this.handle.style.cursor = 'grabbing';
-		const rect = this.popup.getBoundingClientRect();
-		this.offsetX = e.clientX - rect.left;
-		this.offsetY = e.clientY - rect.top;
-		document.body.style.userSelect = 'none';
-	}
-
-	handleMouseMoveTi(e) {
-		if (this.isDragging) {
-			this.handle.style.cursor = 'grabbing';
-			this.popup.style.left = `${e.clientX - this.offsetX}px`;
-			this.popup.style.top = `${e.clientY - this.offsetY}px`;
-		}
-	}
-
-	handleMouseUpTi(e) {
-		this.isDragging = false;
-		this.handle.style.cursor = 'grab';
-		document.body.style.userSelect = '';
 	}
 
 	getTheme() {
@@ -1257,6 +136,162 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
+	_isNumeric(x) {
+		return !isNaN(parseFloat(x)) && isFinite(x);
+	}
+
+	_isDoubleSpanColumn(td) {
+		if (!td) return false;
+		return (this._isBarGauge(td));
+	}
+
+	_isBarGauge(td) {
+		return td.querySelector('z-bar-gauge');
+	}
+
+	runwhenSpinnerIsGone (callback) {
+		const checkInterval = setInterval(() => {
+			if (document.querySelector('.is-loading') === null) {
+				clearInterval(checkInterval);
+				callback();
+			}
+		}, 100);
+	}
+
+	// ========== Private Helper Methods ========== //
+
+	#broadcast(id_type, id_types, id) {
+		this.broadcast({
+			[id_type]: [id],
+			[id_types]: [id]
+		});
+	}
+
+	#saveScrollPosition() {
+		if (this._contents) {
+			this.#scrollPosition = {
+				top: this._contents.scrollTop,
+				left: this._contents.scrollLeft
+			};
+		}
+	}
+
+	#handleScroll = () => {
+		// Don't save scroll position if we're in the middle of updating
+		if (!this.#isUpdatingDisplay) {
+			this.#saveScrollPosition();
+		}
+	}
+
+	#setupScrollTracking() {
+		if (this._contents) {
+			// Remove any existing listener first
+			this._contents.removeEventListener('scroll', this.#handleScroll);
+
+			// Add scroll event listener
+			this._contents.addEventListener('scroll', this.#handleScroll);
+		}
+	}
+
+	#cleanupScrollTracking() {
+		if (this._contents) {
+			this._contents.removeEventListener('scroll', this.#handleScroll);
+		}
+	}
+
+	#removePaginationControls() {
+		const paginationElements = this.#parent_container
+			? this.#parent_container.querySelectorAll('.pagination-controls')
+			: [];
+
+		paginationElements.forEach(element => {
+			element.remove();
+		});
+
+		// Also remove standalone hide-button-container (we'll recreate it if needed)
+		const hideContainer = this.#parent_container?.querySelector('.hide-button-container');
+		if (hideContainer) {
+			hideContainer.remove();
+		}
+	}
+
+	#displayPaginationControls() {
+		this.#paginationElement = document.createElement('div');
+		this.#paginationElement.classList.add('pagination-controls');
+
+		const buttons = ['<<', '<'];
+		buttons.forEach(label => {
+			const button = document.createElement('button');
+			button.textContent = label;
+			button.addEventListener('click', () => this.#handlePaginationClick(label));
+			this.#paginationElement.appendChild(button);
+		});
+
+		const pageInfo = document.createElement('span');
+		this.#paginationElement.appendChild(pageInfo);
+		this.#updatePageInfo(pageInfo);
+
+		const buttons_b = ['>', '>>'];
+		buttons_b.forEach(label => {
+			const button_b = document.createElement('button');
+			button_b.textContent = label;
+			button_b.addEventListener('click', () => this.#handlePaginationClick(label));
+			this.#paginationElement.appendChild(button_b);
+		});
+
+		this.#parent_container.appendChild(this.#paginationElement);
+	}
+
+	#handlePaginationClick(label) {
+		switch (label) {
+			case '<<':
+				this.#currentPage = 1;
+				break;
+			case '<':
+				if (this.#currentPage > 1) {
+					this.#currentPage--;
+				}
+				break;
+			case '>':
+				if (this.#currentPage < Math.ceil(this.#totalRows / this.#rowsPerPage)) {
+					this.#currentPage++;
+				}
+				break;
+			case '>>':
+				this.#currentPage = Math.ceil(this.#totalRows / this.#rowsPerPage);
+				break;
+		}
+		this.#updateDisplay(true, false, false);
+	}
+
+	#updatePageInfo(pageInfoElement) {
+		if (!pageInfoElement) return;
+		const totalPages = Math.ceil(this.#totalRows / this.#rowsPerPage);
+		pageInfoElement.textContent = `Page ${this.#currentPage} of ${totalPages}`;
+	}
+
+	#getSetSpans(th) {
+		const span = th.querySelector('span#arrow');
+		const allArrowSpans = this.#values_table.querySelectorAll('thead tr th span#arrow');
+		for (let eachSpan of allArrowSpans) {
+			eachSpan.className = 'new-arrow';
+		}
+
+		return span;
+	}
+
+	#recalculateCanvasSize() {
+		const barGauges = this.#values_table.querySelectorAll('tr td z-bar-gauge');
+		requestAnimationFrame(() => {
+			barGauges.forEach((barGauge) => {
+				barGauge._refresh_frame = null;
+				barGauge.unregisterEvents();
+				barGauge.registerEvents();
+			});
+		});
+
+	}
+
 	#filterSelectedItems() {
 		this.#selected_items = this.#selected_items.filter(selectedItem => {
 			return this.#rowsArray.some(rowObj => {
@@ -1274,234 +309,245 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 	}
 
-	#applyFilter() {
-		function getColumnInfo(td, columns) {
-			const indexStr = td.getAttribute('column-id');
-			if (indexStr == null) return null;
-
-			const indexNum = parseInt(indexStr, 10);
-			if (isNaN(indexNum)) return null;
-
-			const columnDef = columns?.[indexNum];
-			if (!columnDef) return null;
-
-			return { indexNum, columnDef };
+	#processItemIds() {
+		if (this.#selected_items.length === 1) {
+			const item = this.#selected_items[0];
+			try {
+				const obj = JSON.parse(item.itemid);
+				obj[0].tags = item.tags;
+				return JSON.stringify(obj);
+			}
+			catch {
+				return item.itemid;
+			}
 		}
 
-		function resolveMinMaxSum(columnDef, dynamicStats, indexNum) {
-			const staticMin = columnDef.min !== undefined && columnDef.min !== '' ? parseFloat(columnDef.min) : null;
-			const staticMax = columnDef.max !== undefined && columnDef.max !== '' ? parseFloat(columnDef.max) : null;
+		const uniqueItems = new Set();
 
-			const min = staticMin !== null ? staticMin : dynamicStats[indexNum]?.min;
-			const max = staticMax !== null ? staticMax : dynamicStats[indexNum]?.max;
-			const sum = dynamicStats[indexNum]?.sum;
-
-			return { min, max, sum };
-		}
-
-		function extractValueFromHintbox(hintboxContent) {
-			const match = hintboxContent.match(/<div class="hintbox-wrap">(.*?)<\/div>/);
-			if (match && match[1]) {
-				const numericValue = parseFloat(match[1]);
-				if (!isNaN(numericValue)) {
-					return numericValue;
+		this.#selected_items.forEach(item => {
+			if (typeof item.itemid === 'number') {
+				const itemKey = `${item.itemid}-`;
+				if (!uniqueItems.has(itemKey)) {
+					uniqueItems.add(itemKey);
 				}
 			}
-			return null;
-		}
-
-		if (!this.#filterState) return;
-
-		this.invalidRegex = false;
-		const isCaseSensitive = this.#filterState.caseSensitive || false;
-
-		const checkedValues = this.#filterState.checked || [];
-		const allowedValues = checkedValues.length > 0 ? new Set(checkedValues) : null;
-		const searchValue = (this.#filterState.search || '').trim().toLowerCase();
-		const filterMode = this.#filterState.type || 'contains';
-
-		let columnStats = [];
-		const columns = this._fields.columns;
-
-		this.#rowsArray.forEach(rowObj => {
-			const tr = rowObj.row
-			const isResetRow = tr.querySelector('[reset-row]') !== null;
-			const isFooterRow = tr.querySelector('[footer-row]') !== null;
-			if (isResetRow || isFooterRow) {
-				rowObj.status = 'display';
-				return;
-			}
-
-			const td = tr.querySelector('td');
-			const text = td?.textContent.trim().toLowerCase() || '';
-
-			let showRow = true;
-	
-			if (allowedValues && allowedValues.size > 0) {
-				showRow = allowedValues.has(text);
-			}
-			else if (searchValue !== '') {
-				showRow = this.#matchesFilter(text, searchValue, filterMode, isCaseSensitive);
-			}
-
-			rowObj.status = showRow ? 'display' : 'hidden';
-
-			if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
-				if (rowObj.status === 'display') {
-					const allTdsInRow = tr.querySelectorAll('td');
-
-					allTdsInRow.forEach((td, index) => {
-						if (this._isBarGauge(td)) return;
-						let value = null;
-
-						const hintboxContent = td.getAttribute('data-hintbox-contents');
-						if (hintboxContent) {
-							value = extractValueFromHintbox(hintboxContent);
-						}
-
-						if (value === null) return;
-
-						const info = getColumnInfo(td, columns);
-						if (!info) return;
-
-						const { indexNum, columnDef } = info;
-
-						const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
-						const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
-
-						if (!this._isNumeric(value)) return;
-
-						if (!columnStats[indexNum]) {
-							columnStats[indexNum] = {
-								min: hasStaticMin ? columnDef.min : value,
-								max: hasStaticMax ? columnDef.max : value,
-								sum: value
-							};
-						}
-						else {
-							columnStats[indexNum].sum += value;
-							if (!hasStaticMin) {
-								columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
-							}
-
-							if (!hasStaticMax) {
-								columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
-							}
-						}
-					});
-				}
+			else if (typeof item.itemid === 'string' && item.itemid.startsWith('[')) {
+				const parsedItems = JSON.parse(item.itemid);
+				parsedItems.forEach(parsedItem => {
+					const itemKey = `${parsedItem.itemid}-${parsedItem.color}`;
+					if (!uniqueItems.has(itemKey)) {
+						uniqueItems.add(itemKey);
+					}
+				});
 			}
 		});
 
-		const selectedItemsBefore = [...this.#selected_items];
+		const resultArray = Array.from(uniqueItems).map(itemKey => {
+			const [itemid, color] = itemKey.split('-');
+			return { itemid, color: color || '' };
+		});
 
-		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
-		this.#filterSelectedItems();
+		return JSON.stringify(resultArray);
+	}
 
-		if (selectedItemsBefore.length > 0 && this.#selected_items.length === 0) {
-			this.#selected_items = [{ itemid: this.#null_id, name: null }];
+	// ========== Filter-related Methods ========== //
+
+	#getStableColumnId(th) {
+		// First check if we already set a stable ID
+		if (th.dataset.stableColumnId) {
+			return th.dataset.stableColumnId;
 		}
 
-		if (selectedItemsBefore.length === 1 &&
-				this.#selected_items.length === 1 &&
-				this.#selected_items[0].itemid === this.#null_id &&
-				selectedItemsBefore[0].itemid === this.#null_id &&
-				!this.#clearFiltersClickedWithSelections) {
+		// Extract the actual column name (same logic as #extractColumnName)
+		const clonedTh = th.cloneNode(true);
+		const filterIcon = clonedTh.querySelector('.filter-icon');
+		const arrow = clonedTh.querySelector('#arrow');
+		if (filterIcon) filterIcon.remove();
+		if (arrow) arrow.remove();
+
+		const spanWithTitle = clonedTh.querySelector('span[title]');
+		let columnName = spanWithTitle
+			? spanWithTitle.getAttribute('title').trim()
+			: clonedTh.textContent.trim();
+
+		// Fallback if column name is empty
+		if (!columnName) {
+			columnName = `column-${th.id || Math.random().toString(36).substr(2, 9)}`;
+		}
+
+		// Create a stable ID by sanitizing the column name
+		// Remove special characters and spaces, convert to lowercase
+		const stableId = columnName
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+
+		// Store it on the element for future reference
+		th.dataset.stableColumnId = stableId;
+
+		return stableId;
+	}
+
+	#extractColumnName(th) {
+		if (!th) return '';
+
+		// Clone the th to avoid modifying the original
+		const clonedTh = th.cloneNode(true);
+
+		// Remove filter icon and arrow
+		const filterIcon = clonedTh.querySelector('.filter-icon');
+		const arrow = clonedTh.querySelector('#arrow');
+		if (filterIcon) filterIcon.remove();
+		if (arrow) arrow.remove();
+
+		// Check if there is a span with title attribute (tooltip)
+		const spanWithTitle = clonedTh.querySelector('span[title]');
+		if (spanWithTitle) {
+			return spanWithTitle.getAttribute('title').trim();
+		}
+
+		// Fall back to text content
+		return clonedTh.textContent.trim();
+	}
+
+	#getCellByColumnId(row, targetColumnId) {
+		const cells = row.querySelectorAll('td');
+		let currentColumnId = 0;
+
+		for (let cell of cells) {
+			const colspan = cell.hasAttribute('colspan')
+				? parseInt(cell.getAttribute('colspan'))
+				: 1;
+
+			if (currentColumnId === targetColumnId) {
+				return cell;
+			}
+
+			currentColumnId += colspan;
+		}
+
+		return null;
+	}
+
+	#extractCellValue(td) {
+		// Check for hintbox content first (numeric value)
+		const hintboxContent = td.getAttribute('data-hintbox-contents');
+		if (hintboxContent) {
+			const match = hintboxContent.match(/<div class="hintbox-wrap">(.*?)<\/div>/);
+			if (match && match[1]) {
+				return match[1].trim();
+			}
+		}
+
+		// Fall back to text content
+		return td.textContent.trim();
+	}
+
+	#detectColumnType(valuesArray) {
+		const isNumeric = val => /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(val.trim());
+		const isIPv4 = val => /^(\d{1,3}\.){3}\d{1,3}$/.test(val.trim());
+
+		const allNumeric = valuesArray.every(isNumeric);
+		const allIP = valuesArray.every(isIPv4);
+
+		if (allNumeric) return 'numeric';
+		if (allIP) return 'ip';
+		return 'text';
+	}
+
+	#sortFilterValues(valuesArray, columnType) {
+		const isNumeric = val => /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(val.trim());
+
+		const ipToNum = ip => {
+			const octets = ip.trim().split('.');
+			if (octets.length !== 4) return NaN;
+			const nums = octets.map(octet => parseInt(octet, 10));
+			if (nums.some(num => isNaN(num) || num < 0 || num > 255)) return NaN;
+			return (nums[0] * 256 ** 3) + (nums[1] * 256 ** 2) + (nums[2] * 256) + nums[3];
+		};
+
+		if (columnType === 'numeric') {
+			return valuesArray.sort((a, b) => parseFloat(a) - parseFloat(b));
+		}
+		else if (columnType === 'ip') {
+			return valuesArray.sort((a, b) => ipToNum(a) - ipToNum(b));
 		}
 		else {
-			this.checkAndRemarkSelected();
-		}
-
-		if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
-			displayedRows.forEach(rowObj => {
-				const tr = rowObj.row;
-				const allTdsInRow = tr.querySelectorAll('td');
-
-				allTdsInRow.forEach((td, index) => {
-					const gauge = this._isBarGauge(td);
-					if (!gauge) return;
-
-					const info = getColumnInfo(td, columns);
-					if (!info) return;
-
-					const { indexNum, columnDef } = info;
-					const { min, max, sum } = resolveMinMaxSum(columnDef, columnStats, indexNum);
-
-					if (min === undefined || max === undefined) return;
-
-					const bgValue = parseFloat(gauge.getAttribute('value'));
-
-					let newTooltipValue = null;
-					let hintStrValue = '';
-					let formatted = newTooltipValue;
-					if (this._fields.bar_gauge_tooltip === 0) {
-						newTooltipValue = bgValue / max * 100;
-						hintStrValue = ' % of column max';
-						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
-						gauge.setAttribute('max', max);
-					}
-					else if (this._fields.bar_gauge_tooltip === 1) {
-						newTooltipValue = bgValue / sum * 100;
-						hintStrValue = ' % of column sum';
-						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
-						gauge.setAttribute('max', sum);
-					}
-					else {
-						gauge.setAttribute('max', max);
-					}
-
-					if (formatted !== null) {
-						const oldHint = td.getAttribute('data-hintbox-contents');
-						const newHint = oldHint.replace(/>.*?</, `>${formatted}<`);
-						td.setAttribute('data-hintbox-contents', newHint);
-					}
-
-					gauge.setAttribute('min', min);
-				});
+			// Mixed content: prioritize numbers, then IPs, then text
+			return valuesArray.sort((a, b) => {
+				const getTypeRank = v => isNumeric(v) ? 0 : /^(\d{1,3}\.){3}\d{1,3}$/.test(v) ? 1 : 2;
+				const rankA = getTypeRank(a);
+				const rankB = getTypeRank(b);
+				if (rankA !== rankB) return rankA - rankB;
+				if (rankA === 0) return parseFloat(a) - parseFloat(b);
+				if (rankA === 1) return ipToNum(a) - ipToNum(b);
+				return a.localeCompare(b);
 			});
-		}
-
-		this.#totalRows = displayedRows.length;
-		this.#currentPage = 1;
-
-		this.#removePaginationControls();
-		if (this.#totalRows > this.#rowsPerPage) {
-			this.#displayPaginationControls();
-		}
-
-		this.#updateDisplay(true, true, false);
-
-		const firstTh = this.#values_table.querySelector('thead th');
-		if (firstTh) {
-			const filterIcon = firstTh.querySelector('.filter-icon');
-			if (filterIcon) {
-				if (this.invalidRegex) {
-					filterIcon.classList.add('filter-error');
-					filterIcon.title = 'Invalid Regex pattern!';
-					filterIcon.classList.remove('active');
-					this.#filterApplied = true;
-				}
-				else if ((allowedValues && allowedValues.size > 0) || searchValue !== '') {
-					filterIcon.classList.add('active');
-					filterIcon.classList.remove('filter-error');
-					filterIcon.title = 'Filter Applied!';
-					this.#filterApplied = true;
-				}
-				else {
-					filterIcon.classList.remove('active');
-					filterIcon.classList.remove('filter-error');
-					filterIcon.title = 'Click to filter this column';
-					this.#filterApplied = false;
-				}
-			}
 		}
 	}
 
+	#matchesFilter(text, searchValue, filterMode, caseSensitive = false, columnType = 'text') {
+		if (searchValue === '' || searchValue === null || searchValue === undefined) {
+			return true;
+		}
 
-	#matchesFilter(text, searchValue, filterMode, caseSensitive = false) {
 		text = text.trim();
 		searchValue = searchValue.trim();
 
+		// Handle numeric filters
+		if (columnType === 'numeric') {
+			const numValue = parseFloat(text);
+			if (isNaN(numValue)) return false;
+
+			switch (filterMode) {
+				case 'equals': {
+					const target = parseFloat(searchValue);
+					return !isNaN(target) && numValue === target;
+				}
+				case 'not equals': {
+					const target = parseFloat(searchValue);
+					return !isNaN(target) && numValue !== target;
+				}
+				case 'greater than': {
+					const target = parseFloat(searchValue);
+					return !isNaN(target) && numValue > target;
+				}
+				case 'less than': {
+					const target = parseFloat(searchValue);
+					return !isNaN(target) && numValue < target;
+				}
+				case 'greater or equal': {
+					const target = parseFloat(searchValue);
+					return !isNaN(target) && numValue >= target;
+				}
+				case 'less or equal': {
+					const target = parseFloat(searchValue);
+					return !isNaN(target) && numValue <= target;
+				}
+				case 'range': {
+					// Support formats: "10-20", "10:20", "10 20"
+					const rangeParts = searchValue.split(/[-:\s]+/);
+					if (rangeParts.length === 2) {
+						const min = parseFloat(rangeParts[0]);
+						const max = parseFloat(rangeParts[1]);
+						if (!isNaN(min) && !isNaN(max)) {
+							return numValue >= min && numValue <= max;
+						}
+					}
+					return false;
+				}
+				case 'top n':
+				case 'bottom n':
+					// These filters are handled separately in #applyAllFilters()
+					// after all other filters have been applied.
+					// Return true here so rows aren't filtered out
+					return true;
+				default:
+					return false;
+			}
+		}
+
+		// Handle IP and text filters
 		if (!caseSensitive) {
 			text = text.toLowerCase();
 			searchValue = searchValue.toLowerCase();
@@ -1593,6 +639,8 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 			case 'equals':
 				return text === searchValue;
+			case 'not equals':
+				return text !== searchValue;
 			case 'starts with':
 			case 'startswith':
 				return text.startsWith(searchValue);
@@ -1614,10 +662,12 @@ class CWidgetTableModuleRME extends CWidget {
 			case 'regex':
 				try {
 					const regex = new RegExp(searchValue, caseSensitive ? '' : 'i');
+					this.invalidRegex = false;
 					return regex.test(text);
 				}
-				catch {
+				catch (error) {
 					this.invalidRegex = true;
+					this.invalidRegexError = error.message;
 					return false;
 				}
 			case 'contains':
@@ -1626,59 +676,1995 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
+	#getPossibleValuesForColumn(columnId) {
+		// Calculate what rows WOULD be visible if this column had no filter
+		const otherActiveFilters = Array.from(this.#activeFilters).filter(id => id !== columnId);
 
-	#recalculateCanvasSize() {
-		const barGauges = this.#values_table.querySelectorAll('tr td z-bar-gauge');
-		requestAnimationFrame(() => {
-			barGauges.forEach((barGauge) => {
-				barGauge._refresh_frame = null;
-				barGauge.unregisterEvents();
-				barGauge.registerEvents();
-			});
+		const potentiallyVisibleRows = this.#rowsArray.filter(rowObj => {
+			const tr = rowObj.row;
+			const isResetRow = tr.querySelector('[reset-row]') !== null;
+			const isFooterRow = tr.querySelector('[footer-row]') !== null;
+
+			if (isResetRow || isFooterRow) return true;
+
+			// Check all OTHER active filters (not this column)
+			for (const otherColumnId of otherActiveFilters) {
+				const otherFilterState = this.#filterStates.get(otherColumnId);
+				const otherColumnType = this.#columnTypes.get(otherColumnId) || 'text';
+				if (!otherFilterState) continue;
+
+				const otherTh = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === otherColumnId);
+				if (!otherTh) continue; // Column no longer exists
+
+				const otherColumnIndex = parseInt(otherTh.id);
+				const td = this.#getCellByColumnId(tr, otherColumnIndex);
+
+				if (!td) return false;
+
+				const text = this.#extractCellValue(td).toLowerCase();
+				const checkedValues = otherFilterState.checked || [];
+				const searchValue = (otherFilterState.search || '').trim().toLowerCase();
+				const filterMode = otherFilterState.type || 'contains';
+
+				let matchesOtherColumn = true;
+
+				if (otherColumnType === 'numeric' && (filterMode === 'top n' || filterMode === 'bottom n')) {
+					matchesOtherColumn = true;
+				}
+				else if (checkedValues.length > 0) {
+					matchesOtherColumn = checkedValues.includes(text);
+				}
+				else if (searchValue !== '') {
+					matchesOtherColumn = this.#matchesFilter(text, searchValue, filterMode, false, otherColumnType);
+				}
+
+				if (!matchesOtherColumn) return false;
+			}
+
+			return true;
 		});
 
+		const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+
+		if (!th) return []; // Column no longer exists
+
+		const columnIndex = parseInt(th.id);
+
+		// Collect values from potentially visible rows
+		const visibleValues = new Set();
+
+		potentiallyVisibleRows.forEach(rowObj => {
+			const tr = rowObj.row;
+			if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+
+			const td = this.#getCellByColumnId(tr, columnIndex);
+			if (td) {
+				const value = this.#extractCellValue(td);
+				if (value) visibleValues.add(value);
+			}
+		});
+
+		const visibleValuesArray = Array.from(visibleValues);
+		const columnType = this.#columnTypes.get(columnId) || 'text';
+		return this.#sortFilterValues(visibleValuesArray, columnType);
 	}
 
-	#processItemIds() {
-		if (this.#selected_items.length === 1) {
-			const item = this.#selected_items[0];
-			try {
-				const obj = JSON.parse(item.itemid);
-				obj[0].tags = item.tags;
-				return JSON.stringify(obj);
+	#showCustomAlert(message, title = 'Alert') {
+		// Create backdrop
+		const backdrop = document.createElement('div');
+		backdrop.className = 'custom-alert-backdrop';
+		backdrop.style.cssText = `
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background-color: rgba(0, 0, 0, 0.6);
+			z-index: 10000;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		`;
+
+		// Create alert box
+		const alertBox = document.createElement('div');
+		alertBox.className = 'custom-alert-box';
+		alertBox.style.cssText = `
+			background: ${this.#theme === 'hc-light' || this.#theme === 'blue-theme' ? '#ffffff' : '#2a2a2a'};
+			border: 2px solid #ff6b6b;
+			border-radius: 8px;
+			box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+			padding: 20px;
+			min-width: 300px;
+			max-width: 500px;
+			text-align: center;
+		`;
+
+		// Create title
+		const alertTitle = document.createElement('div');
+		alertTitle.style.cssText = `
+			font-size: 16px;
+			font-weight: bold;
+			color: #ff6b6b;
+			margin-bottom: 10px;
+		`;
+		alertTitle.textContent = title;
+
+		// Create message
+		const alertMessage = document.createElement('div');
+		alertMessage.style.cssText = `
+			font-size: 14px;
+			color: ${this.#theme === 'hc-light' || this.#theme === 'blue-theme' ? '#333' : '#f2f2f2'};
+			margin-bottom: 20px;
+			line-height: 1.5;
+		`;
+		alertMessage.textContent = message;
+
+		// Create OK button
+		const okButton = document.createElement('button');
+		okButton.textContent = 'OK';
+		okButton.style.cssText = `
+			background: #ff6b6b;
+			color: white;
+			border: none;
+			padding: 2px 24px;
+			font-size: 14px;
+			font-weight: bold;
+			border-radius: 4px;
+			cursor: pointer;
+			min-width: 80px;
+		`;
+
+		okButton.addEventListener('mouseover', () => {
+			okButton.style.background = '#ff5252';
+		});
+
+		okButton.addEventListener('mouseout', () => {
+			okButton.style.background = '#ff6b6b';
+		});
+
+		okButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			document.body.removeChild(backdrop);
+		});
+
+		// Assemble alert box
+		alertBox.appendChild(alertTitle);
+		alertBox.appendChild(alertMessage);
+		alertBox.appendChild(okButton);
+		backdrop.appendChild(alertBox);
+
+		// Add to body
+		document.body.appendChild(backdrop);
+
+		// Close on backdrop click
+		backdrop.addEventListener('click', (e) => {
+			if (e.target === backdrop) {
+				e.stopPropagation();
+				document.body.removeChild(backdrop);
 			}
-			catch {
-				return item.itemid;
+		});
+
+		// Close on ESC key
+		const escHandler = (e) => {
+			if (e.key === 'Escape') {
+				if (document.body.contains(backdrop)) {
+					document.body.removeChild(backdrop);
+				}
+				document.removeEventListener('keydown', escHandler);
+			}
+		};
+		document.addEventListener('keydown', escHandler);
+
+		// Auto-focus the OK button
+		setTimeout(() => okButton.focus(), 100);
+	}
+
+	#calculatePopupWidth(sortedValues) {
+		const tempSpan = document.createElement('span');
+		tempSpan.style.visibility = 'hidden';
+		tempSpan.style.position = 'absolute';
+		tempSpan.style.whiteSpace = 'nowrap';
+		tempSpan.style.font = '13px sans-serif';
+		document.body.appendChild(tempSpan);
+
+		let maxWidth = 0;
+		for (const value of sortedValues) {
+			tempSpan.textContent = value;
+			maxWidth = Math.max(maxWidth, tempSpan.offsetWidth);
+		}
+		document.body.removeChild(tempSpan);
+
+		return Math.min(Math.max(maxWidth + 150, 400), 800);
+	}
+
+	#createHelpTooltip(helpIcon, helpText) {
+		const tooltipId = `${this._widgetid}-filter-tooltip-${Math.random().toString(36).substr(2, 9)}`;
+		const tooltip = document.createElement('div');
+		tooltip.id = tooltipId;
+		tooltip.className = 'filter-tooltip';
+		tooltip.textContent = helpText;
+		tooltip.style.display = 'none';
+		document.body.appendChild(tooltip);
+
+		this.#filterTooltipIds.add(tooltipId);
+
+		helpIcon.addEventListener('mouseover', (e) => {
+			const rect = helpIcon.getBoundingClientRect();
+			tooltip.style.left = `${rect.left + window.scrollX + rect.width + 10}px`;
+			tooltip.style.top = `${rect.top + window.scrollY + 15}px`;
+			tooltip.style.display = 'block';
+		});
+
+		helpIcon.addEventListener('mouseout', () => {
+			tooltip.style.display = 'none';
+		});
+	}
+
+	#createWarningIcon() {
+		const warningSvg = `
+			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
+				<path d="M12 3C12.3 3 12.6 3.15 12.78 3.44L21.53 18.61C21.95 19.33 21.4 20.25 20.53 20.25H3.47C2.6 20.25 2.05 19.33 2.47 18.61L11.22 3.44C11.4 3.15 11.7 3 12 3Z" fill="#fef08a" stroke="#eab308" stroke-width="1.25"/>
+				<circle cx="12" cy="16" r="1.25" fill="#92400e"/>
+				<rect x="11.25" y="9" width="1.5" height="4.5" rx="0.75" fill="#92400e"/>
+			</svg>
+		`;
+
+		const warningIcon = document.createElement('span');
+		warningIcon.className = 'filter-warning-icon';
+		warningIcon.style.display = 'none';
+		warningIcon.innerHTML = warningSvg;
+
+		// Warning tooltip with widget-specific ID
+		const tooltip = document.createElement('div');
+		const tooltipId = `${this._widgetid}-warning-tooltip-${Math.random().toString(36).substr(2, 9)}`;
+		tooltip.id = tooltipId;
+		tooltip.className = 'custom-tooltip';
+		tooltip.textContent = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
+		tooltip.style.position = 'absolute';
+		tooltip.style.display = 'none';
+		tooltip.style.pointerEvents = 'none';
+		document.body.appendChild(tooltip);
+
+		this.#filterTooltipIds.add(tooltipId);
+
+		warningIcon.addEventListener('mouseenter', (e) => {
+			const rect = warningIcon.getBoundingClientRect();
+			tooltip.style.top = `${rect.top - rect.height - 8}px`;
+			tooltip.style.left = `${rect.left + rect.width / 2}px`;
+			tooltip.style.transform = 'translateX(-50%)';
+			tooltip.style.display = 'block';
+		});
+
+		warningIcon.addEventListener('mouseleave', () => {
+			tooltip.style.display = 'none';
+		});
+
+		return warningIcon;
+	}
+
+	#createCheckboxContainer() {
+		const scrollContainer = document.createElement('div');
+		scrollContainer.style.maxHeight = '300px';
+		scrollContainer.style.minHeight = '100px';
+		scrollContainer.style.overflowY = 'auto';
+		scrollContainer.style.overflowX = 'hidden';
+		scrollContainer.style.position = 'relative';
+		scrollContainer.style.paddingRight = '6px';
+		scrollContainer.style.boxSizing = 'border-box';
+
+		const spacer = document.createElement('div');
+		spacer.style.position = 'relative';
+
+		const checkboxContainer = document.createElement('div');
+		checkboxContainer.className = 'filter-popup-checkboxes';
+		checkboxContainer.style.position = 'absolute';
+		checkboxContainer.style.width = '100%';
+		checkboxContainer.style.top = '0';
+		checkboxContainer.style.left = '0';
+		checkboxContainer.style.right = '0';
+		checkboxContainer.style.display = 'block';
+
+		spacer.appendChild(checkboxContainer);
+		scrollContainer.appendChild(spacer);
+
+		return { scrollContainer, checkboxContainer, spacer };
+	}
+
+	#createPopupFooter(columnId) {
+		const footer = document.createElement('div');
+		footer.className = 'filter-popup-footer';
+
+		const sectionContainer = document.createElement('div');
+		sectionContainer.className = 'section-container';
+
+		const summary = document.createElement('div');
+		summary.className = 'summary';
+		summary.textContent = '0 selected';
+		sectionContainer.appendChild(summary);
+
+		const toggleRow = document.createElement('div');
+		toggleRow.style.marginTop = '6px';
+		toggleRow.className = 'toggle-row';
+
+		const toggleButton = document.createElement('button');
+		toggleButton.textContent = 'Select All';
+		toggleButton.style.background = '#455A64';
+		toggleButton.style.color = '#eee';
+		toggleButton.style.fontWeight = 'bold';
+		toggleButton.type = 'button';
+		toggleRow.appendChild(toggleButton);
+
+		sectionContainer.appendChild(toggleRow);
+		footer.appendChild(sectionContainer);
+
+		const gap = document.createElement('div');
+		gap.style.height = '2px';
+		footer.appendChild(gap);
+
+		const buttonsRow = document.createElement('div');
+		buttonsRow.style.display = 'flex';
+		buttonsRow.style.justifyContent = 'flex-start';
+		buttonsRow.style.gap = '8px';
+		buttonsRow.style.paddingLeft = '10px';
+
+		const applyButton = document.createElement('button');
+		applyButton.textContent = 'Apply';
+		applyButton.type = 'button';
+		applyButton.style.minWidth = '80px';
+		applyButton.style.padding = '6px 12px';
+
+		const resetButton = document.createElement('button');
+		resetButton.textContent = 'Cancel';
+		resetButton.className = 'cancel';
+		resetButton.type = 'button';
+		resetButton.style.minWidth = '80px';
+		resetButton.style.padding = '6px 12px';
+
+		const clearFiltersButton = document.createElement('button');
+		clearFiltersButton.textContent = 'Clear Filters';
+		clearFiltersButton.className = 'clear-filters';
+		clearFiltersButton.type = 'button';
+		clearFiltersButton.style.padding = '6px 12px';
+		clearFiltersButton.style.visibility = 'hidden';
+
+		const warningIcon = this.#createWarningIcon();
+
+		buttonsRow.appendChild(applyButton);
+		buttonsRow.appendChild(resetButton);
+		buttonsRow.appendChild(clearFiltersButton);
+		buttonsRow.appendChild(warningIcon);
+		footer.appendChild(buttonsRow);
+
+		// Cancel button handler
+		resetButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+
+			const popup = document.getElementById(`${this.#values_table.id}-${this._widgetid}-popup-${columnId}`);
+
+			// Restore original state from popup's dataset
+			if (popup && popup.dataset.initialState) {
+				const initialState = JSON.parse(popup.dataset.initialState);
+				const filterState = this.#filterStates.get(columnId);
+
+				filterState.search = initialState.search;
+				filterState.checked = [...initialState.checked];
+				filterState.type = initialState.type;
+
+				// Update UI to match restore state
+				const searchInput = popup.querySelector('input[type="text"]');
+				const filterTypeSelect = popup.querySelector('.custom-select input[type="hidden"]');
+				const filterTypeButton = popup.querySelector('.custom-select > button');
+
+				if (searchInput) {
+					searchInput.value = initialState.search;
+				}
+
+				if (filterTypeSelect) {
+					filterTypeSelect.value = initialState.type;
+				}
+
+				if (filterTypeButton) {
+					const filterTypeList = filterTypeButton.nextElementSibling;
+					if (filterTypeList) {
+						const matchingOption = Array.from(filterTypeList.querySelectorAll('li'))
+							.find(li => li.dataset.value === initialState.type);
+
+						if (matchingOption) {
+							filterTypeButton.textContent = matchingOption.dataset.label;
+						}
+					}
+				}
+			}
+
+			if (popup) popup.style.display = 'none';
+			this._resumeUpdating();
+		});
+
+		return { footer, summary, toggleButton, applyButton, resetButton, clearFiltersButton, warningIcon };
+	}
+
+	#createDropdownList(options, button, hiddenInput) {
+		const filterList = document.createElement('ul');
+		filterList.className = 'list';
+		filterList.style.display = 'none';
+		filterList.tabIndex = -1;
+		filterList.setAttribute('role', 'listbox');
+		let currentIndex = -1;
+
+		options.forEach((opt, i) => {
+			const li = document.createElement('li');
+			li.textContent = opt.label;
+			li.dataset.value = opt.value;
+			li.dataset.label = opt.label;
+			li.setAttribute('role', 'option');
+
+			const helpIcon = document.createElement('span');
+			helpIcon.className = 'help-icon';
+			helpIcon.textContent = '?';
+			helpIcon.dataset.help = opt.help;
+			li.appendChild(helpIcon);
+
+			// Add click handler for selecting the option
+			li.addEventListener('click', (e) => {
+				e.stopPropagation();
+				hiddenInput.value = opt.value;
+				button.textContent = opt.label;
+				closeList();
+
+				// Trigger UI update for top/bottom n filters
+				const changeEvent = new Event('filterTypeChanged', { bubbles: true });
+				changeEvent.filterType = opt.value;
+				hiddenInput.dispatchEvent(changeEvent);
+			});
+
+			// Mouse hover to focus item
+			li.addEventListener('mouseenter', () => focusItem(i));
+			filterList.appendChild(li);
+
+			// Help tooltip
+			this.#createHelpTooltip(helpIcon, opt.help);
+		});
+
+		// Accessibility attributes
+		button.setAttribute('aria-haspopup', 'listbox');
+		button.setAttribute('aria-expanded', 'false');
+
+		// Helper functions
+		const openList = () => {
+			filterList.style.display = 'block';
+			button.setAttribute('aria-expanded', 'true');
+			filterList.focus();
+		};
+
+		const closeList = () => {
+			filterList.style.display = 'none';
+			button.setAttribute('aria-expanded', 'false');
+			currentIndex = -1;
+			filterList.querySelectorAll('li').forEach(li => li.classList.remove('focused'));
+		};
+
+		const focusItem = (index) => {
+			const items = filterList.querySelectorAll('li');
+			if (items.length === 0) return;
+
+			items.forEach(li => li.classList.remove('focused'));
+
+			if (index >= 0 && index < items.length) {
+				currentIndex = index;
+				items[currentIndex].classList.add('focused');
+				items[currentIndex].scrollIntoView({ block: 'nearest' });
 			}
 		}
 
-		const uniqueItems = new Set();
+		// Button click toggle
+		button.addEventListener('click', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
 
-		this.#selected_items.forEach(item => {
-			if (typeof item.itemid === 'number') {
-				const itemKey = `${item.itemid}-`;
-				if (!uniqueItems.has(itemKey)) {
-					uniqueItems.add(itemKey);
+			if (filterList.style.display === 'none') {
+				openList();
+				focusItem(0);
+			}
+			else {
+				closeList();
+			}
+		});
+
+		// Button keyboard navigation
+		button.addEventListener('keydown', (e) => {
+			const items = filterList.querySelectorAll('li');
+			switch (e.key) {
+				case ' ':
+				case 'Enter':
+					e.preventDefault();
+					if (filterList.style.display === 'none') {
+						openList();
+						focusItem(0);
+					}
+					else {
+						closeList();
+					}
+					break;
+				case 'ArrowDown':
+					e.preventDefault();
+					openList();
+					focusItem(0);
+					break;
+				case 'ArrowUp':
+					e.preventDefault();
+					openList();
+					focusItem(items.length - 1);
+					break;
+				case 'Escape':
+					e.preventDefault();
+					closeList();
+					break;
+			}
+		});
+
+		// List keyboard navigation
+		filterList.addEventListener('keydown', (e) => {
+			const items = filterList.querySelectorAll('li');
+			if (items.length === 0) return;
+
+			switch (e.key) {
+				case 'ArrowDown':
+					e.preventDefault();
+					focusItem((currentIndex + 1) % items.length);
+					break;
+				case 'ArrowUp':
+					e.preventDefault();
+					focusItem((currentIndex - 1 + items.length) % items.length);
+					break;
+				case 'Enter':
+				case ' ':
+					e.preventDefault();
+					if (currentIndex >= 0) {
+						items[currentIndex].click();
+						closeList();
+						button.focus();
+					}
+					break;
+				case 'Escape':
+					e.preventDefault();
+					closeList();
+					button.focus();
+					break;
+				case 'Tab':
+					closeList();
+					break;
+			}
+		});
+
+		// Close dropdown when clicking outside
+		const closeDropdownHandler = (e) => {
+			if (!button.contains(e.target) && !filterList.contains(e.target)) {
+				closeList();
+			}
+		};
+
+		// Store handler reference on the filterList for cleanup
+		filterList._closeDropdownHandler = closeDropdownHandler;
+		document.addEventListener('click', closeDropdownHandler);
+
+		return filterList;
+	}
+
+	#createFilterTypeDropdown(filterState, columnType) {
+		const container = document.createElement('div');
+		container.className = 'custom-select';
+
+		const hiddenInput = document.createElement('input');
+		hiddenInput.type = 'hidden';
+		container.appendChild(hiddenInput);
+
+		const button = document.createElement('button');
+		button.type = 'button';
+		container.appendChild(button);
+
+		let options;
+
+		if (columnType === 'numeric') {
+			options = [
+				{ value: 'equals', label: 'Equals', help: 'Value exactly equals the specified number.' },
+				{ value: 'not equals', label: 'Not Equals', help: 'Value does not equal the specified number.' },
+				{ value: 'greater than', label: 'Greater Than', help: 'Value is greater than the specified number.' },
+				{ value: 'less than', label: 'Less Than', help: 'Value is less than the specified number.' },
+				{ value: 'greater or equal', label: 'Greater or Equal', help: 'Value is greater than or equal to the specified number.' },
+				{ value: 'less or equal', label: 'Less or Equal', help: 'Value is less than or equal to the specified number.' },
+				{ value: 'range', label: 'Range', help: 'Value is between two numbers (inclusive).\nFormat: min-max or min:max' },
+				{ value: 'top n', label: 'Top N', help: 'Shows the top N highest values.' },
+				{ value: 'bottom n', label: 'Bottom N', help: 'Shows the bottom N highest values.' }
+			];
+		}
+		else if (columnType === 'ip') {
+			options = [
+				{ value: 'equals', label: 'Equals', help: 'IP exactly matches the specified text.' },
+				{ value: 'contains', label: 'Contains', help: 'IP contains the specified text.' },
+				{ value: 'starts with', label: 'Starts with', help: 'IP starts with the specified text (useful for subnets).' },
+				{ value: 'wildcard', label: 'Wildcard', help: 'IP matches the wildcarded (*) pattern.\nExample: 192.168.*.1' },
+				{ value: 'regex', label: 'Regex', help: 'IP matches the specified regular expression.' }
+			];
+		}
+		else {
+			options = [
+				{ value: 'contains', label: 'Contains', help: 'Filters items that contain the specified text.' },
+				{ value: 'equals', label: 'Equals', help: 'Filters items that exactly match the specified text.' },
+				{ value: 'starts with', label: 'Starts with', help: 'Filters items that start with the specified text.' },
+				{ value: 'ends with', label: 'Ends with', help: 'Filters items that end with the specified text.' },
+				{ value: 'wildcard', label: 'Wildcard', help: 'Filters items that match the specified wildcarded (*) pattern.\nMultiple wildcards (*) are supported.' },
+				{ value: 'does not contain', label: 'Does not contain', help: 'Filters items that do not contain the specified text.' },
+				{ value: 'regex', label: 'Regex', help: 'Filters items that match the specified regular expression.' },
+				{ value: 'boolean', label: 'Boolean Expr', help: 'Filters items that match the specified boolean expression.\nSupports \'AND\', \'OR\', \'AND NOT\', \'OR NOT\', and parentheses\ni.e. (TERMA OR TERMB) AND TERMCD AND NOT TERMCDE' }
+			];
+		}
+
+		// Determine initial value - use filterState.type if valid for this column type
+		let initialValue = filterState.type;
+
+		// Validate that the current filterState.type is valid for this column type
+		const isValidOption = options.some(o => o.value === initialValue);
+
+		if (!isValidOption) {
+			// Fall back to the first option if current type isn't valid
+			initialValue = options[0].value;
+			filterState.type = initialValue; // Update the state too
+		}
+
+		const initialLabel = options.find(o => o.value === initialValue)?.label || options[0].label;
+
+		hiddenInput.value = initialValue;
+		button.textContent = initialLabel;
+
+		const filterList = this.#createDropdownList(options, button, hiddenInput);
+		container.appendChild(filterList);
+
+		return { container, hiddenInput, button };
+	}
+
+	#createPopupHeader(columnId, filterState, columnType, columnName) {
+		const header = document.createElement('div');
+		header.className = 'filter-popup-header';
+
+		const headerTitle = document.createElement('div');
+		headerTitle.className = 'filter-popup-header-title';
+		headerTitle.textContent = columnName ? `Filter column values - ${columnName}` : 'Filter column values';
+
+		const filterControls = document.createElement('div');
+		filterControls.className = 'filter-popup-controls';
+
+		// Filter type dropdown (type-aware)
+		const filterTypeContainer = this.#createFilterTypeDropdown(filterState, columnType);
+
+		// Search input
+		const searchInput = document.createElement('input');
+		searchInput.type = 'text';
+
+		if (columnType === 'numeric') {
+			searchInput.placeholder = 'Enter number of range...';
+		}
+		else if (columnType === 'ip') {
+			searchInput.placeholder = 'Enter IP address...';
+		}
+		else {
+			searchInput.placeholder = 'Search...';
+		}
+
+		searchInput.value = filterState.search || '';
+
+		// Search input clear button
+		const clearBtn = document.createElement('span');
+		clearBtn.className = 'clear-btn';
+		clearBtn.textContent = '✕ Clear';
+
+		filterControls.appendChild(filterTypeContainer.container);
+		filterControls.appendChild(searchInput);
+		filterControls.appendChild(clearBtn);
+
+		header.appendChild(headerTitle);
+		header.appendChild(filterControls);
+
+		// DONT return the dropdown as toggleButton
+		return {
+			header,
+			searchInput,
+			filterTypeSelect: filterTypeContainer.hiddenInput,
+			filterTypeButton: filterTypeContainer.button,
+			clearBtn
+		};
+	}
+
+	#setupPopupEventHandlers(config) {
+		const {
+			popup, columnId, columnType, searchInput, filterTypeSelect, filterTypeButton, clearBtn,
+			applyButton, clearFiltersButton, warningIcon, scrollContainer,
+			checkboxContainer, spacer, sortedValues, summary, toggleButton
+		} = config;
+
+		let filteredValues = [...sortedValues];
+		let isAllSelected = this.#filterStates.get(columnId).allSelected;
+		let lastCheckedCheckbox = null;
+
+		// Store sortedValues in popup for later updates
+		let currentSortedValues = sortedValues;
+
+		// Capture initial state when popup is opened
+		const initialState = {
+			search: this.#filterStates.get(columnId).search || '',
+			checked: [...(this.#filterStates.get(columnId).checked || [])],
+			type: this.#filterStates.get(columnId).type
+		};
+
+		// Function to toggle checkbox visibility based on filter type
+		const updateUIForFilterType = (filterType) => {
+			const isTopBottomN = (filterType === 'top n' || filterType === 'bottom n');
+
+			if (isTopBottomN) {
+				checkboxContainer.style.display = 'none';
+				scrollContainer.style.minHeight = '175px';
+				scrollContainer.style.maxHeight = '175px';
+				spacer.style.height = '80px';
+
+				let placeholder = scrollContainer.querySelector('.topn-placeholder');
+				if (!placeholder) {
+					placeholder = document.createElement('div');
+					placeholder.className = 'topn-placeholder';
+					placeholder.style.cssText = `
+						padding: 15px;
+						text-align: center;
+						color: #888;
+						font-style: italic;
+						display: flex;
+						align-items: center;
+						justify-content: center;
+						height: 100%;
+					`;
+					scrollContainer.insertBefore(placeholder, spacer);
+				}
+				placeholder.textContent = filterType === 'top n'
+					? 'Enter N above to show the top N highest values'
+					: 'Enter N above to show the bottom N lowest values';
+				placeholder.style.display = 'flex';
+				scrollContainer.style.visibility = 'visible';
+
+				const sectionContainer = popup.querySelector('.section-container');
+				if (sectionContainer) sectionContainer.style.display = 'none';
+				searchInput.placeholder = `Enter N (number of rows)`;
+			}
+			else {
+				scrollContainer.style.visibility = 'visible';
+				scrollContainer.style.minHeight = '100px';
+				scrollContainer.style.maxHeight = '300px';
+				checkboxContainer.style.display = 'block';
+
+				const placeholder = scrollContainer.querySelector('.topn-placeholder');
+				if (placeholder) placeholder.style.display = 'none';
+
+				const sectionContainer = popup.querySelector('.section-container');
+				if (sectionContainer) sectionContainer.style.display = 'flex';
+
+				if (columnType === 'numeric') {
+					searchInput.placeholder = 'Enter number or range...';
+				}
+				else if (columnType === 'ip') {
+					searchInput.placeholder = 'Enter IP address...';
+				}
+				else {
+					searchInput.placeholder = 'Search...';
 				}
 			}
-			else if (typeof item.itemid === 'string' && item.itemid.startsWith('[')) {
-				const parsedItems = JSON.parse(item.itemid);
-				parsedItems.forEach(parsedItem => {
-					const itemKey = `${parsedItem.itemid}-${parsedItem.color}`;
-					if (!uniqueItems.has(itemKey)) {
-						uniqueItems.add(itemKey);
+		};
+
+		updateUIForFilterType(filterTypeSelect.value);
+
+		filterTypeSelect.addEventListener('filterTypeChanged', (e) => {
+			updateUIForFilterType(e.filterType);
+			handleInput();
+		});
+
+		const renderVisibleCheckboxes = () => {
+			const scrollTop = scrollContainer.scrollTop;
+			const visibleCount = 25;
+			const startIndex = Math.floor(scrollTop / 30);
+			const endIndex = Math.min(startIndex + visibleCount, filteredValues.length);
+
+			checkboxContainer.style.top = `${startIndex * 30}px`;
+			checkboxContainer.innerHTML = '';
+
+			const filterState = this.#filterStates.get(columnId);
+
+			for (let i = startIndex; i < endIndex; i++) {
+				const value = filteredValues[i];
+				const id = `filter_${columnId}_${String(value).replace(/[^a-zA-Z0-9]/g, '_')}`;
+				const label = document.createElement('label');
+				label.classList.add('custom-checkbox');
+				label.innerHTML = `
+					<input type="checkbox" id="${id}" value="${value}">
+					<span>${value}</span>
+				`;
+
+				const checkbox = label.querySelector('input[type="checkbox"]');
+				checkbox.checked = filterState.checked.includes(String(value).toLowerCase());
+				label.setAttribute('data-index', i);
+				checkboxContainer.appendChild(label);
+			}
+		};
+
+		const updateSummary = () => {
+			const filterState = this.#filterStates.get(columnId);
+			const checked = filterState.checked.length || 0;
+			if (summary) summary.textContent = `${checked} selected`;
+		};
+
+		const updateWarningIcon = () => {
+			const checkboxes = popup.querySelectorAll('.filter-popup-checkboxes input[type="checkbox"]');
+			const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
+			const hasSearchText = searchInput.value.trim() !== '';
+			warningIcon.style.display = (anyChecked && hasSearchText) ? 'flex' : 'none';
+		};
+
+		const updateClearFiltersButton = () => {
+			const filterState = this.#filterStates.get(columnId);
+			clearFiltersButton.style.visibility = (filterState.checked.length > 0 || filterState.search !== '') ? 'visible' : 'hidden';
+		};
+
+		function getIndexOfCheckbox(checkbox) {
+			const value = checkbox.value;
+			return filteredValues.indexOf(value);
+		}
+
+		const handleInput = () => {
+			scrollContainer.scrollTop = 0;
+			const query = searchInput.value.toLowerCase();
+			const filterState = this.#filterStates.get(columnId);
+
+			// Check if sortedValues was updated by #updateFilterPopupValues
+			if (popup.dataset.sortedValues) {
+				try {
+					currentSortedValues = JSON.parse(popup.dataset.sortedValues);
+					delete popup.dataset.sortedValues; // Clear after reading
+				}
+				catch (e) {
+					console.error('Failed to parse updated sortedValues', e);
+				}
+			}
+
+			filteredValues = currentSortedValues.filter(v => {
+				const text = String(v).toLowerCase();
+				return this.#matchesFilter(text, query, filterTypeSelect.value, false, columnType);
+			});
+
+			const filteredValuesLowercase = filteredValues.map(v => String(v).toLowerCase());
+			filterState.checked = filterState.checked.filter(v => filteredValuesLowercase.includes(v));
+			filterState.search = query;
+
+			isAllSelected = filteredValues.length > 0 &&
+				filteredValues.every(v => filterState.checked.includes(String(v).toLowerCase()));
+
+			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+
+			spacer.style.height = `${filteredValues.length * 30}px`;
+			renderVisibleCheckboxes()
+			updateSummary();
+			updateWarningIcon();
+			updateClearFiltersButton();
+		};
+
+		// Store handleInput reference so #updateFilterPopupValues can call it
+		searchInput._handleInputFunction = handleInput;
+
+		const setupInputHandler = () => {
+			const filterMode = filterTypeSelect.value;
+			searchInput.removeEventListener('input', currentInputHandler);
+
+			const newInputHandler = filterMode === 'boolean'
+				? this.debounce(handleInput, 1000)
+				: (sortedValues.length > 250
+					? this.debounce(handleInput, 300)
+					: handleInput);
+
+			searchInput.addEventListener('input', newInputHandler);
+			currentInputHandler = newInputHandler;
+		};
+
+		let currentInputHandler;
+		setupInputHandler();
+
+		clearBtn.addEventListener('click', () => {
+			searchInput.value = '';
+			handleInput();
+			lastCheckedCheckbox = null;
+		});
+
+		toggleButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+
+			const filterState = this.#filterStates.get(columnId);
+			const valuesToCheck = filteredValues.length !== sortedValues.length ?
+				filteredValues : sortedValues;
+
+			isAllSelected = valuesToCheck.length > 0 &&
+				valuesToCheck.every(value => filterState.checked.includes(String(value).toLowerCase()));
+
+			if (isAllSelected) {
+				filterState.checked = [];
+				isAllSelected = false;
+				toggleButton.textContent = 'Select All';
+			}
+			else {
+				filterState.checked = valuesToCheck.map(value => String(value).toLowerCase());
+				isAllSelected = true;
+				toggleButton.textContent = 'Uncheck All';
+			}
+
+			renderVisibleCheckboxes();
+			updateSummary();
+			updateWarningIcon();
+			updateClearFiltersButton();
+		});
+
+		checkboxContainer.addEventListener('change', (event) => {
+			const cb = event.target;
+			if (cb.type !== 'checkbox') return;
+
+			const val = cb.value.toLowerCase();
+			const filterState = this.#filterStates.get(columnId);
+
+			if (cb.checked) {
+				if (!filterState.checked.includes(val)) {
+					filterState.checked.push(val);
+				}
+			}
+			else {
+				filterState.checked = filterState.checked.filter(v => v !== val);
+			}
+
+			lastCheckedCheckbox = cb;
+			isAllSelected = (filterState.checked.length === filteredValues.length);
+			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+
+			updateSummary();
+			updateWarningIcon();
+			updateClearFiltersButton();
+		});
+
+		checkboxContainer.addEventListener('click', (event) => {
+			const cb = event.target;
+			if (cb.type !== 'checkbox') return;
+
+			const label = cb.closest('label');
+			const checkboxIndex = parseInt(label.getAttribute('data-index'), 10);
+			const filterState = this.#filterStates.get(columnId);
+
+			if (event.shiftKey && lastCheckedCheckbox) {
+				event.preventDefault();
+				event.stopPropagation();
+
+				const lastCheckedIndex = getIndexOfCheckbox(lastCheckedCheckbox);
+				if (lastCheckedIndex !== -1) {
+					const [from, to] = [Math.min(lastCheckedIndex, checkboxIndex), Math.max(lastCheckedIndex, checkboxIndex)];
+
+					for (let j = from; j <= to; j++) {
+						const value = filteredValues[j];
+						const elementVal = String(value).toLowerCase();
+						if (!filterState.checked.includes(elementVal)) {
+							filterState.checked.push(elementVal);
+						}
+					}
+
+					renderVisibleCheckboxes();
+					updateSummary();
+					updateWarningIcon();
+					updateClearFiltersButton();
+				}
+			}
+
+			isAllSelected = (filterState.checked?.length === filteredValues.length);
+			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+		});
+
+		scrollContainer.addEventListener('scroll', () => {
+			renderVisibleCheckboxes();
+		});
+
+		applyButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+
+			const filterState = this.#filterStates.get(columnId);
+			filterState.type = filterTypeSelect.value;
+			filterState.search = searchInput.value.trim();
+
+			// Validate Top N / Bottom N input
+			if ((filterState.type === 'top n' || filterState.type === 'bottom n') && filterState.search) {
+				const n = parseInt(filterState.search);
+				if (isNaN(n) || n <= 0) {
+					this.#showCustomAlert(
+						`Please enter a valid positive number for ${filterState.type}`,
+						'Invalid Input'
+					);
+					return;
+				}
+			}
+
+			// Validate regex if that's the filter type
+			if (filterState.type === 'regex' && filterState.search) {
+				try {
+					new RegExp(filterState.search);
+				}
+				catch (error) {
+					this.#showCustomAlert(
+						`${error.message}`,
+						'Regex Error'
+					);
+					return;
+				}
+			}
+
+			this.invalidRegex = false;
+			popup.style.display = 'none';
+
+			this.#isUserInitiatedFilterChange =true;
+
+			setTimeout(() => {
+				this.#applyAllFilters();
+
+				if (this.invalidRegex) {
+					this.#showCustomAlert(
+						`${this.invalidRegexError || 'Please check your pattern'}`,
+						'Regex Error'
+					);
+					const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+					if (th) {
+						const filterIcon = th.querySelector('.filter-icon');
+						if (filterIcon) {
+							const popup = document.getElementById(`${this.#values_table.id}-${this._widgetid}-popup-${columnId}`);
+							if (popup) {
+								popup.style.display = 'flex';
+								this._pauseUpdating();
+							}
+						}
+					}
+				}
+				else {
+					this._resumeUpdating();
+				}
+
+				this.#isUserInitiatedFilterChange = false;
+			}, 0);
+		});
+
+		searchInput.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				applyButton.click();
+			}
+		});
+
+		clearFiltersButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+
+			const filterState = this.#filterStates.get(columnId);
+
+			searchInput.value = '';
+			filterState.checked = [];
+			filterState.search = '';
+
+			isAllSelected = false;
+			toggleButton.textContent = 'Select All';
+
+			// Get possible values using shared method
+			const sortedVisibleValues = this.#getPossibleValuesForColumn(columnId);
+
+			// Update currentSortedValues and trigger re-render
+			currentSortedValues = sortedVisibleValues;
+			filteredValues = [...currentSortedValues];
+			popup.dataset.sortedValues = JSON.stringify(sortedVisibleValues);
+
+			// Update UI to show all possible values
+			spacer.style.height = `${filteredValues.length * 30}px`;
+			scrollContainer.scrollTop = 0;
+			renderVisibleCheckboxes();
+
+			updateSummary();
+			updateWarningIcon();
+			updateClearFiltersButton();
+			lastCheckedCheckbox = null;
+
+			if ((this.#selected_items.length > 0 && this.#selected_items[0].itemid !== this.#null_id) ||
+					(this.#selected_hostid !== this.#null_id && this.#selected_hostid !== null)) {
+				this.#clearFiltersClickedWithSelections = true;
+				this.#selected_items = [{ itemid: this.#null_id, name: null }];
+				this.#selected_hostid = this.#null_id;
+			}
+
+			this.#isUserInitiatedFilterChange = true;
+		});
+
+		// Initial render
+		const filterState = this.#filterStates.get(columnId);
+		if (filterState.search) {
+			searchInput.value = filterState.search;
+			handleInput();
+		}
+		else {
+			spacer.style.height = `${sortedValues.length * 30}px`;
+			renderVisibleCheckboxes();
+			updateSummary();
+			updateClearFiltersButton();
+		}
+	}
+
+	#createFilterPopup(columnId, sortedValues, columnType) {
+		const popup = document.createElement('div');
+		popup.style.display = 'none';
+		popup.className = 'filter-popup';
+		popup.id = `${this.#values_table.id}-${this._widgetid}-popup-${columnId}`;
+		popup.dataset.columnId = columnId;
+
+		// Clean up old popup for this column if it exists
+		const oldPopup = document.getElementById(popup.id);
+		if (oldPopup) {
+			this.cleanupDraggableState(popup.id);
+			oldPopup.remove();
+		}
+
+		// Track this popup ID
+		this.#popupIds.add(popup.id);
+
+		const filterState = this.#filterStates.get(columnId);
+		let filteredValues = sortedValues;
+		let isAllSelected = filterState.allSelected;
+
+		// Create header with title and controls
+		const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+		const columnName = th ? this.#extractColumnName(th) : '';
+
+		const { header, searchInput, filterTypeSelect, filterTypeButton, clearBtn } =
+			this.#createPopupHeader(columnId, filterState, columnType, columnName);
+
+		// Create checkbox container with virtual scrolling
+		const { scrollContainer, checkboxContainer, spacer } =
+			this.#createCheckboxContainer();
+
+		// Create footer with buttons
+		const { footer, applyButton, warningIcon, clearFiltersButton, summary, toggleButton } =
+			this.#createPopupFooter(columnId);
+
+		// Calculate popup width based on content
+		const calculatedWidth = this.#calculatePopupWidth(sortedValues);
+		popup.style.width = `${calculatedWidth}px`;
+
+		popup.appendChild(header);
+		popup.appendChild(scrollContainer);
+		popup.appendChild(footer);
+
+		// Setup event handlers
+		this.#setupPopupEventHandlers({
+			popup,
+			columnId,
+			columnType,
+			searchInput,
+			filterTypeSelect,
+			filterTypeButton,
+			clearBtn,
+			applyButton,
+			clearFiltersButton,
+			warningIcon,
+			scrollContainer,
+			checkboxContainer,
+			spacer,
+			sortedValues,
+			filteredValues,
+			isAllSelected,
+			summary,
+			toggleButton
+		});
+
+		// Make the popup draggable using the header as the handle
+		this.makeDraggable(popup, header);
+
+		return popup;
+	}
+
+	#createFilterUI(th, columnId, sortedValues, columnType) {
+		const filterIcon = document.createElement('span');
+		filterIcon.className = 'filter-icon';
+		filterIcon.style.cursor = 'pointer';
+		filterIcon.style.display = 'inline-flex';
+		filterIcon.style.alignItems = 'center';
+		filterIcon.style.justifyContent = 'center';
+		filterIcon.style.marginLeft = '2px';
+		filterIcon.style.width = '18px';
+		filterIcon.style.height = '18px';
+		filterIcon.style.verticalAlign = 'middle';
+		filterIcon.style.position = 'relative';
+		filterIcon.style.top = '0';
+		filterIcon.title = 'Click to filter this column';
+		filterIcon.dataset.columnId = columnId;
+
+		filterIcon.innerHTML = `
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
+			</svg>
+		`;
+
+		const popup = this.#createFilterPopup(columnId, sortedValues, columnType);
+		document.body.appendChild(popup);
+
+		filterIcon.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.#toggleFilterPopup(popup, filterIcon, columnId);
+		});
+
+		const arrowSpan = th.querySelector('span#arrow');
+		if (arrowSpan) {
+			th.insertBefore(filterIcon, arrowSpan);
+		}
+		else {
+			th.appendChild(filterIcon);
+		}
+
+		// Update icon state if filter is already applied
+		this.#updateFilterIconState(filterIcon, columnId);
+	}
+
+	#createColumnFilters() {
+		this.allThs.forEach((th, thIndex) => {
+			const columnId = this.#getStableColumnId(th);
+
+			// Initialize filter state for this column
+			if (!this.#filterStates.has(columnId)) {
+				this.#filterStates.set(columnId, {
+					type: 'contains',
+					search: '',
+					checked: [],
+					allSelected: false
+				});
+			}
+
+			// Collect all values for this column
+			const filterValues = new Set();
+			const columnIndex = parseInt(th.id);
+
+			this.#rowsArray.forEach(rowObj => {
+				const tr = rowObj.row;
+				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+
+				const td = this.#getCellByColumnId(tr, columnIndex);
+				if (td) {
+					const value = this.#extractCellValue(td);
+					if (value) filterValues.add(value);
+				}
+			});
+
+			if (filterValues.size === 0) return; // Skip empty columns
+
+			const valuesArray = Array.from(filterValues);
+
+			// Determine column type
+			const columnType = this.#detectColumnType(valuesArray);
+			this.#columnTypes.set(columnId, columnType);
+
+			const sortedValues = this.#sortFilterValues(valuesArray, columnType);
+
+			// Set default filter type based on column type (only if not already set)
+			const filterState = this.#filterStates.get(columnId);
+			if (!filterState.type) {
+				if (columnType === 'numeric') {
+					filterState.type = 'equals';
+				}
+				else if (columnType === 'ip') {
+					filterState.type = 'contains';
+				}
+				else {
+					filterState.type = 'contains';
+				}
+			}
+
+			// Create filter icon and popup for this column
+			this.#createFilterUI(th, columnId, sortedValues, columnType);
+		});
+	}
+
+	#toggleFilterPopup(popup, filterIcon, columnId) {
+		// Close all other popups
+		document.querySelectorAll('.filter-popup').forEach(p => {
+			if (p !== popup) p.style.display = 'none';
+		});
+
+		if (popup.style.display === 'flex') {
+			popup.style.display = 'none';
+			this._resumeUpdating();
+			return;
+		}
+
+		// Get possible values using shared method
+		const sortedVisibleValues = this.#getPossibleValuesForColumn(columnId);
+		const filterState = this.#filterStates.get(columnId);
+
+		// STORE INITIAL STATE in popup's dataset
+		popup.dataset.initialState = JSON.stringify({
+			search: filterState.search || '',
+			checked: [...(filterState.checked || [])],
+			type: filterState.type
+		});
+
+		this.#updateFilterPopupValues(popup, columnId, sortedVisibleValues, filterState);
+
+		popup.style.visibility = 'hidden';
+		popup.style.display = 'flex';
+		popup.style.left = '0px';
+		popup.style.top = '0px';
+
+		const scrollContainer = popup.querySelector('[style*="max-height: 300px"]');
+		if (scrollContainer) {
+			scrollContainer.scrollTop = 0;
+		}
+
+		const rect = filterIcon.getBoundingClientRect();
+		const popupHeight = popup.offsetHeight;
+		const popupWidth = popup.offsetWidth;
+		const padding = 10;
+
+		let topPos = rect.bottom + 5;
+		if (topPos + popupHeight > window.innerHeight - padding) {
+			topPos = rect.top - popupHeight - 5;
+			if (topPos < padding) topPos = padding;
+		}
+
+		let leftPos = rect.left;
+		if (leftPos + popupWidth > window.innerWidth - padding) {
+			leftPos = window.innerWidth - popupWidth - padding;
+			if (leftPos < padding) leftPos = padding;
+		}
+
+		popup.style.left = `${leftPos}px`;
+		popup.style.top = `${topPos}px`;
+
+		popup.style.visibility = 'visible';
+		popup.style.display = 'flex';
+
+		requestAnimationFrame(() => {
+			const searchInput = popup.querySelector('input[type="text"]');
+			if (searchInput) searchInput.focus();
+		});
+
+		this._pauseUpdating();
+	}
+
+	#updateFilterIconState(filterIcon, columnId) {
+		const filterState = this.#filterStates.get(columnId);
+		if (!filterState) return;
+
+		const hasChecked = filterState.checked.length > 0;
+		const hasSearch = filterState.search !== '';
+
+		if (hasChecked || hasSearch) {
+			filterIcon.classList.add('active');
+			filterIcon.classList.remove('filter-error');
+			filterIcon.title = 'Filter applied!';
+			this.#activeFilters.add(columnId);
+		}
+		else {
+			filterIcon.classList.remove('active');
+			filterIcon.classList.remove('filter-error');
+			filterIcon.title = 'Click to filter this column';
+			this.#activeFilters.delete(columnId);
+		}
+	}
+
+	#updateFilterPopupValues(popup, columnId, sortedValues, filterState) {
+		const scrollContainer = popup.querySelector('[style*="max-height: 300px"]');
+		const spacer = scrollContainer?.querySelector('[style*="position: relative"]');
+		const checkboxContainer = spacer?.querySelector('.filter-popup-checkboxes');
+
+		if (!scrollContainer || !spacer || !checkboxContainer) return;
+
+		// Store the new sortedValues in the popup's dataset so handleInput can access them
+		popup.dataset.sortedValues = JSON.stringify(sortedValues);
+
+		// Find the search input and trigger handleInput to re-render with new values
+		const searchInput = popup.querySelector('input[type="text"]');
+
+		if (searchInput && searchInput._handleInputFunction) {
+			// If handleInput exists, trigger it to recalculate filteredValues with new sortedValues
+			searchInput._handleInputFunction();
+		}
+		else {
+			// Fallback: manually update if handleInput isn't available
+			spacer.style.height = `${sortedValues.length * 30}px`;
+			scrollContainer.scrollTop = 0;
+
+			// Simple render without filtering
+			const renderBasic = () => {
+				const scrollTop = scrollContainer.scrollTop;
+				const visibleCount = 25;
+				const startIndex = Math.floor(scrollTop / 30);
+				const endIndex = Math.min(startIndex + visibleCount, sortedValues.length);
+
+				checkboxContainer.style.top = `${startIndex * 30}px`;
+				checkboxContainer.innerHTML = '';
+
+				for (let i = startIndex; i < endIndex; i++) {
+					const value = sortedValues[i];
+					const id = `filter_${columnId}_${String(value).replace(/[^a-zA-Z0-9]/g, '_')}`;
+					const label = document.createElement('label');
+					label.classList.add('custom-checkbox');
+					label.innerHTML = `
+						<input type="checkbox" id="${id}" value="${value}">
+						<span>${value}</span>
+					`;
+
+					const checkbox = label.querySelector('input[type="checkbox"]');
+					checkbox.checked = filterState.checked.includes(String(value).toLowerCase());
+					label.setAttribute('data-index', i);
+					checkboxContainer.appendChild(label);
+				}
+			};
+
+			renderBasic();
+
+			// Update scroll handler
+			const oldScrollHandler = scrollContainer._scrollHandler;
+			if (oldScrollHandler) {
+				scrollContainer.removeEventListener("scroll", oldScrollHandler);
+			}
+
+			const newScrollHandler = () => renderBasic();
+			scrollContainer._scrollHandler = newScrollHandler;
+			scrollContainer.addEventListener('scroll', newScrollHandler);
+		}
+
+		// Update summary
+		const summary = popup.querySelector('.summary');
+		if (summary) {
+			summary.textContent = `${filterState.checked.length} selected`;
+		}
+
+		// Update toggle button text
+		const toggleButton = popup.querySelector('.toggle-row button');
+		if (toggleButton) {
+			const isAllSelected = sortedValues.length > 0 &&
+				sortedValues.every(v => filterState.checked.includes(String(v).toLowerCase()));
+			toggleButton.textContent = isAllSelected ? 'Uncheck All': 'Select All';
+		}
+	}
+
+	#refreshAllFilterPopups() {
+		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+
+		this.#filterStates.forEach((filterState, columnId) => {
+			const popupId = `${this.#values_table.id}-${this._widgetid}-popup-${columnId}`;
+			const popup = document.getElementById(popupId);
+
+			if (!popup) return;
+
+			const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+			if (!th) return; // Column no longer exists
+
+			// Collect values from currently displayed rows for this column
+			const visibleValues = new Set();
+			const columnIndex = parseInt(th.id);
+
+			displayedRows.forEach(rowObj => {
+				const tr = rowObj.row;
+				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+
+				const td = this.#getCellByColumnId(tr, columnIndex);
+				if (td) {
+					const value = this.#extractCellValue(td);
+					if (value) visibleValues.add(value);
+				}
+			});
+
+			const visibleValuesArray = Array.from(visibleValues);
+			const columnType = this.#columnTypes.get(columnId) || 'text';
+			const sortedVisibleValues = this.#sortFilterValues(visibleValuesArray, columnType);
+
+			// Update the popup's checkbox list
+			this.#updateFilterPopupValues(popup, columnId, sortedVisibleValues, filterState);
+		});
+	}
+
+	#applyAllFilters(updateDisplayNow = true) {
+		function getColumnInfo(td, columns) {
+			const indexStr = td.getAttribute('column-id');
+			if (indexStr == null) return null;
+
+			const indexNum = parseInt(indexStr, 10);
+			if (isNaN(indexNum)) return null;
+
+			const columnDef = columns?.[indexNum];
+			if (!columnDef) return null;
+
+			return { indexNum, columnDef };
+		}
+
+		function resolveMinMaxSum(columnDef, dynamicStats, indexNum) {
+			const staticMin = columnDef.min !== undefined && columnDef.min !== '' ? parseFloat(columnDef.min) : null;
+			const staticMax = columnDef.max !== undefined && columnDef.max !== '' ? parseFloat(columnDef.max) : null;
+
+			const min = staticMin !== null ? staticMin : dynamicStats[indexNum]?.min;
+			const max = staticMax !== null ? staticMax : dynamicStats[indexNum]?.max;
+			const sum = dynamicStats[indexNum]?.sum;
+
+			return { min, max, sum };
+		}
+
+		function extractValueFromHintbox(hintboxContent) {
+			const match = hintboxContent.match(/<div class="hintbox-wrap">(.*?)<\/div>/);
+			if (match && match[1]) {
+				const numericValue = parseFloat(match[1]);
+				if (!isNaN(numericValue)) {
+					return numericValue;
+				}
+			}
+			return null;
+		}
+
+		this.invalidRegex = false;
+		let columnStats = [];
+		const columns = this._fields.columns;
+
+		// Rebuild active filters set based on current filter states
+		this.#activeFilters.clear();
+		this.#filterStates.forEach((filterState, columnId) => {
+			const hasChecked = filterState.checked && filterState.checked.length > 0;
+			const hasSearch = filterState.search && filterState.search.trim() !== '';
+
+			if (hasChecked || hasSearch) {
+				this.#activeFilters.add(columnId);
+			}
+		});
+
+		// Apply filters to all rows
+		this.#rowsArray.forEach(rowObj => {
+			const tr = rowObj.row;
+			const isResetRow = tr.querySelector('[reset-row]') !== null;
+			const isFooterRow = tr.querySelector('[footer-row]') !== null;
+
+			if (isResetRow || isFooterRow) {
+				rowObj.status = 'display';
+				return;
+			}
+
+			let showRow = true;
+
+			// Check all active filters
+			for (const columnId of this.#activeFilters) {
+				const filterState = this.#filterStates.get(columnId);
+				const columnType = this.#columnTypes.get(columnId) || 'text';
+
+				if (!filterState) continue;
+
+				const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+				if (!th) {
+					// Column no longer exists, skip this filter
+					continue;
+				}
+
+				const columnIndex = parseInt(th.id); // Get current position
+				const td = this.#getCellByColumnId(tr, columnIndex);
+
+				if (!td) {
+					showRow = false;
+					break;
+				}
+
+				const text = this.#extractCellValue(td).toLowerCase();
+				const checkedValues = filterState.checked || [];
+				const searchValue = (filterState.search || '').trim().toLowerCase();
+				const filterMode = filterState.type || 'contains';
+
+				let matchesThisColumn = true;
+
+				// Handle Top N / Bottom N specially.
+				if (columnType === 'numeric' && (filterMode === 'top n' || filterMode === 'bottom n')) {
+					// Mark for later processing don't filter out yet
+					matchesThisColumn = true;
+				}
+				else if (checkedValues.length > 0) {
+					matchesThisColumn = checkedValues.includes(text);
+				}
+				else if (searchValue !== '') {
+					matchesThisColumn = this.#matchesFilter(text, searchValue, filterMode, false, columnType);
+				}
+
+				if (!matchesThisColumn) {
+					showRow = false;
+					break;
+				}
+			}
+
+			rowObj.status = showRow ? 'display' : 'hidden';
+		});
+
+		// Collect stats for bar gauges if row is displayed
+		if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
+			const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+
+			displayedRows.forEach(rowObj => {
+				const tr = rowObj.row;
+				const allTdsInRow = tr.querySelectorAll('td');
+
+				allTdsInRow.forEach((td, index) => {
+					if (this._isBarGauge(td)) return;
+
+					let value = null;
+
+					const hintboxContent = td.getAttribute('data-hintbox-contents');
+					if (hintboxContent) {
+						value = extractValueFromHintbox(hintboxContent);
+					}
+
+					if (value === null) return;
+
+					const info = getColumnInfo(td, columns);
+					if (!info) return;
+
+					const { indexNum, columnDef } = info;
+
+					const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
+					const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
+
+					if (!this._isNumeric(value)) return;
+
+					if (!columnStats[indexNum]) {
+						columnStats[indexNum] = {
+							min: hasStaticMin ? columnDef.min : value,
+							max: hasStaticMax ? columnDef.max : value,
+							sum: value
+						};
+					}
+					else {
+						columnStats[indexNum].sum += value;
+						if (!hasStaticMin) {
+							columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
+						}
+
+						if (!hasStaticMax) {
+							columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
+						}
+					}
+				});
+			});
+		}
+
+		// Filter selected items based on visible rows
+		const selectedItemsBefore = [...this.#selected_items];
+		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+		this.#filterSelectedItems();
+
+		// Handle the case where clear filters was clicked with selections
+		if (this.#clearFiltersClickedWithSelections) {
+			this.#selected_items = [{ itemid: this.#null_id, name: null }];
+			this.#selected_hostid = this.#null_id;
+			this.#clearFiltersClickedWithSelections = false;
+		}
+		else if (selectedItemsBefore.length > 0 && this.#selected_items.length === 0) {
+			this.#selected_items = [{ itemid: this.#null_id, name: null }];
+		}
+
+		// Update bar gauges if needed
+		if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
+			displayedRows.forEach(rowObj => {
+				const tr = rowObj.row;
+				const allTdsInRow = tr.querySelectorAll('td');
+
+				allTdsInRow.forEach((td, index) => {
+					const gauge = this._isBarGauge(td);
+					if (!gauge) return;
+
+					const info = getColumnInfo(td, columns);
+					if (!info) return;
+
+					const { indexNum, columnDef } = info;
+					const { min, max, sum } = resolveMinMaxSum(columnDef, columnStats, indexNum);
+
+					if (min === undefined || max === undefined) return;
+
+					const bgValue = parseFloat(gauge.getAttribute('value'));
+
+					let newTooltipValue = null;
+					let hintStrValue = '';
+					let formatted = newTooltipValue;
+
+					if (this._fields.bar_gauge_tooltip === 0) {
+						newTooltipValue = bgValue / max * 100;
+						hintStrValue = ' % of column max';
+						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
+						gauge.setAttribute('max', max);
+					}
+					else if (this._fields.bar_gauge_tooltip === 1) {
+						newTooltipValue = bgValue / sum * 100;
+						hintStrValue = ' % of column sum';
+						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
+						gauge.setAttribute('max', sum);
+					}
+					else {
+						gauge.setAttribute('max', max);
+					}
+
+					if (formatted !== null) {
+						const oldHint = td.getAttribute('data-hintbox-contents');
+						const newHint = oldHint.replace(/>.*?</, `>${formatted}<`);
+						td.setAttribute('data-hintbox-contents', newHint);
+					}
+
+					gauge.setAttribute('min', min);
+				});
+			});
+		}
+
+		this.#totalRows = displayedRows.length;
+		this.#currentPage = 1;
+
+		this.#removePaginationControls();
+		if (this.#totalRows > this.#rowsPerPage) {
+			this.#displayPaginationControls();
+		}
+
+		// Handle Top N/Bottom N filters
+		for (const columnId of this.#activeFilters) {
+			const filterState = this.#filterStates.get(columnId);
+			const columnType = this.#columnTypes.get(columnId);
+
+			if (columnType === 'numeric' && (filterState.type === 'top n' || filterState.type === 'bottom n')) {
+				const n = parseInt(filterState.search);
+				if (isNaN(n) || n <= 0) {
+					console.warn(`Invalid N value for ${filterState.type}: "${filterState.search}"`);
+					continue;
+				}
+
+				const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+				if (!th) continue; // Column no longer exists
+
+				const columnIndex = parseInt(th.id);
+
+				// Get all currently displayed rows with their values
+				const displayedWithValues = this.#rowsArray
+					.filter(rowObj => {
+						// Only consider rows that passed all other filters
+						if (rowObj.status !== 'display') return false;
+
+						// Skip reset and footer rows
+						const tr = rowObj.row;
+						if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return false;
+
+						return true;
+					})
+					.map(rowObj => {
+						const td = this.#getCellByColumnId(rowObj.row, columnIndex);
+						const valueStr = this.#extractCellValue(td);
+						const value = parseFloat(valueStr);
+						return { rowObj, value, valueStr };
+					})
+					.filter(item => !isNaN(item.value)); // Only keep valid numeric values
+
+				if (displayedWithValues.length === 0) {
+					console.warn(`No valid numeric values found in column ${columnId} for ${filterState.type}`);
+					continue;
+				}
+
+				// Sort based on filter type
+				displayedWithValues.sort((a, b) => {
+					return filterState.type === 'top n' ? b.value - a.value : a.value - b.value;
+				});
+
+				// Take top/bottom N
+				const keepCount = Math.min(n, displayedWithValues.length);
+				const keepSet = new Set(displayedWithValues.slice(0, keepCount).map(item => item.rowObj));
+
+				// Hide rows not in top/bottom N
+				this.#rowsArray.forEach(rowObj => {
+					// Only hide rows that were previously set to display
+					if (rowObj.status === 'display' && !keepSet.has(rowObj)) {
+						const tr = rowObj.row;
+						// Don't hide reset or footer rows
+
+						if (!tr.querySelector('[reset-row]') && !tr.querySelector('[footer-row]')) {
+							rowObj.status = 'hidden';
+						}
 					}
 				});
 			}
+		}
+
+		const finalDisplayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+		this.#totalRows = finalDisplayedRows.length;
+		this.#currentPage = 1;
+
+		// Update pagination if needed
+		this.#removePaginationControls();
+		if (this.#totalRows > this.#rowsPerPage) {
+			this.#displayPaginationControls();
+		}
+
+		if (updateDisplayNow) {
+			// Decide whether to scroll to top based on flag
+			if (this.#isUserInitiatedFilterChange) {
+				// User clicked Apply or Clear Filters scroll to top
+				this._contents.scrollTop = 0;
+			}
+			this.#updateDisplay(false, true, false);
+		}
+
+		// Update all filter icon states
+		this.allThs.forEach(th => {
+			const filterIcon = th.querySelector('.filter-icon');
+			if (filterIcon) {
+				const columnId = this.#getStableColumnId(th);
+				this.#updateFilterIconState(filterIcon, columnId);
+			}
 		});
 
-		const resultArray = Array.from(uniqueItems).map(itemKey => {
-			const [itemid, color] = itemKey.split('-');
-			return { itemid, color: color || '' };
-		});
+		// Refresh all filter popups to show only values from visible rows
+		this.#refreshAllFilterPopups();
 
-		return JSON.stringify(resultArray);
+		this.checkAndRemarkSelected();
+
+		this.#isUserInitiatedFilterChange = false;
 	}
+
+	cleanupDraggableState(popupId) {
+		this.#draggableStates.delete(popupId);
+		this.#popupIds.delete(popupId);
+	}
+
+	#cleanupAllPopups() {
+		// Clean up all popups belonging to this widget instance
+		this.#popupIds.forEach(popupId => {
+			const popup = document.getElementById(popupId);
+			if (popup) {
+				// Clean up dropdown handlers before removing popup
+				const filterLists = popup.querySelectorAll('.custom-select .list');
+				filterLists.forEach(filterList => {
+					if (filterList._closeDropdownHandler) {
+						document.removeEventListener('click', filterList._closeDropdownHandler);
+						delete filterList._closeDropdownHandler;
+					}
+				});
+
+				popup.remove();
+			}
+			this.#draggableStates.delete(popupId);
+		});
+		this.#popupIds.clear();
+
+		// Clean up all filter tooltips belonging to this widget instance
+		this.#filterTooltipIds.forEach(tooltipId => {
+			const tooltip = document.getElementById(tooltipId);
+			if (tooltip) {
+				tooltip.remove();
+			}
+		});
+		this.#filterTooltipIds.clear();
+	}
+
+	closeFilterPopup(e) {
+		const clickedPopup = e.target.closest('.filter-popup');
+		const clickedFilterIcon = e.target.closest('.filter-icon');
+
+		if (!clickedPopup && !clickedFilterIcon) {
+			// Restore initial state for any open popups before closing
+			document.querySelectorAll('.filter-popup').forEach(popup => {
+				if (popup.style.display === 'flex') {
+					const columnId = popup.dataset.columnId;
+					const filterState = this.#filterStates.get(columnId);
+
+					// Only process if filterState exists
+					if (filterState) {
+						// Get initial state from popup's data attribute if it exists
+						if (popup.dataset.initialState) {
+							try {
+								const initialState = JSON.parse(popup.dataset.initialState);
+								filterState.search = initialState.search;
+								filterState.checked = [...initialState.checked];
+								filterState.type = initialState.type;
+
+								// Update UI
+								const searchInput = popup.querySelector('input[type="text"]');
+								if (searchInput) {
+									searchInput.value = initialState.search;
+								}
+							}
+							catch (e) {
+								console.error('Failed to parse initial state:', e);
+							}
+						}
+					}
+				}
+				popup.style.display = 'none';
+			});
+			this._resumeUpdating();
+		}
+	}
+
+	// ========== Draggable Handlers ========== //
+
+	makeDraggable(popup, handle) {
+		const popupId = popup.id;
+
+		// Initialize draggable state for this popup
+		this.#draggableStates.set(popupId, {
+			isDragging: false,
+			offsetX: 0,
+			offsetY: 0
+		});
+
+		handle.style.cursor = 'grab';
+
+		// Create bound handlers specific to this popup
+		const boundMouseDown = (e) => this.handleMouseDownTi(e, popupId, popup, handle);
+
+		// Store handlers so we can remove them later if needed
+		handle._dragHandlers = {
+			mouseDown: boundMouseDown
+		};
+
+		handle.addEventListener('mousedown', boundMouseDown);
+	}
+
+	handleMouseDownTi(e, popupId, popup, handle) {
+		if (
+			e.target.tagName === 'INPUT' ||
+			e.target.tagName === 'SELECT' ||
+			e.target.tagName === 'BUTTON' ||
+			e.target.classList.contains('clear-btn') ||
+			e.target.closest('.custom-select')
+		) {
+			return;
+		}
+
+		const state = this.#draggableStates.get(popupId);
+		if (!state) return;
+
+		state.isDragging = true;
+		handle.style.cursor = 'grabbing';
+
+		const rect = popup.getBoundingClientRect();
+		state.offsetX = e.clientX - rect.left;
+		state.offsetY = e.clientY - rect.top;
+
+		document.body.style.userSelect = 'none';
+
+		// Create bound handlers for this drag session
+		const boundMouseMove = (e) => this.handleMouseMoveTi(e, popupId, popup);
+		const boundMouseUp = (e) => this.handleMouseUpTi(e, popupId, handle, boundMouseMove, boundMouseUp);
+
+		// Attach to document so they fire even when cursor leaves the popup
+		document.addEventListener('mousemove', boundMouseMove);
+		document.addEventListener('mouseup', boundMouseUp);
+	}
+
+	handleMouseMoveTi(e, popupId, popup) {
+		const state = this.#draggableStates.get(popupId);
+		if (!state || !state.isDragging) return;
+
+		popup.style.left = `${e.clientX - state.offsetX}px`;
+		popup.style.top = `${e.clientY - state.offsetY}px`;
+	}
+
+	handleMouseUpTi(e, popupId, handle, mouseMoveHandler, mouseUpHandler) {
+		const state = this.#draggableStates.get(popupId);
+		if (!state) return;
+
+		state.isDragging = false;
+		handle.style.cursor = 'grab';
+		document.body.style.userSelect = '';
+
+		// Remove the document listeners
+		document.removeEventListener('mousemove', mouseMoveHandler);
+		document.removeEventListener('mouseup', mouseUpHandler);
+	}
+
+	// ========== Cell Click and Selection Methods ========== //
 
 	#handleCellClick(td, event=false) {
 		if (event && event.target?.closest('.menu-btn')) {
@@ -1789,151 +2775,6 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
-	#removePaginationControls() {
-		const paginationElements = this.#parent_container
-			? this.#parent_container.querySelectorAll('.pagination-controls')
-			: [];
-
-		paginationElements.forEach(element => {
-			element.remove();
-		});
-	}
-
-	#displayPaginationControls() {
-		this.#paginationElement = document.createElement('div');
-		this.#paginationElement.classList.add('pagination-controls');
-
-		const buttons = ['<<', '<'];
-		buttons.forEach(label => {
-			const button = document.createElement('button');
-			button.textContent = label;
-			button.addEventListener('click', () => this.#handlePaginationClick(label));
-			this.#paginationElement.appendChild(button);
-		});
-
-		const pageInfo = document.createElement('span');
-		this.#paginationElement.appendChild(pageInfo);
-		this.#updatePageInfo(pageInfo);
-
-		const buttons_b = ['>', '>>'];
-		buttons_b.forEach(label => {
-			const button_b = document.createElement('button');
-			button_b.textContent = label;
-			button_b.addEventListener('click', () => this.#handlePaginationClick(label));
-			this.#paginationElement.appendChild(button_b);
-		});
-
-		this.#parent_container.appendChild(this.#paginationElement);
-	}
-
-	#handlePaginationClick(label) {
-		switch (label) {
-			case '<<':
-				this.#currentPage = 1;
-				break;
-			case '<':
-				if (this.#currentPage > 1) {
-					this.#currentPage--;
-				}
-				break;
-			case '>':
-				if (this.#currentPage < Math.ceil(this.#totalRows / this.#rowsPerPage)) {
-					this.#currentPage++;
-				}
-				break;
-			case '>>':
-				this.#currentPage = Math.ceil(this.#totalRows / this.#rowsPerPage);
-				break;
-		}
-		this.#updateDisplay(true, false, false);
-	}
-
-	#updateDisplay(scrollToTop = false, updateFooter = false, firstRun = false) {
-		this.#parent_container.classList.add('is-loading');
-		if (!this.#parent_container.classList.contains('widget-blur')) {
-			this.#parent_container.classList.toggle('widget-blur');
-		}
-
-		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
-		const maxPages = Math.ceil(visibleRows.length / this.#rowsPerPage);
-
-		if (this.#currentPage > maxPages) {
-			this.#currentPage = 1;
-		}
-
-		const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
-		const endIndex = Math.min(startIndex + this.#rowsPerPage, visibleRows.length);
-		const displayedRows = visibleRows.slice(startIndex, endIndex);
-
-		setTimeout(() => {
-			while (this.#values_table.tBodies[0].firstChild) {
-				this.#values_table.tBodies[0].removeChild(this.#values_table.tBodies[0].firstChild);
-			}
-
-			if (firstRun) {
-				this.#rowsArray.forEach(({ row }) => {
-					row.classList.remove('display-none');
-				});
-			}
-
-			displayedRows.forEach(({ row }) => {
-				this.#values_table.tBodies[0].appendChild(row);
-			});
-
-			this.#recalculateCanvasSize();
-
-			if (scrollToTop) {
-				this._contents.scrollTop = 0;
-			}
-
-			this.#updatePageInfo(this.#paginationElement?.querySelector('span'));
-			if (updateFooter) {
-				this.updateTableFooter();
-			}
-
-			setTimeout(() => {
-				if (this.#parent_container.classList.contains('widget-blur')) {
-					this.#parent_container.classList.toggle('widget-blur');
-				}
-				this.#parent_container.classList.remove('is-loading');
-			}, 0);
-		}, 0);
-	}
-
-	#updatePageInfo(pageInfoElement) {
-		if (!pageInfoElement) return;
-		const totalPages = Math.ceil(this.#totalRows / this.#rowsPerPage);
-		pageInfoElement.textContent = `Page ${this.#currentPage} of ${totalPages}`;
-	}
-
-	#sortTable(th, ascending, span, preserve = false) {
-		this._sortTableRowsByColumn(th.id, ascending);
-		th.dataset['sort'] = ascending ? 'asc' : 'desc';
-		span.className = ascending ? 'arrow-up' : 'arrow-down';
-		if (!preserve) {
-			this.#currentPage = 1;
-		}
-		this.#updateDisplay();
-	}
-
-	#getSetSpans(th) {
-		const span = th.querySelector('span#arrow');
-		const allArrowSpans = this.#values_table.querySelectorAll('thead tr th span#arrow');
-		for (let eachSpan of allArrowSpans) {
-			eachSpan.className = 'new-arrow';
-		}
-
-		return span;
-	}
-
-
-	#broadcast(id_type, id_types, id) {
-		this.broadcast({
-			[id_type]: [id],
-			[id_types]: [id]
-		});
-	}
-
 	_markSelected(type, refresh = false) {
 		const tds = [];
 
@@ -1963,7 +2804,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		for (const td of tds) {
 			const origStyle = td.style.cssText;
-			var element = td.querySelector(this.#menu_selector);
+			let element = td.querySelector(this.#menu_selector);
 
 			if (!element) {
 				prevTd = td;
@@ -2053,9 +2894,7 @@ class CWidgetTableModuleRME extends CWidget {
 								const newTd = td.nextElementSibling;
 								element = newTd.querySelector(this.#menu_selector);
 							}
-
 							const dataset = JSON.parse(element.dataset.menu);
-
 							if (dataset.itemid) {
 								this.#first_td_value_cell = td;
 								break;
@@ -2082,20 +2921,37 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
-	_isDoubleSpanColumn(td) {
-		if (td === null) {
-			return null;
+	checkAndRemarkSelected() {
+		if (this.#selected_hostid !== null) {
+			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
+			this._markSelected(this.#dataset_host);
+		}
+		else if (this.#first_td_host_cell !== null && this._fields.autoselect_first) {
+			this.#first_td_host_cell.click();
 		}
 
-		return (this._isBarGauge(td));
+		if (this.#selected_items.length > 0) {
+			this._markSelected(this.#dataset_item, true);
+		}
+		else if (this.#first_td_value_cell !== null && this._fields.autoselect_first) {
+			this.#first_td_value_cell.click();
+		}
 	}
 
-	_isBarGauge(td) {
-		return td.querySelector('z-bar-gauge');
+	// ========== Sorting Methods ========== //
+
+
+	#sortTable(th, ascending, span, preserve = false) {
+		this._sortTableRowsByColumn(th.id, ascending);
+		th.dataset['sort'] = ascending ? 'asc' : 'desc';
+		span.className = ascending ? 'arrow-up' : 'arrow-down';
+		if (!preserve) {
+			this.#currentPage = 1;
+		}
+		this.#updateDisplay();
 	}
 
 	_handleDateStr(x, regex) {
-
 		var datematch = x.matchAll(regex);
 		for (const match of datematch) {
 			if (match.length > 0) {
@@ -2105,11 +2961,9 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		return x;
-
 	}
 
 	_checkIfDate(x) {
-
 		if (this._isNumeric(x)) {
 			return x;
 		}
@@ -2185,14 +3039,8 @@ class CWidgetTableModuleRME extends CWidget {
 
 	}
 
-	_isNumeric(x) {
-
-		return !isNaN(parseFloat(x)) && isFinite(x);
-
-	}
 
 	_getNumValue(x, index, convert, allNumeric) {
-
 		try {
 			var x = x.cells[index].innerText;
 		}
@@ -2267,18 +3115,15 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		return obj;
-
 	}
 
 	_getTextValue(x, index) {
-
 		try {
 			return x.cells[index].innerText;
 		}
 		catch(err) {
 			return '';
 		}
-
 	}
 
 
@@ -2349,13 +3194,103 @@ class CWidgetTableModuleRME extends CWidget {
 
 	}
 
+	// ========== Display and Update Methods ========== //
+
+	#updateDisplay(scrollToTop = false, updateFooter = false, firstRun = false, restoreScrollTop = null) {
+		// Don't save on first run from setContents
+		if (!scrollToTop && !firstRun) {
+			this.#saveScrollPosition();
+		}
+
+		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
+		const maxPages = Math.ceil(visibleRows.length / this.#rowsPerPage);
+
+		if (this.#currentPage > maxPages) {
+			this.#currentPage = 1;
+		}
+
+		const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
+		const endIndex = Math.min(startIndex + this.#rowsPerPage, visibleRows.length);
+		const displayedRows = visibleRows.slice(startIndex, endIndex);
+
+		let blurAdded = false;
+		if (!updateFooter && maxPages > 1 &&
+				this.#values_table.querySelectorAll('z-bar-gauge').length > 0) {
+			blurAdded = true;
+			this.#parent_container.classList.add('is-loading', 'widget-blur');
+		}
+
+		setTimeout(() => {
+			this.#values_table.tBodies[0].innerHTML = '';
+
+			if (firstRun) {
+				this.#rowsArray.forEach(({ row }) => {
+					row.classList.remove('display-none');
+				});
+			}
+
+			displayedRows.forEach(({ row }) => {
+				this.#values_table.tBodies[0].appendChild(row);
+			});
+
+			this.#recalculateCanvasSize();
+
+			if (scrollToTop) {
+				this._contents.scrollTop = 0;
+				this.#scrollPosition = { top: 0, left: 0 };
+			}
+
+			this.#updatePageInfo(this.#paginationElement?.querySelector('span'));
+			if (updateFooter) {
+				this.updateTableFooter();
+			}
+
+			// Restore scroll position
+			if (restoreScrollTop !== null) {
+				this._contents.scrollTop = restoreScrollTop;
+				this._contents.scrollLeft = this.#scrollPosition.left;
+			}
+
+			// Re-enable scroll tracking after everything is done
+			if (firstRun) {
+				this.#isUpdatingDisplay = false;
+			}
+
+			// Only restore for non-firstRun, non-scrollToTop calls
+			if (!scrollToTop && !firstRun) {
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						this._contents.scrollTop = this.#scrollPosition.top;
+						this._contents.scrollLeft = this.#scrollPosition.left;
+					});
+				});
+			}
+
+			// Wait for custom elements to be ready
+			const startTime = Date.now();
+			if (blurAdded) {
+				requestAnimationFrame(() => {
+					const elapsed = Date.now() - startTime;
+					if (elapsed < this.#SHADOW_DOM_RENDER_DELAY) {
+						setTimeout(() => {
+							this.#parent_container.classList.remove('is-loading', 'widget-blur');
+						}, this.#SHADOW_DOM_RENDER_DELAY - elapsed);
+					}
+					else {
+						this.#parent_container.classList.remove('is-loading', 'widget-blur');
+					}
+				});
+			}
+		}, 0);
+	}
+
 	updateTableFooter() {
 		const footerRowObj = this.#rowsArray.find(({ row }) =>
 			row.querySelector('td[footer-row]')
 		);
 
 		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
-		
+
 		if (!footerRowObj) {
 			return;
 		}
@@ -2502,436 +3437,504 @@ class CWidgetTableModuleRME extends CWidget {
 		return `${h}:${m}:${s}`;
 	}
 
-	#addColumnFilterCSS() {
-		if ($('style.column-filter-styles').length === 0) {
-			const styleColumnFilters = document.createElement('style');
-			styleColumnFilters.classList.add('column-filter-styles');
-			styleColumnFilters.innerHTML = `
-				.filter-popup {
-					position: absolute;
-					z-index: 999;
-					background: var(--checkbox-bg);
-					border: 1px solid #333;
-					box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
-					font-family: Arial, Tahoma, Verdana, sans-serif;
-					border-radius: 4px;
-					min-width: 400px;
-					max-width: 800px;
-					max-height: 450px;
-					overflow: hidden;
-					display: flex;
-					flex-direction: column;
-					font-size: 13px;
-				}
-				.filter-popup-header {
-					display: flex;
-					flex-direction: column;
-					align-items: stretch;
-					gap: 6px;
-					padding: 8px;
-					border-bottom: 1px solid #333;
-					background: var(--main-bg);
-				}
-				.filter-popup-header-title {
-					font-weight: bold;
-					font-size: 14px;
-					margin-bottom: 4px;
-				}
-				.filter-popup-controls {
-					display: flex;
-					align-items: center;
-					gap: 6px;
-				}
-				.filter-popup-controls input {
-					background: var(--input-bg);
-					border: 1px solid #555;
-					border-radius: 3px;
-					padding: 4px 8px;
-					font-size: 12px;
-				}
-				.filter-popup-controls input {
-					flex: 1;
-				}
-				.filter-popup-controls .clear-btn {
-					cursor: pointer;
-					font-size: 11px;
-				}
-				.filter-popup-checkboxes {
-					padding: 8px;
-					overflow-y: auto;
-					flex: 1;
-				}
-				.filter-popup-checkboxes label {
-					display: flex;
-					align-items: center;
-					gap: 6px;
-					line-height: 1.2;
-					padding: 2px 0;
-				}
-				.filter-popup-checkboxes input[type="checkbox"] {
-					appearance: none;
-					-webkit-appearance: none;
-					-moz-appearance: none;
-					width: 16px;
-					height: 16px;
-					border: 2px solid var(--checkbox-border);
-					border-radius: 4px;
-					background-color: white;
-					cursor: pointer;
-					position: relative;
-					flex-shrink: 0;
-					transition: all 0.15s ease-in-out;
-					margin-top: 1px;
-				}
-				.filter-popup-checkboxes input[type="checkbox"]:checked {
-					background-color: #3b82f6;
-					border-color: #3b82f6;
-				}
-				.filter-popup-checkboxes input[type="checkbox"]:checked::after {
-					content: '';
-					position: absolute;
-					top: 0px;
-					left: 4px;
-					width: 5px;
-					height: 9px;
-					border: solid white;
-					border-width: 0 2px 2px 0;
-					transform: rotate(45deg);
-					pointer-events: none;
-				}
-				.filter-popup-footer {
-					border-top: 1px solid #333;
-					padding: 8px;
-					background: var(--main-bg);
-					display: flex;
-					flex-direction: column;
-					gap: 6px;
-					font-size: 12px;
-				}
-				.filter-popup-footer button {
-					background: #2c72d3;
-					color: white;
-					border: none;
-					padding: 6px 12px;
-					font-size: 13px;
-					border-radius: 3px;
-					cursor: pointer;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					height: 30px;
-					min-width: 80px;
-					top: 1px;
-				}
-				.filter-popup-footer button.cancel {
-					background: #666;
-				}
-				.filter-popup-footer button.clear-filters {
-					min-width: 100px;
-					font-weight: bold;
-					visibility: hidden;
-					background-color: #f06292;
-					color: #fff;
-				}
-				.filter-popup-footer button:hover {
-					opacity: 0.9;
-				}
-				.filter-popup-footer .footer-toggle-row,
-				.filter-popup-footer .footer-action-row {
-					display: flex;
-					justify-content: flex-start;
-					gap: 8px;
-				}
-				.filter-popup-footer .footer-toggle-row {
-					margin-top: 4px;
-				}
-				.filter-popup-footer .footer-action-row {
-					margin-top: 10px;
-				}
-				.filter-icon.active svg path {
-					stroke: #4ad380;
-				}
-				.filter-icon.active {
-					border-radius: 2px;
-					box-shadow: 0 0 2px rgba(74, 222, 128, 0.5);
-				}
-				.filter-icon.filter-error svg path {
-					stroke: #f44336;
-				}
-				.filter-icon.filter-error {
-					border-radius: 2px;
-					box-shadow: 0 0 2px rgba(244, 67, 54, 0.8);
-				}
-				.filter-warning-icon {
-					cursor: help;
-					display: flex;
-					align-items: center;
-					margin-left: 12px;
-					position: relative;
-					user-select: none;
-				}
-				.filter-warning-icon svg {
-					display: block;
-				}
-				.custom-tooltip {
-					background-color: var(--warning-tooltip-bg);
-					border: 1px solid #ccc;
-					padding: 4px 8px;
-					border-radius: 3px;
-					font-size: 12px;
-					white-space: nowrap;
-					z-index: 10000;
-				}
-				.section-container {
-					border: 0.5px solid #4e4e4e;
-					border-radius: 8px;
-					padding: 8px;
-					background-color: var(--main-bg);
-					display: flex;
-					flex-direction: column;
-					gap: 6px;
-				}
-				.toggle-row {
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-				}
-				.custom-select {
-					position: relative;
-					display: inline-block;
-					font-family: Arial, Tahoma, Verdana, sans-serif;
-					font-size: 12px;
-					width: 130px;
-				}
-				.custom-select input[type="hidden"] {
-					display: none;
-				}
-				.custom-select > button {
-					position: relative;
-					width: 100%;
-					text-align: left;
-					overflow: hidden;
-					text-overflow: ellipsis;
-					white-space: pre;
-					font-size: 12px;
-					line-height: initial;
-					color: var(--filter-type-text);
-					background-color: var(--filter-type-bg);
-					border: 1px solid #4f4f4f;
-					cursor: pointer;
-					border-radius: 0;
-				}
-				.custom-select > button:hover,
-				.custom-select > button:focus,
-				.custom-select > button:active {
-					color: var(--filter-type-text);
-					background-color: var(--filter-type-bg-selected);
-					border-color: #4f4f4f;
-					outline: none;
-				}
-				.custom-select > button::after {
-					content: "";
-					font-family: 'zabbix-icons';
-					font-size: 10px;
-					position: absolute;
-					right: 4px;
-					top: 50%;
-					transform: translateY(-50%);
-					pointer-events: none;
-				}
-				.custom-select .list {
-					position: absolute;
-					top: 100%;
-					left: 0;
-					right: 0;
-					background-color: var(--checkbox-bg);
-					border: 1px solid #4f4f4f;
-					max-height: 300px;
-					overflow-y: auto;
-					z-index: 10000;
-					margin: 0;
-					padding: 0;
-					list-style: none;
-					display: none;
-				}
-				.custom-select .list li {
-					padding: 4px 8px;
-					cursor: pointer;
-					color: var(--filter-type-text);
-					position: relative;
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-				}
-				.custom-select .list li:hover,
-				.custom-select .list li.hover {
-					background-color: #01579B;
-					border-color: #4f4f4f;
-					color: #f2f2f2;
-				}
-				.custom-select .list li.focused {
-					background-color: #007bff;
-					color: white;
-				}
-				.custom-select .list::-webkit-scrollbar {
-					width: 9px;
-				}
-				.custom-select .list::-webkit-scrollbar-thumb {
-					background-color: #383838;
-					border: 1px solid var(--main-bg);
-				}
-				.custom-select .list::-webkit-scrollbar-track {
-					background-color: #1f1f1f;
-				}
-				.help-icon {
-					cursor: pointer;
-					color: #fff;
-					background-color: #9a6104;
-					border-radius: 50%;
-					width: 13px;
-					height: 13px;
-					display: flex;
-					justify-content: center;
-					align-items: center;
-					font-size: 11px;
-					line-height: 1;
-					margin-left: 8px;
-				}
-				.filter-tooltip {
-					position: absolute;
-					background-color: #9a6104;
-					color: #fff;
-					padding: 5px;
-					border-radius: 3px;
-					display: none;
-					z-index: 10001;
-					max-width: 400px;
-					white-space: pre-wrap;
-					pointer-events: none;
-				}
-			`;
-			document.head.appendChild(styleColumnFilters);
+	// ========== Session Storage Methods ========== //
 
-			const root = document.documentElement;
-			switch (this.#theme) {
-				case 'hc-dark':
-					root.style.setProperty('--checkbox-bg', '#000000');
-					root.style.setProperty('--input-bg', '#000000');
-					root.style.setProperty('--filter-type-bg', '#000000');
-					root.style.setProperty('--filter-type-bg-selected', '#0a0a0a');
-					root.style.setProperty('--filter-type-text', '#f2f2f2');
-					root.style.setProperty('--warning-tooltip-bg', '#383838');
-					root.style.setProperty('--checkbox-border', '#9ca3af');
-					root.style.setProperty('--main-bg', '#1d1d1d');
-					break;
-				case 'dark-theme':
-					root.style.setProperty('--checkbox-bg', '#1e1e1e');
-					root.style.setProperty('--input-bg', '#1e1e1e');
-					root.style.setProperty('--filter-type-bg', '#1e1e1e');
-					root.style.setProperty('--filter-type-bg-selected', '#383838');
-					root.style.setProperty('--filter-type-text', '#f2f2f2');
-					root.style.setProperty('--warning-tooltip-bg', '#383838');
-					root.style.setProperty('--checkbox-border', '#9ca3af');
-					root.style.setProperty('--main-bg', '#2a2a2a');
-					break;
-				case 'hc-light':
-				case 'blue-theme':
-					root.style.setProperty('--checkbox-bg', '#ececec');
-					root.style.setProperty('--input-bg', '#ffffff');
-					root.style.setProperty('--filter-type-bg', '#ffffff');
-					root.style.setProperty('--filter-type-bg-selected', '#ffffff');
-					root.style.setProperty('--filter-type-text', '#000000');
-					root.style.setProperty('--warning-tooltip-bg', '#ffffff');
-					root.style.setProperty('--checkbox-border', '#5a616f');
-					root.style.setProperty('--main-bg', '#ffffff');
-					break;
-			}
+	getReferenceFromSession(key) {
+		try {
+			return sessionStorage.getItem(key);
+		}
+		catch (e) {
+			console.error('Session storage access failed:', e);
+			return null;
 		}
 	}
 
+	setReferenceInSession(key, id_type, id) {
+		try {
+			CWidgetTableModuleRME.#hasManualSelection = true;
 
-	#addPaginationCSS() {
-		if ($('style.pagination-styles').length === 0) {
-			const stylePagination = document.createElement('style');
-			stylePagination.classList.add('pagination-styles');
-			stylePagination.innerHTML = `
-				:root {
-					--pagination-bg-dark: #2b2b2b;
-					--pagination-bg-hcdark: #000000;
-					--pagination-bg-light: #ffffff;
-					--page-num-dark: #f2f2f2;
-					--page-num-light: #000000;
-				}
-				.pagination-controls {
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					position: relative;
-					bottom: 0;
-					padding: 10px 0;
-					background-color: var(--pagination-bg);
-					z-index: 100;
-					width: 100%;
-					box-sizing: border-box;
-				}
-				.pagination-controls button {
-					margin: 0px 5px 0px;
-					padding: 1px 5px;
-					cursor: pointer;
-					border: 1px solid #d0d0d0;
-					border-radius: 5px;
-					font-weight: bold;
-					transition: background-color 0.3s, border-color 0.3s, color 0.3s;
-				}
-				.pagination-controls button:hover {
-					border-color: #c0c0c0;
-				}
-				.pagination-controls span {
-					margin-left: 10px;
-					margin-right: 10px;
-					font-weight: bold;
-					color: var(--page-num);
-				}
-				.is-loading.widget-blur::before,
-				.is-loading.widget-blur::after {
-					background-color: rgba(43, 43, 43, 1.0);
-				}
-				html[theme="blue-theme"] .is-loading.widget-blur::before,
-				html[theme="blue-theme"] .is-loading.widget-blur::after,
-				html[theme="hc-light"] .is-loading.widget-blur::before,
-				html[theme="hc-light"] .is-loading.widget-blur::after {
-					background-color: rgba(255, 255, 255, 1.0);
-				}
-				html[theme="hc-dark"] .is-loading.widget-blur::before,
-				html[theme="hc-dark"] .is-loading.widget-blur::after {
-					background-color: rgba(0, 0, 0, 1.0);
-				}
-				tbody tr {
-					transition: visibility 0.2s ease-in-out, display 0.2s ease-in-out;
-				}
-			`;
-			document.head.appendChild(stylePagination);
+			let existing = this.getReferenceFromSession(key);
+			let reference;
 
-			const root = document.documentElement;
-			switch (this.#theme) {
-				case 'dark-theme':
-					root.style.setProperty('--pagination-bg', 'var(--pagination-bg-dark)');
-					root.style.setProperty('--page-num', 'var(--page-num-dark)');
-					break;
-				case 'hc-dark':
-					root.style.setProperty('--pagination-bg', 'var(--pagination-bg-hcdark)');
-					root.style.setProperty('--page-num', 'var(--page-num-dark)');
-					break;
-				case 'hc-light':
-				case 'blue-theme':
-					root.style.setProperty('--pagination-bg', 'var(--pagination-bg-light)');
-					root.style.setProperty('--page-num', 'var(--page-num-light)');
-					break;
-				default:
-					break;
+			if (existing) {
+				reference = JSON.parse(existing);
+				reference[id_type] = [id];
 			}
+			else {
+				reference = {
+					hostids: [],
+					hostgroupids: [],
+					itemids: []
+				};
+				reference[id_type] = [id];
+			}
+
+			sessionStorage.setItem(key, JSON.stringify(reference));
+		}
+		catch (e) {
+			console.error('Session storage write failed:', e);
 		}
 	}
+
+	// ========== Event Listener Management ========== //
+
+	attachListeners() {
+		document.addEventListener('click', this.closeFilterPopupHandler);
+	}
+
+	detachListeners() {
+		document.removeEventListener('click', this.closeFilterPopupHandler);
+	}
+
+	// ========== Widget Lifecycle Methods ========== //
+
+	_showPreloader() {
+		const container = this._target.querySelector('.dashboard-grid-widget-container');
+
+		if (this._hide_preloader_animation_frame !== null) {
+			cancelAnimationFrame(this._hide_preloader_animation_frame);
+			this._hide_preloader_animation_frame = null;
+		}
+
+		container.classList.add('is-loading');
+		container.classList.remove('is-loading-fadein', 'delayed-15s');
+	}
+
+	_hidePreloader() {
+		const container = this._target.querySelector('.dashboard-grid-widget-container');
+
+		if (this._hide_preloader_animation_frame !== null) {
+			return;
+		}
+
+		this._hide_preloader_animation_frame = requestAnimationFrame(() => {
+			container.classList.remove('is-loading', 'widget-blur');
+			this._hide_preloader_animation_frame = null;
+		});
+	}
+
+	_schedulePreloader() {
+		const container = this._target.querySelector(".dashboard-grid-widget-container");
+
+		if (this._hide_preloader_animation_frame !== null) {
+			cancelAnimationFrame(this._hide_preloader_animation_frame);
+			this._hide_preloader_animation_frame = null;
+		}
+
+		container.classList.add('is-loading', 'widget-blur');
+	}
+
+	async promiseUpdate() {
+		// Let the parent fetch the data
+		await super.promiseUpdate();
+
+		// At this point, core wants to hide the preloader, but we need to keep it visible
+		// The preloader will be hidden automatically by core after this promise resolves
+
+		// Add a small delay to ensure setContents processing completes
+		// This prevents the preloader from hiding before filters/sorts are applied
+		await new Promise(resolve => {
+			// Wait for the next animation frame after setContents completes
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						resolve();
+					});
+				});
+			});
+		});
+	}
+
+	processUpdateResponse(response) {
+		super.processUpdateResponse(response);
+	}
+
+	getUpdateRequestData() {
+		const request_data = super.getUpdateRequestData();
+		if (request_data?.fields?.groupids?.length === 1 && request_data.fields.groupids.includes(this.#null_id)) {
+			request_data.fields.groupids = [];
+		}
+		if (request_data?.fields?.hostids?.length === 1 && request_data.fields.hostids.includes(this.#null_id)) {
+			request_data.fields.hostids = [];
+		}
+
+		return request_data;
+	}
+
+	setContents(response) {
+		// Set session storage key for this dashboard
+		if (!this.#sessionKey) {
+			const dashboardId = this._dashboard?.dashboardid || 'default';
+			this.#sessionKey = `widget_references_${dashboardId}`;
+		}
+
+		// Set flag to prevent scroll handler from interfering
+		this.#isUpdatingDisplay = true;
+
+		// Save scroll position BEFORE any processing
+		this.#saveScrollPosition();
+
+		this.#cleanupAllPopups();
+
+		if (this.#theme === null) {
+			this.getTheme();
+		}
+
+		if (response.body.includes('no-data-message')) {
+			setTimeout(() => {
+				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
+				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+				super.setContents(response);
+				this.#removePaginationControls();
+			}, 0);
+			return;
+		}
+
+		super.setContents(response);
+
+		this.detachListeners();
+
+		this.#values_table = this._target.getElementsByClassName('list-table').item(0);
+		this.#parent_container = this.#values_table.closest('.dashboard-grid-widget-container');
+		const allRows = Array.from(this.#values_table.querySelectorAll('tbody tr'));
+		var colIndex = 0;
+
+		const allTds = this.#values_table.querySelectorAll('td');
+		this.allThs = this.#values_table.querySelectorAll('th');
+
+		let id = 0;
+		allTds.forEach(td => {
+			td.setAttribute('id', id);
+			let key = td.innerText.trim();
+			let element = td.querySelector(this.#menu_selector);
+			if (element) {
+				if (this._isDoubleSpanColumn(td)) {
+					let newTd = td.nextElementSibling;
+					element = newTd.querySelector(this.#menu_selector);
+				}
+				const dataset = JSON.parse(element.dataset.menu);
+				try {
+					if (dataset.itemid) {
+						if (this.#first_td_value_cell === null) {
+							this.#first_td_value_cell = td;
+						}
+						key = dataset.itemid;
+					}
+					else if (dataset.hostid) {
+						if (this.#first_td_host_cell === null) {
+							this.#first_td_host_cell = td;
+						}
+						key = dataset.hostid;
+					}
+				}
+				catch (error) {
+					console.log('Fail', td)
+				}
+			}
+			key = [key, td.getAttribute('id')].join("_");
+			let style = td.getAttribute('style') || '';
+			this.#cssStyleMap.set(key, style);
+			id++;
+		});
+
+		this.allThs.forEach((th) => {
+			// FIRST: Add the arrow span to the existing HTML
+			th.innerHTML += `<span class="new-arrow" id="arrow"></span>`;
+			th.setAttribute('style', `color: #4796c4; font-weight: bold;`);
+			th.classList.remove('cursor-pointer'); // Remove this we'll add it to span only
+
+			const colspan = th.hasAttribute('colspan') ? parseFloat(th.getAttribute('colspan')) : 1;
+			th.id = colIndex + colspan - 1;
+
+			colIndex = parseFloat(th.id) + 1;
+		});
+
+		// Wrap the text content before filter icons are added
+		this.allThs.forEach((th) => {
+			// Check if we already wrapped it (in case of multiple updates)
+			if (th.querySelector('.sortable-header-text')) {
+				return;
+			}
+
+			// Collect all text nodes and elements that aren't filter icons or arrows
+			const nodesToWrap = [];
+			Array.from(th.childNodes).forEach(node => {
+				// Skip filter icons and arrow spans
+				if (node.nodeType === Node.ELEMENT_NODE) {
+					if (node.classList.contains('filter-icon') ||
+							node.classList.contains('new-arrow') ||
+							node.id === 'arrow') {
+						return; // Don't wrap these
+					}
+				}
+				nodesToWrap.push(node);
+			});
+
+			if (nodesToWrap.length === 0) {
+				return;
+			}
+
+			// Create wrapper span
+			const textSpan = document.createElement('span');
+			textSpan.className = 'sortable-header-text';
+
+			// Move nodes into the wrapper
+			nodesToWrap.forEach(node => {
+				textSpan.appendChild(node.cloneNode(true));
+				node.remove();
+			});
+
+			// Insert wrapper at the beginning of th
+			th.insertBefore(textSpan, th.firstChild);
+		});
+
+		this.#rowsArray = allRows.map(row => {
+			return {
+				row,
+				status: 'display'
+			};
+		});
+
+		this.#values_table.addEventListener('click', (event) => {
+			if (event.target.closest('.filter-icon')) {
+				return;
+			}
+
+			const target = event.target.closest('th') || event.target.closest('td');
+
+			if (target && target.tagName === 'TH') {
+				// Only sort if the click was on the sortable text span
+				const clickedTextSpan = event.target.closest('.sortable-header-text');
+				if (!clickedTextSpan) {
+					return; // Click was on th but not on the text
+				}
+
+				this.#th = target;
+				const span = this.#getSetSpans(target);
+				const ascending = !('sort' in target.dataset) || target.dataset.sort != 'asc';
+				this.#sortTable(target, ascending, span);
+			}
+			else if (target && target.tagName === 'TD') {
+				this.#handleCellClick(target, event);
+			}
+		});
+
+		this.#values_table.addEventListener('mousedown', (event) => {
+			if (event.shiftKey) {
+				event.preventDefault();
+				event.stopPropagation();
+			}
+		});
+
+
+		// Store existing filter states before recreating filters
+		const existingFilterStates = new Map(this.#filterStates);
+
+		this.#createColumnFilters();
+
+		// Restore filter states after recreation
+		existingFilterStates.forEach((filterState, columnId) => {
+			if (this.#filterStates.has(columnId)) {
+				this.#filterStates.set(columnId, filterState);
+			}
+		});
+
+		// Update the popup UI elements to reflect the restored state
+		existingFilterStates.forEach((filterState, columnId) => {
+			const popupId = `${this.#values_table.id}-${this._widgetid}-popup-${columnId}`;
+			const popup = document.getElementById(popupId);
+			if (popup) {
+				const searchInput = popup.querySelector('input[type="text"]');
+				if (searchInput) {
+					searchInput.value = filterState.search || '';
+				}
+
+				const filterTypeSelect = popup.querySelector('.custom-select input[type="hidden"]');
+				const filterTypeButton = popup.querySelector('.custom-select > button');
+				if (filterTypeSelect && filterTypeButton) {
+					filterTypeSelect.value = filterState.type;
+					const filterTypeList = filterTypeButton.nextElementSibling;
+					if (filterTypeList) {
+						const matchingOption = Array.from(filterTypeList.querySelectorAll('li'))
+							.find(li => li.dataset.value === filterState.type);
+						if (matchingOption) {
+							filterTypeButton.textContent = matchingOption.dataset.label;
+						}
+					}
+				}
+			}
+		});
+
+		// Validate and clean up filter states based on current data
+		this.#filterStates.forEach((filterState, columnId) => {
+			// Skip if no checkbox selections
+			if (!filterState.checked || filterState.checked.length === 0) {
+				return;
+			}
+
+			// Find the column
+			const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+			if (!th) {
+				// Column doesn't exist anymore, clear the filter
+				this.#filterStates.delete(columnId);
+				this.#activeFilters.delete(columnId);
+				return;
+			}
+
+			// Collect all available values in this column
+			const availableValues = new Set();
+			const columnIndex = parseInt(th.id);
+
+			this.#rowsArray.forEach(rowObj => {
+				const tr = rowObj.row;
+				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+
+				const td = this.#getCellByColumnId(tr, columnIndex);
+				if (td) {
+					const value = this.#extractCellValue(td);
+					if (value) {
+						availableValues.add(value.toLowerCase());
+					}
+				}
+			});
+
+			// Check which of the selected values still exist
+			const validChecked = filterState.checked.filter(checkedValue =>
+				availableValues.has(checkedValue)
+			);
+
+			// If none of the checked values exist anymore, clear the filter
+			if (validChecked.length === 0) {
+				filterState.checked = [];
+				filterState.search = '';
+				this.#activeFilters.delete(columnId);
+
+				// Update the filter icon to reflect cleared state
+				const filterIcon = th.querySelector('.filter-icon');
+				if (filterIcon) {
+					this.#updateFilterIconState(filterIcon, columnId);
+				}
+			}
+			else if (validChecked.length !== filterState.checked.length) {
+				// Some values still exist, keep only those
+				filterState.checked = validChecked;
+			}
+		});
+
+		// Check if we have active filters
+		const hasActiveFilters = existingFilterStates.size > 0 &&
+			Array.from(existingFilterStates.values()).some(
+				state => state.checked.length > 0 || state.search !== ''
+			);
+
+		// If we have active filters, apply them BEFORE showing the table
+		if (hasActiveFilters) {
+			this.#applyAllFilters(false); // <-- This applies filters SYNCHRONOUSLY
+		}
+
+		// Apply sort BEFORE displaying (if a sort was previously active)
+		if (this.#th !== undefined) {
+			const previousSortedTh = Array.from(this.allThs).find(
+				th => th.getAttribute('id') === this.#th.getAttribute('id')
+			);
+
+			if (previousSortedTh) {
+				const span = this.#getSetSpans(previousSortedTh);
+				const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
+				// Sort the rowsArray directly without calling #sortTable to avoid the display update
+				this._sortTableRowsByColumn(previousSortedTh.id, ascending);
+				previousSortedTh.dataset['sort'] = ascending ? 'asc' : 'desc';
+				span.className = ascending ? 'arrow-up' : 'arrow-down';
+				this.#th = previousSortedTh;
+			}
+		}
+
+		// NOW set up display AFTER filters AND sort are applied
+		this.#totalRows = this.#rowsArray.filter(r => r.status === 'display').length;
+		this.#updateDisplay(false, true, true, this.#scrollPosition.top);
+
+		this.#removePaginationControls();
+		if (this.#totalRows > this.#rowsPerPage) {
+			this.#displayPaginationControls();
+		}
+
+		this.closeFilterPopupHandler = this.closeFilterPopup.bind(this);
+		this.boundMouseDown = this.handleMouseDownTi.bind(this);
+		this.boundMouseMove = this.handleMouseMoveTi.bind(this);
+		this.boundMouseUp = this.handleMouseUpTi.bind(this);
+		this.attachListeners();
+
+		if (this._fields.use_host_storage && CWidgetTableModuleRME.#hasManualSelection) {
+			let references = this.getReferenceFromSession(this.#sessionKey);
+			if (references) {
+				let reference_session = JSON.parse(references);
+				if (reference_session['hostids']) {
+					this.#selected_hostid = reference_session['hostids'][0];
+				}
+			}
+		}
+
+		this.checkAndRemarkSelected();
+
+		// Setup scroll tracking and restore position
+		this.#setupScrollTracking();
+	}
+
+	onResize() {
+		if (this._state === WIDGET_STATE_ACTIVE) {
+		}
+	}
+
+	onDestroy() {
+		// Clean up scroll tracking
+		this.#cleanupScrollTracking();
+
+		// Clean up all popups and tooltips for this widget instance
+		this.#cleanupAllPopups();
+
+		// Detach event listeners
+		this.detachListeners();
+
+		super.onDestroy();
+	}
+
+	getActionsContextMenu({can_copy_widget, can_paste_widget}) {
+		const menu = super.getActionsContextMenu({can_copy_widget, can_paste_widget});
+
+		if (this.isEditMode()) {
+			return menu;
+		}
+
+		let menu_actions = null;
+
+		for (const search_menu_actions of menu) {
+			if ('label' in search_menu_actions && search_menu_actions.label === t('Actions')) {
+				menu_actions = search_menu_actions;
+				break;
+			}
+		}
+
+		if (menu_actions === null) {
+			menu_actions = {
+				label: t('Actions'),
+				items: []
+			};
+
+			menu.unshift(menu_actions);
+		}
+
+		menu_actions.items.push({
+			label: t('Download as csv'),
+			disabled: !this.#rowsArray,
+			clickCallback: () => {
+				this.exportTableRowsToCSV();
+			}
+		});
+
+		return menu;
+        }
+
+	// ========== CSV Export Methods ========== //
 
 	exportTableRowsToCSV(filename = 'export.csv') {
 		if (!this.#rowsArray || this.#rowsArray.length === 0) {
