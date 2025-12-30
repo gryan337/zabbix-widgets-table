@@ -64,6 +64,7 @@ class CWidgetTableModuleRME extends CWidget {
 	#lastClickedCell = null;
 	#clearFiltersClickedWithSelections = false;
 	#filterTooltipIds = new Set();
+	#displayButtonClicked = false;
 
 	#scrollPosition = { top: 0, left: 0 };
 	#scrollContainer = null;
@@ -2498,6 +2499,11 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#displayPaginationControls();
 		}
 
+		// Add hide button after pagination is settled
+		if (this._fields.display_on_click && this.#displayButtonClicked) {
+			this.#addHideButton();
+		}
+
 		if (updateDisplayNow) {
 			// Decide whether to scroll to top based on flag
 			if (this.#isUserInitiatedFilterChange) {
@@ -3454,6 +3460,156 @@ class CWidgetTableModuleRME extends CWidget {
 		return `${h}:${m}:${s}`;
 	}
 
+	// ========== Lazy Loading Display Button Methods ========== //
+
+	#displayShowButton() {
+		// Remove any existing hide button first
+		const existingHideButton = this.#parent_container?.querySelector('.widget-hide-button');
+		if (existingHideButton) {
+			existingHideButton.remove();
+		}
+
+		// Remove hide-button-container if it exists.
+		const existingHideContainer = this.#parent_container?.querySelector('.hide-button-container');
+		if (existingHideContainer) {
+			existingHideContainer.remove();
+		}
+
+		// Clean up pagination if it has hide button class/structure
+		const pagination = this.#parent_container?.querySelector('.pagination-controls');
+		if (pagination) {
+			const existingInner = pagination.querySelector('.pagination-inner');
+			if (existingInner) {
+				// Move children back to pagination
+				while (existingInner.firstChild) {
+					pagination.appendChild(existingInner.firstChild);
+					existingInner.remove();
+				}
+
+				pagination.classList.remove('has-hide-button');
+			}
+		}
+
+		const container = document.createElement('div');
+		container.className = 'widget-show-container';
+
+		const button = document.createElement('button');
+		button.className = 'widget-show-button';
+		button.textContent = 'Show data';
+		button.title = 'Shows the table data if clicked';
+		button.type = 'button';
+
+		button.addEventListener('click', () => {
+			// Change button state to loading
+			button.disabled = true;
+			button.style.cursor = 'wait';
+
+			this.#displayButtonClicked = true;
+			this._last_update_time = 0;
+			this._startUpdating();
+		});
+
+		container.appendChild(button);
+
+		// Add the button to the body
+		const body = this._target.querySelector('.dashboard-grid-widget-body');
+		if (body) {
+			body.innerHTML = '';
+			body.appendChild(container);
+		}
+	}
+
+	#addHideButton() {
+		if (!this.#parent_container) return;
+
+		// Clean up ALL existing hide button elements first
+		const existingHideButton = this.#parent_container?.querySelector('.widget-hide-button');
+		if (existingHideButton) {
+			existingHideButton.remove();
+		}
+
+		const existingHideContainer = this.#parent_container?.querySelector('.hide-button-container');
+		if (existingHideContainer) {
+			existingHideContainer.remove();
+		}
+
+		// Clean up any existing pagination-inner wrapper and class
+
+		let pagination = this.#parent_container?.querySelector('.pagination-controls');
+		if (pagination) {
+			const existingInner = pagination.querySelector('.pagination-inner');
+			if (existingInner) {
+				// Move children back to pagination
+				while (existingInner.firstChild) {
+					pagination.appendChild(existingInner.firstChild);
+				}
+				existingInner.remove();
+			}
+			// Remove the class
+			pagination.classList.remove('has-hide-button');
+		}
+
+		// Now create the hide button
+		const hideButton = document.createElement('button');
+		hideButton.className = 'widget-hide-button';
+		hideButton.textContent = 'Hide data';
+		hideButton.title = 'Hides the table data if clicked';
+		hideButton.type = 'button';
+
+		hideButton.addEventListener('click', () => {
+			this.#displayButtonClicked = false;
+			this.#cleanupAllPopups();
+
+			// Call super to preserve widget structure, then show button
+			super.setContents({
+				body: '',
+				messages: [],
+				debug: null
+			});
+
+			if (this.#selected_hostid !== null && this.#selected_hostid !== this.#null_id) {
+				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
+			}
+
+			if (this.#selected_items.length > 0 && this.#selected_items[0].itemid !== this.#null_id) {
+				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+			}
+
+			this.#removePaginationControls();
+			this.#displayShowButton();
+		});
+
+		// Re-query pagination after cleanup (it might have been recreated)
+		pagination = this.#parent_container?.querySelector('.pagination-controls');
+
+		// Add hide button to appropriate container
+		if (pagination) {
+			// Add class to indicate hide button is present
+			pagination.classList.add('has-hide-button');
+
+			// Wrap pagination content in an inner container for centering
+			const paginationInner = document.createElement('div');
+			paginationInner.className = 'pagination-inner';
+
+			// Move all existing children to inner container
+			while (pagination.firstChild) {
+				paginationInner.appendChild(pagination.firstChild);
+			}
+
+			// Add hide button first, then inner container
+			pagination.appendChild(hideButton);
+			pagination.appendChild(paginationInner);
+		}
+		else {
+			// Create a pagination-style container for the button
+			const buttonContainer = document.createElement('div');
+			buttonContainer.className = 'hide-button-container';
+
+			buttonContainer.appendChild(hideButton);
+			this.#parent_container.appendChild(buttonContainer);
+		}
+	}
+
 	// ========== Session Storage Methods ========== //
 
 	getReferenceFromSession(key) {
@@ -3575,6 +3731,8 @@ class CWidgetTableModuleRME extends CWidget {
 			request_data.fields.hostids = [];
 		}
 
+		request_data.fields.display_button_clicked = this.#displayButtonClicked;
+
 		return request_data;
 	}
 
@@ -3595,6 +3753,17 @@ class CWidgetTableModuleRME extends CWidget {
 
 		if (this.#theme === null) {
 			this.getTheme();
+		}
+
+		// Check if display_on_user_click is enabled
+		if (this._fields.display_on_click) {
+			if (!this.#displayButtonClicked) {
+				setTimeout(() => {
+					super.setContents(response);
+					this.#displayShowButton();
+				}, 0);
+				return;
+			}
 		}
 
 		if (response.body.includes('no-data-message')) {
@@ -3892,6 +4061,11 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		this.checkAndRemarkSelected();
+
+		// Add hide button if the feature is configured call directly, no
+		if (this._fields.display_on_click && this.#displayButtonClicked) {
+			this.#addHideButton();
+		}
 
 		// Setup scroll tracking and restore position
 		this.#setupScrollTracking();
