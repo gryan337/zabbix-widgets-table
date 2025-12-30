@@ -52,7 +52,13 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			$data['error'] = _('No data found');
 		}
 		else {
-			$data += $this->getData();
+			if ($this->fields_values['display_on_click'] &&
+					!$this->fields_values['display_button_clicked']) {
+				$data['error'] = _('Hide button.');
+			}
+			else {
+				$data += $this->getData();
+			}
 			$data['is_template_dashboard'] = $this->isTemplateDashboard();
 		}
 
