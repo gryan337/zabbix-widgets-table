@@ -130,6 +130,12 @@ class WidgetForm extends CWidgetForm {
 				]))->setDefault(self::COLUMN_HEADER_VERTICAL)
 			)
 			->addField(
+				new CWidgetFieldCheckBox('display_on_click', _('Display on Click'))
+			)
+			->addField(
+				new CWidgetFieldCheckBox('display_button_clicked', _('Display Button Clicked'))
+			)
+			->addField(
 				(new CWidgetFieldColumnsList('columns', _('Items')))
 					->setFlags(CWidgetField::FLAG_NOT_EMPTY | CWidgetField::FLAG_LABEL_ASTERISK)
 			)

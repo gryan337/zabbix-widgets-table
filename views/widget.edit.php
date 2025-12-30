@@ -256,6 +256,17 @@ $form
 			->addField(
 				new CWidgetFieldRadioButtonListView($data['fields']['show_column_header'])
 			)
+			->addField(
+				(new CWidgetFieldCheckBoxView($data['fields']['display_on_click']))
+					->setFieldHint(
+						makeHelpIcon([
+							_('Checking this box will cause the widget to show a button instead of the metrics on first load (User toggleable lazy loading)'), BR(),
+							_('The use case for this is when there is a table that loads a lot of data and could potentially take a longer time to load.')
+				])
+			)
+			->addRowClass('field_display_on_click')
+	)
+
 	)
 	->includeJsFile('widget.edit.js.php')
 	->addJavaScript('widget_tablemodulerme_form.init('.json_encode([
