@@ -67,8 +67,8 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
 ## 🔮 Future Development
 
 - Continue polishing bugs and usability issues.  
-- Expand **column filtering** to all columns with more filter conditions.   
-- Ongoing code cleanup (move logic from JavaScript → PHP + CSS).
+- Ongoing code cleanup (move logic from JavaScript → PHP + CSS).  
+- Continue addressing community feedback in order to make this the premier Zabbix dashboard table visualization.  
 
 ---
 
@@ -87,9 +87,9 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
 ✔️ **Advanced Table Behavior**
 - Sortable columns (correctly handles `B`, `bps`, `s`, `unixtime`, etc.).  
 - Automatic pagination after **75 rows**.  
-- Column filtering (first column):  
-  - Filter types: Contains, Equals, Starts/Ends with, Wildcard, Not Contains, Regex, and Boolean Expression.  
-  - Green funnel = filter active, Red funnel = invalid regex.  
+- Column filtering (All columns):  
+  - Filter types: Contains, Equals, Starts/Ends with, Wildcard, Not Contains, Regex, Boolean Expression and a variety of numeric filters for fully numeric columns.  
+  - Green funnel = filter active in that column.  
 - Footer row with **Sum** or **Average**.  
 - Column-specific overrides for aggregations (Sum, Avg, Min, Max) that is applied per table cell.
 - Ability to customize how value mapped values are displayed.  
@@ -100,10 +100,11 @@ Even though Zabbix introduced [TopItems](https://www.zabbix.com/documentation/cu
 - Reset row capability (broadcasts hostid `000000` to reset linked widgets).  
 - Support for **aggregations across multiple hosts/items** within a single table cell using **Aggregate all hosts** option.
 - Multi-cell selection (`Ctrl` + click, `Shift` + click) → broadcasts all selected itemids.  
-- **Groupings-only mode**: Use the widget as a **dashboard filter** for other tables.  
+- **Groupings-only mode**: Use the widget as a **dashboard filter** for other tables by checkboxing `Show groupings only`.  
 - **Bar gauge proportions** in rows/columns as well as tooltip showing ratio to other table cells as a percentage.  
-- **Aggregate by item groupings** (not just hosts) for high-level overviews → drill down into details with clicks.  
-- Ability to download table data into CSV format from the actions context menu in the widget header.
+- **Aggregate by item groupings** (not just hosts) for high-level overviews → drill down by connecting a table panel to another table panel.  
+- Ability to download table data into CSV format from the actions context menu in the widget header.  
+- Configurable and toggleable lazy loading button to allow users to hide and show data dynamically.
 
 ---
 
@@ -130,17 +131,19 @@ High-level milestones and upcoming goals.
 
 ---
 
-## 📍 Calendar year 2025
+## 📍 Q1 2026
 
 - [ ] Draggable columns in configuration UI.  
+- [ ] Style improvements.  
+- [ ] Performance improvements allowing to scale the table to 10's of thousands of rows with 100s of thousands of table cells with minimal lag.  
+- [ ] Performance improvements: migrate client-side code to PHP backend.
 
 ---
 
-## 🛠️ Upcoming (Q4 2025)
+## 🛠️ Upcoming (Q1 2026)
 
 | Milestone | Status | Target |
 |-----------|--------|--------|
-| Crowd-sourced feature requests & feedback | 🔜 Upcoming | Q4 2025 |
-| Column filtering for all columns | 🔜 Upcoming | Q4 2025 |
+| Crowd-sourced feature requests & feedback | 🔜 Upcoming | Continuous |
 
 ---
