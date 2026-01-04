@@ -46,7 +46,6 @@ class CWidgetTableModuleRME extends CWidget {
 	#parent_container;
 	#values_table;
 	#th;
-	#timeout = 0;
 	#cssStyleMap = new Map();
 
 	#rowsPerPage = 75;
@@ -54,10 +53,11 @@ class CWidgetTableModuleRME extends CWidget {
 	#totalRows = 0;
 	#paginationElement;
 	#rowsArray = [];
+	#visibleRows = [];
+	#rowMetadata = new WeakMap();
 
-	#filterStates = new Map();
+	#columnData = new Map();
 	#activeFilters = new Set();
-	#columnTypes = new Map();
 	#draggableStates = new Map();
 	#popupIds = new Set();
 
@@ -67,10 +67,13 @@ class CWidgetTableModuleRME extends CWidget {
 	#displayButtonClicked = false;
 
 	#scrollPosition = { top: 0, left: 0 };
-	#scrollContainer = null;
 	#isUpdatingDisplay = false;
 
 	#isUserInitiatedFilterChange = false;
+
+	#lastSortState = null;
+	#highlightedCells = new Set();
+	#highlightedHostCells = new Set();
 
 	static #hasManualSelection = false;
 	static #sessionStorageInitialized = false;
@@ -224,30 +227,35 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#paginationElement = document.createElement('div');
 		this.#paginationElement.classList.add('pagination-controls');
 
-		const buttons = ['<<', '<'];
-		buttons.forEach(label => {
+		const allButtons = ['<<', '<', '>', '>>'];
+		const beforeInfo = allButtons.slice(0, 2);
+		const afterInfo = allButtons.slice(2);
+
+		const createButton = (label) => {
 			const button = document.createElement('button');
 			button.textContent = label;
 			button.addEventListener('click', () => this.#handlePaginationClick(label));
-			this.#paginationElement.appendChild(button);
+			return button;
+		};
+
+		beforeInfo.forEach(label => {
+			this.#paginationElement.appendChild(createButton(label));
 		});
 
 		const pageInfo = document.createElement('span');
 		this.#paginationElement.appendChild(pageInfo);
 		this.#updatePageInfo(pageInfo);
 
-		const buttons_b = ['>', '>>'];
-		buttons_b.forEach(label => {
-			const button_b = document.createElement('button');
-			button_b.textContent = label;
-			button_b.addEventListener('click', () => this.#handlePaginationClick(label));
-			this.#paginationElement.appendChild(button_b);
+		afterInfo.forEach(label => {
+			this.#paginationElement.appendChild(createButton(label));
 		});
 
 		this.#parent_container.appendChild(this.#paginationElement);
 	}
 
 	#handlePaginationClick(label) {
+		const lastPage = this.#currentPage;
+
 		switch (label) {
 			case '<<':
 				this.#currentPage = 1;
@@ -266,6 +274,12 @@ class CWidgetTableModuleRME extends CWidget {
 				this.#currentPage = Math.ceil(this.#totalRows / this.#rowsPerPage);
 				break;
 		}
+
+		// Clear last clicked cell when changing pages
+		if (lastPage !== this.#currentPage) {
+			this.#lastClickedCell = null;
+		}
+
 		this.#updateDisplay(true, false, false);
 	}
 
@@ -307,14 +321,15 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#filterSelectedItems() {
 		this.#selected_items = this.#selected_items.filter(selectedItem => {
-			return this.#rowsArray.some(rowObj => {
-				if (rowObj.status === 'display') {
-					const menuElements = rowObj.row.querySelectorAll(`td [data-menu]`);
-					for (const menuElement of menuElements) {
-						const menuData = JSON.parse(menuElement.dataset.menu);
-						if (menuData.itemid === selectedItem.item || menuData.name === selectedItem.name) {
-							return true;
-						}
+			return this.#visibleRows.some(rowObj => {
+				const menuElements = rowObj.row.querySelectorAll(`td [data-menu]`);
+				for (const menuElement of menuElements) {
+					const menuData = JSON.parse(menuElement.dataset.menu);
+					// The logical or can leave some non-visible rows still broadcasting.
+					// This is fine in some scenarios, but then can be confusing in other scenarios
+					// Alternative is logical &&, but which way is the right way?
+					if (menuData.itemid === selectedItem.item || menuData.name === selectedItem.name) {
+						return true;
 					}
 				}
 				return false;
@@ -366,39 +381,96 @@ class CWidgetTableModuleRME extends CWidget {
 	// ========== Filter-related Methods ========== //
 
 	#getStableColumnId(th) {
-		// First check if we already set a stable ID
 		if (th.dataset.stableColumnId) {
 			return th.dataset.stableColumnId;
 		}
 
-		// Extract the actual column name (same logic as #extractColumnName)
-		const clonedTh = th.cloneNode(true);
-		const filterIcon = clonedTh.querySelector('.filter-icon');
-		const arrow = clonedTh.querySelector('#arrow');
-		if (filterIcon) filterIcon.remove();
-		if (arrow) arrow.remove();
-
-		const spanWithTitle = clonedTh.querySelector('span[title]');
-		let columnName = spanWithTitle
-			? spanWithTitle.getAttribute('title').trim()
-			: clonedTh.textContent.trim();
+		// Use the shared extraction method
+		let columnName = this.#extractColumnName(th);
 
 		// Fallback if column name is empty
 		if (!columnName) {
 			columnName = `column-${th.id || Math.random().toString(36).substr(2, 9)}`;
 		}
 
-		// Create a stable ID by sanitizing the column name
-		// Remove special characters and spaces, convert to lowercase
-		const stableId = columnName
+		// Create a stable ID by sanitizing
+		const baseStableId = columnName
 			.toLowerCase()
 			.replace(/[^a-z0-9]+/g, '-')
-			.replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+			.replace(/^-|-$/g, '');
 
-		// Store it on the element for future reference
+		// Helper to get base stable ID for any th
+		const getBaseStableId = (t) => {
+			const name = this.#extractColumnName(t) || `column-${t.id || Math.random().toString(36).substr(2, 9)}`;
+			return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+		};
+
+		// Check for duplicates
+		const allThsArray = this.allThs;
+		const matchingColumns = allThsArray.filter(t => t !== th && getBaseStableId(t) === baseStableId);
+
+		let stableId = baseStableId;
+
+		if (matchingColumns.length > 0) {
+			const allMatchingColumns = allThsArray.filter(t => getBaseStableId(t) === baseStableId);
+			const position = allMatchingColumns.indexOf(th);
+			console.warn(`Multiple columns found with name "${columnName}", using position-based ID: ${stableId}`);
+		}
+
 		th.dataset.stableColumnId = stableId;
-
 		return stableId;
+	}
+
+	#initializeColumn(th, columnIndex) {
+		const columnId = this.#getStableColumnId(th);
+
+		if (this.#columnData.has(columnId)) {
+			return this.#columnData.get(columnId);
+		}
+
+		const columnInfo = {
+			// Filter state
+			filterState: {
+				type: 'contains',
+				search: '',
+				checked: [],
+				allSelected: false
+			},
+
+			// Column type detection (lazy loaded)
+			columnType: null,
+
+			// Sort metadata (lazy loaded)
+			sortMetadata: null,
+
+			// References
+			th: th,
+			columnIndex: columnIndex
+		};
+
+		this.#columnData.set(columnId, columnInfo);
+		return columnInfo;
+	}
+
+	#getColumnData(columnId) {
+		return this.#columnData.get(columnId);
+	}
+
+	#getFilterState(columnId) {
+		const columnData = this.#columnData.get(columnId);
+		return columnData?.filterState || null;
+	}
+
+	#getColumnType(columnId) {
+		const columnData = this.#columnData.get(columnId);
+		return columnData?.columnType || 'text';
+	}
+
+	#setColumnType(columnId, type) {
+		const columnData = this.#columnData.get(columnId);
+		if (columnData) {
+			columnData.columnType = type;
+		}
 	}
 
 	#extractColumnName(th) {
@@ -423,36 +495,99 @@ class CWidgetTableModuleRME extends CWidget {
 		return clonedTh.textContent.trim();
 	}
 
-	#getCellByColumnId(row, targetColumnId) {
+	#cacheRowMetadata(row) {
 		const cells = row.querySelectorAll('td');
+		const cellsByColumn = new Map();
+		const menuCells = [];
+		let isReset = false;
+		let isFooter = false;
 		let currentColumnId = 0;
 
-		for (let cell of cells) {
-			const colspan = cell.hasAttribute('colspan')
-				? parseInt(cell.getAttribute('colspan'))
-				: 1;
+		cells.forEach(cell => {
+			// Cache by column
+			cellsByColumn.set(currentColumnId, cell);
 
-			if (currentColumnId === targetColumnId) {
-				return cell;
+			// Check for menu data
+			const element = cell.querySelector(this.#menu_selector);
+			if (element?.dataset.menu) {
+				try {
+					const dataset = JSON.parse(element.dataset.menu);
+					const prevTd = cell.previousElementSibling;
+					const isNumericCellOfDoubleSpan = prevTd && this._isDoubleSpanColumn(prevTd);
+
+					menuCells.push({
+						td: cell,
+						dataset: dataset,
+						isNumericCellOfDoubleSpan: isNumericCellOfDoubleSpan,
+						barGaugeTd: isNumericCellOfDoubleSpan ? prevTd: null
+					});
+
+				} catch (error) {
+					console.error('Failed to parse menu data:', error);
+				}
 			}
 
-			currentColumnId += colspan;
-		}
+			// Check row type markers
+			if (cell.querySelector('[reset-row]')) {
+				isReset = true;
+			}
+			if (cell.hasAttribute('footer-row')) {
+				isFooter = true;
+			}
 
-		return null;
+			const colspan = cell.hasAttribute('colspan') ? parseInt(cell.getAttribute('colspan')) : 1;
+			currentColumnId += colspan;
+		});
+
+		this.#rowMetadata.set(row, {
+			cellsByColumn,
+			menuCells,
+			isReset,
+			isFooter
+		});
 	}
 
-	#extractCellValue(td) {
+	#getCellByColumnId(row, targetColumnId) {
+		const metadata = this.#rowMetadata.get(row);
+		return metadata?.cellsByColumn.get(targetColumnId) || null;
+	}
+
+	#getMenuCells(row) {
+		const metadata = this.#rowMetadata.get(row);
+		return metadata?.menuCells || [];
+	}
+
+	#isResetRow(row) {
+		const metadata = this.#rowMetadata.get(row);
+		return metadata?.isReset || false;
+	}
+
+	#isFooterRow(row) {
+		const metadata = this.#rowMetadata.get(row);
+		return metadata?.isFooter || false;
+	}
+
+	#extractCellValue(td, options = {}) {
+		const { parseNumeric = false } = options;
+
 		// Check for hintbox content first (numeric value)
 		const hintboxContent = td.getAttribute('data-hintbox-contents');
 		if (hintboxContent) {
 			const match = hintboxContent.match(/<div class="hintbox-wrap">(.*?)<\/div>/);
 			if (match && match[1]) {
-				return match[1].trim();
+				const value = match[1].trim();
+				if (parseNumeric) {
+					const numericValue = parseFloat(value);
+					return isNaN(numericValue) ? null : numericValue;
+				}
+				return value;
 			}
 		}
 
 		// Fall back to text content
+		if (parseNumeric) {
+			return null; // Or handle text content parsing if needed
+		}
 		return td.textContent.trim();
 	}
 
@@ -549,12 +684,18 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 					return false;
 				}
-				case 'top n':
-				case 'bottom n':
-					// These filters are handled separately in #applyAllFilters()
-					// after all other filters have been applied.
-					// Return true here so rows aren't filtered out
-					return true;
+				case 'regex': {
+					try {
+						const regex = new RegExp(searchValue, caseSensitive ? '' : 'i');
+						this.invalidRegex = false;
+						return regex.test(text);
+					}
+					catch (error) {
+						this.invalidRegex = true;
+						this.invalidRegexError = error.message;
+						return false;
+					}
+				}
 				default:
 					return false;
 			}
@@ -695,18 +836,18 @@ class CWidgetTableModuleRME extends CWidget {
 
 		const potentiallyVisibleRows = this.#rowsArray.filter(rowObj => {
 			const tr = rowObj.row;
-			const isResetRow = tr.querySelector('[reset-row]') !== null;
-			const isFooterRow = tr.querySelector('[footer-row]') !== null;
+			const isResetRow = this.#isResetRow(tr);
+			const isFooterRow = this.#isFooterRow(tr);
 
 			if (isResetRow || isFooterRow) return true;
 
 			// Check all OTHER active filters (not this column)
 			for (const otherColumnId of otherActiveFilters) {
-				const otherFilterState = this.#filterStates.get(otherColumnId);
-				const otherColumnType = this.#columnTypes.get(otherColumnId) || 'text';
+				const otherFilterState = this.#getFilterState(otherColumnId);
+				const otherColumnType = this.#getColumnType(otherColumnId);
 				if (!otherFilterState) continue;
 
-				const otherTh = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === otherColumnId);
+				const otherTh = this.allThs.find(t => this.#getStableColumnId(t) === otherColumnId);
 				if (!otherTh) continue; // Column no longer exists
 
 				const otherColumnIndex = parseInt(otherTh.id);
@@ -721,10 +862,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				let matchesOtherColumn = true;
 
-				if (otherColumnType === 'numeric' && (filterMode === 'top n' || filterMode === 'bottom n')) {
-					matchesOtherColumn = true;
-				}
-				else if (checkedValues.length > 0) {
+				if (checkedValues.length > 0) {
 					matchesOtherColumn = checkedValues.includes(text);
 				}
 				else if (searchValue !== '') {
@@ -737,7 +875,7 @@ class CWidgetTableModuleRME extends CWidget {
 			return true;
 		});
 
-		const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+		const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
 
 		if (!th) return []; // Column no longer exists
 
@@ -748,7 +886,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		potentiallyVisibleRows.forEach(rowObj => {
 			const tr = rowObj.row;
-			if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+			if (this.#isResetRow(tr) || this.#isFooterRow(tr)) return;
 
 			const td = this.#getCellByColumnId(tr, columnIndex);
 			if (td) {
@@ -758,7 +896,7 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 
 		const visibleValuesArray = Array.from(visibleValues);
-		const columnType = this.#columnTypes.get(columnId) || 'text';
+		const columnType = this.#getColumnType(columnId) || 'text';
 		return this.#sortFilterValues(visibleValuesArray, columnType);
 	}
 
@@ -875,6 +1013,15 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#calculatePopupWidth(sortedValues) {
+		// Sample values
+		const sampleSize = 100;
+		const valuesToCheck = sortedValues.length > sampleSize
+			? [
+				...sortedValues.slice(0, sampleSize / 2), // First 50
+				...sortedValues.slice(-sampleSize / 2)    //  Last 50
+			]
+			: sortedValues;
+
 		const tempSpan = document.createElement('span');
 		tempSpan.style.visibility = 'hidden';
 		tempSpan.style.position = 'absolute';
@@ -883,13 +1030,13 @@ class CWidgetTableModuleRME extends CWidget {
 		document.body.appendChild(tempSpan);
 
 		let maxWidth = 0;
-		for (const value of sortedValues) {
+		for (const value of valuesToCheck) {
 			tempSpan.textContent = value;
 			maxWidth = Math.max(maxWidth, tempSpan.offsetWidth);
 		}
 		document.body.removeChild(tempSpan);
 
-		return Math.min(Math.max(maxWidth + 150, 400), 800);
+		return Math.min(Math.max(maxWidth + 150, 400), 700);
 	}
 
 	#createHelpTooltip(helpIcon, helpText) {
@@ -1060,7 +1207,7 @@ class CWidgetTableModuleRME extends CWidget {
 			// Restore original state from popup's dataset
 			if (popup && popup.dataset.initialState) {
 				const initialState = JSON.parse(popup.dataset.initialState);
-				const filterState = this.#filterStates.get(columnId);
+				const filterState = this.#getFilterState(columnId);
 
 				filterState.search = initialState.search;
 				filterState.checked = [...initialState.checked];
@@ -1289,17 +1436,7 @@ class CWidgetTableModuleRME extends CWidget {
 				{ value: 'greater or equal', label: 'Greater or Equal', help: 'Value is greater than or equal to the specified number.' },
 				{ value: 'less or equal', label: 'Less or Equal', help: 'Value is less than or equal to the specified number.' },
 				{ value: 'range', label: 'Range', help: 'Value is between two numbers (inclusive).\nFormat: min-max or min:max' },
-				{ value: 'top n', label: 'Top N', help: 'Shows the top N highest values.' },
-				{ value: 'bottom n', label: 'Bottom N', help: 'Shows the bottom N highest values.' }
-			];
-		}
-		else if (columnType === 'ip') {
-			options = [
-				{ value: 'equals', label: 'Equals', help: 'IP exactly matches the specified text.' },
-				{ value: 'contains', label: 'Contains', help: 'IP contains the specified text.' },
-				{ value: 'starts with', label: 'Starts with', help: 'IP starts with the specified text (useful for subnets).' },
-				{ value: 'wildcard', label: 'Wildcard', help: 'IP matches the wildcarded (*) pattern.\nExample: 192.168.*.1' },
-				{ value: 'regex', label: 'Regex', help: 'IP matches the specified regular expression.' }
+				{ value: 'regex', label: 'Regex', help: 'Filters items that match the specified regular expression.' }
 			];
 		}
 		else {
@@ -1390,6 +1527,68 @@ class CWidgetTableModuleRME extends CWidget {
 		};
 	}
 
+	#renderCheckboxes(config) {
+		const {
+			checkboxContainer,
+			scrollContainer,
+			values,
+			filterState,
+			columnId
+		} = config;
+
+		const scrollTop = scrollContainer.scrollTop;
+		const visibleCount = 25;
+		const startIndex = Math.floor(scrollTop / 30);
+		const endIndex = Math.min(startIndex + visibleCount, values.length);
+
+		checkboxContainer.style.top = `${startIndex * 30}px`;
+		checkboxContainer.innerHTML = '';
+
+		const idPrefix = `filter_${columnId}_`;
+		const spansToCheck = [];
+
+		for (let i = startIndex; i < endIndex; i++) {
+			const value = values[i];
+			const id = idPrefix + String(value).replace(/[^a-zA-Z0-9]/g, '_');
+
+			const label = document.createElement('label');
+			label.classList.add('custom-checkbox');
+
+			const checkbox = document.createElement('input');
+			checkbox.type = 'checkbox';
+			checkbox.id = id;
+			checkbox.value = value;
+			checkbox.checked = filterState.checked.includes(String(value).toLowerCase());
+
+			const span = document.createElement('span');
+			span.textContent = value;
+
+			label.appendChild(checkbox);
+			label.appendChild(span);
+			label.setAttribute('data-index', i);
+
+			checkboxContainer.appendChild(label);
+			spansToCheck.push(span);
+		}
+
+		// Check for visual truncation after render completes
+		requestAnimationFrame(() => {
+			const TOOLTIP_MAX_LENGTH = 1000;
+
+			for (const span of spansToCheck) {
+				if (span.scrollWidth > span.clientWidth) {
+					const value = span.textContent;
+					const tooltipText = value.length > TOOLTIP_MAX_LENGTH
+						? value.substring(0, TOOLTIP_MAX_LENGTH) + '... (truncated)'
+						: value;
+
+					span.title = tooltipText;
+					span.style.cursor = 'help';
+				}
+			}
+		});
+	}
+
 	#setupPopupEventHandlers(config) {
 		const {
 			popup, columnId, columnType, searchInput, filterTypeSelect, filterTypeButton, clearBtn,
@@ -1398,7 +1597,7 @@ class CWidgetTableModuleRME extends CWidget {
 		} = config;
 
 		let filteredValues = [...sortedValues];
-		let isAllSelected = this.#filterStates.get(columnId).allSelected;
+		let isAllSelected = this.#getFilterState(columnId).allSelected;
 		let lastCheckedCheckbox = null;
 
 		// Store sortedValues in popup for later updates
@@ -1406,108 +1605,25 @@ class CWidgetTableModuleRME extends CWidget {
 
 		// Capture initial state when popup is opened
 		const initialState = {
-			search: this.#filterStates.get(columnId).search || '',
-			checked: [...(this.#filterStates.get(columnId).checked || [])],
-			type: this.#filterStates.get(columnId).type
+			search: this.#getFilterState(columnId).search || '',
+			checked: [...(this.#getFilterState(columnId).checked || [])],
+			type: this.#getFilterState(columnId).type
 		};
-
-		// Function to toggle checkbox visibility based on filter type
-		const updateUIForFilterType = (filterType) => {
-			const isTopBottomN = (filterType === 'top n' || filterType === 'bottom n');
-
-			if (isTopBottomN) {
-				checkboxContainer.style.display = 'none';
-				scrollContainer.style.minHeight = '175px';
-				scrollContainer.style.maxHeight = '175px';
-				spacer.style.height = '80px';
-
-				let placeholder = scrollContainer.querySelector('.topn-placeholder');
-				if (!placeholder) {
-					placeholder = document.createElement('div');
-					placeholder.className = 'topn-placeholder';
-					placeholder.style.cssText = `
-						padding: 15px;
-						text-align: center;
-						color: #888;
-						font-style: italic;
-						display: flex;
-						align-items: center;
-						justify-content: center;
-						height: 100%;
-					`;
-					scrollContainer.insertBefore(placeholder, spacer);
-				}
-				placeholder.textContent = filterType === 'top n'
-					? 'Enter N above to show the top N highest values'
-					: 'Enter N above to show the bottom N lowest values';
-				placeholder.style.display = 'flex';
-				scrollContainer.style.visibility = 'visible';
-
-				const sectionContainer = popup.querySelector('.section-container');
-				if (sectionContainer) sectionContainer.style.display = 'none';
-				searchInput.placeholder = `Enter N (number of rows)`;
-			}
-			else {
-				scrollContainer.style.visibility = 'visible';
-				scrollContainer.style.minHeight = '100px';
-				scrollContainer.style.maxHeight = '300px';
-				checkboxContainer.style.display = 'block';
-
-				const placeholder = scrollContainer.querySelector('.topn-placeholder');
-				if (placeholder) placeholder.style.display = 'none';
-
-				const sectionContainer = popup.querySelector('.section-container');
-				if (sectionContainer) sectionContainer.style.display = 'flex';
-
-				if (columnType === 'numeric') {
-					searchInput.placeholder = 'Enter number or range...';
-				}
-				else if (columnType === 'ip') {
-					searchInput.placeholder = 'Enter IP address...';
-				}
-				else {
-					searchInput.placeholder = 'Search...';
-				}
-			}
-		};
-
-		updateUIForFilterType(filterTypeSelect.value);
-
-		filterTypeSelect.addEventListener('filterTypeChanged', (e) => {
-			updateUIForFilterType(e.filterType);
-			handleInput();
-		});
 
 		const renderVisibleCheckboxes = () => {
-			const scrollTop = scrollContainer.scrollTop;
-			const visibleCount = 25;
-			const startIndex = Math.floor(scrollTop / 30);
-			const endIndex = Math.min(startIndex + visibleCount, filteredValues.length);
+			const filterState = this.#getFilterState(columnId);
 
-			checkboxContainer.style.top = `${startIndex * 30}px`;
-			checkboxContainer.innerHTML = '';
-
-			const filterState = this.#filterStates.get(columnId);
-
-			for (let i = startIndex; i < endIndex; i++) {
-				const value = filteredValues[i];
-				const id = `filter_${columnId}_${String(value).replace(/[^a-zA-Z0-9]/g, '_')}`;
-				const label = document.createElement('label');
-				label.classList.add('custom-checkbox');
-				label.innerHTML = `
-					<input type="checkbox" id="${id}" value="${value}">
-					<span>${value}</span>
-				`;
-
-				const checkbox = label.querySelector('input[type="checkbox"]');
-				checkbox.checked = filterState.checked.includes(String(value).toLowerCase());
-				label.setAttribute('data-index', i);
-				checkboxContainer.appendChild(label);
-			}
+			this.#renderCheckboxes({
+				checkboxContainer,
+				scrollContainer,
+				values: filteredValues,
+				filterState,
+				columnId
+			});
 		};
 
 		const updateSummary = () => {
-			const filterState = this.#filterStates.get(columnId);
+			const filterState = this.#getFilterState(columnId);
 			const checked = filterState.checked.length || 0;
 			if (summary) summary.textContent = `${checked} selected`;
 		};
@@ -1520,7 +1636,7 @@ class CWidgetTableModuleRME extends CWidget {
 		};
 
 		const updateClearFiltersButton = () => {
-			const filterState = this.#filterStates.get(columnId);
+			const filterState = this.#getFilterState(columnId);
 			clearFiltersButton.style.visibility = (filterState.checked.length > 0 || filterState.search !== '') ? 'visible' : 'hidden';
 		};
 
@@ -1532,7 +1648,7 @@ class CWidgetTableModuleRME extends CWidget {
 		const handleInput = () => {
 			scrollContainer.scrollTop = 0;
 			const query = searchInput.value.toLowerCase();
-			const filterState = this.#filterStates.get(columnId);
+			const filterState = this.#getFilterState(columnId);
 
 			// Check if sortedValues was updated by #updateFilterPopupValues
 			if (popup.dataset.sortedValues) {
@@ -1560,7 +1676,7 @@ class CWidgetTableModuleRME extends CWidget {
 			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 
 			spacer.style.height = `${filteredValues.length * 30}px`;
-			renderVisibleCheckboxes()
+			renderVisibleCheckboxes();
 			updateSummary();
 			updateWarningIcon();
 			updateClearFiltersButton();
@@ -1596,7 +1712,7 @@ class CWidgetTableModuleRME extends CWidget {
 			e.stopPropagation();
 			e.preventDefault();
 
-			const filterState = this.#filterStates.get(columnId);
+			const filterState = this.#getFilterState(columnId);
 			const valuesToCheck = filteredValues.length !== sortedValues.length ?
 				filteredValues : sortedValues;
 
@@ -1625,7 +1741,7 @@ class CWidgetTableModuleRME extends CWidget {
 			if (cb.type !== 'checkbox') return;
 
 			const val = cb.value.toLowerCase();
-			const filterState = this.#filterStates.get(columnId);
+			const filterState = this.#getFilterState(columnId);
 
 			if (cb.checked) {
 				if (!filterState.checked.includes(val)) {
@@ -1651,7 +1767,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 			const label = cb.closest('label');
 			const checkboxIndex = parseInt(label.getAttribute('data-index'), 10);
-			const filterState = this.#filterStates.get(columnId);
+			const filterState = this.#getFilterState(columnId);
 
 			if (event.shiftKey && lastCheckedCheckbox) {
 				event.preventDefault();
@@ -1688,21 +1804,9 @@ class CWidgetTableModuleRME extends CWidget {
 			e.stopPropagation();
 			e.preventDefault();
 
-			const filterState = this.#filterStates.get(columnId);
+			const filterState = this.#getFilterState(columnId);
 			filterState.type = filterTypeSelect.value;
 			filterState.search = searchInput.value.trim();
-
-			// Validate Top N / Bottom N input
-			if ((filterState.type === 'top n' || filterState.type === 'bottom n') && filterState.search) {
-				const n = parseInt(filterState.search);
-				if (isNaN(n) || n <= 0) {
-					this.#showCustomAlert(
-						`Please enter a valid positive number for ${filterState.type}`,
-						'Invalid Input'
-					);
-					return;
-				}
-			}
 
 			// Validate regex if that's the filter type
 			if (filterState.type === 'regex' && filterState.search) {
@@ -1731,7 +1835,7 @@ class CWidgetTableModuleRME extends CWidget {
 						`${this.invalidRegexError || 'Please check your pattern'}`,
 						'Regex Error'
 					);
-					const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+					const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
 					if (th) {
 						const filterIcon = th.querySelector('.filter-icon');
 						if (filterIcon) {
@@ -1762,7 +1866,7 @@ class CWidgetTableModuleRME extends CWidget {
 			e.stopPropagation();
 			e.preventDefault();
 
-			const filterState = this.#filterStates.get(columnId);
+			const filterState = this.#getFilterState(columnId);
 
 			searchInput.value = '';
 			filterState.checked = [];
@@ -1800,7 +1904,7 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 
 		// Initial render
-		const filterState = this.#filterStates.get(columnId);
+		const filterState = this.#getFilterState(columnId);
 		if (filterState.search) {
 			searchInput.value = filterState.search;
 			handleInput();
@@ -1830,12 +1934,12 @@ class CWidgetTableModuleRME extends CWidget {
 		// Track this popup ID
 		this.#popupIds.add(popup.id);
 
-		const filterState = this.#filterStates.get(columnId);
+		const filterState = this.#getFilterState(columnId);
 		let filteredValues = sortedValues;
 		let isAllSelected = filterState.allSelected;
 
 		// Create header with title and controls
-		const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+		const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
 		const columnName = th ? this.#extractColumnName(th) : '';
 
 		const { header, searchInput, filterTypeSelect, filterTypeButton, clearBtn } =
@@ -1856,6 +1960,18 @@ class CWidgetTableModuleRME extends CWidget {
 		popup.appendChild(header);
 		popup.appendChild(scrollContainer);
 		popup.appendChild(footer);
+
+		// Cache element references on the popup for fast access later
+		popup._elements = {
+			scrollContainer,
+			spacer,
+			checkboxContainer,
+			searchInput,
+			summary,
+			toggleButton,
+			filterTypeSelect,
+			filterTypeButton
+		};
 
 		// Setup event handlers
 		this.#setupPopupEventHandlers({
@@ -1885,7 +2001,7 @@ class CWidgetTableModuleRME extends CWidget {
 		return popup;
 	}
 
-	#createFilterUI(th, columnId, sortedValues, columnType) {
+	#createFilterUI(th, columnId) {
 		const filterIcon = document.createElement('span');
 		filterIcon.className = 'filter-icon';
 		filterIcon.style.cursor = 'pointer';
@@ -1907,11 +2023,26 @@ class CWidgetTableModuleRME extends CWidget {
 			</svg>
 		`;
 
-		const popup = this.#createFilterPopup(columnId, sortedValues, columnType);
-		document.body.appendChild(popup);
-
+		// DON'T create popup here - lazy load on first click
 		filterIcon.addEventListener('click', (e) => {
 			e.stopPropagation();
+
+			let popup = document.getElementById(`${this.#values_table.id}-${this._widgetid}-popup-${columnId}`);
+
+			// Lazy create popup on first click
+			if (!popup) {
+				const columnInfo = this.#getColumnData(columnId);
+
+				// Lazy cache: only calculate sorted values on first popup open
+				if (!columnInfo.cachedSortedValues) {
+					columnInfo.cachedSortedValues = this.#getPossibleValuesForColumn(columnId);
+				}
+				const sortedValues = columnInfo.cachedSortedValues;
+
+				popup = this.#createFilterPopup(columnId, sortedValues, columnInfo.columnType);
+				document.body.appendChild(popup);
+			}
+
 			this.#toggleFilterPopup(popup, filterIcon, columnId);
 		});
 
@@ -1928,26 +2059,19 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#createColumnFilters() {
-		this.allThs.forEach((th, thIndex) => {
+		this.allThs.forEach((th) => {
 			const columnId = this.#getStableColumnId(th);
-
-			// Initialize filter state for this column
-			if (!this.#filterStates.has(columnId)) {
-				this.#filterStates.set(columnId, {
-					type: 'contains',
-					search: '',
-					checked: [],
-					allSelected: false
-				});
-			}
-
-			// Collect all values for this column
-			const filterValues = new Set();
 			const columnIndex = parseInt(th.id);
+
+			// Initialize or get column data
+			const columnInfo = this.#initializeColumn(th, columnIndex);
+
+			// Collect all values for this column (for type detection)
+			const filterValues = new Set();
 
 			this.#rowsArray.forEach(rowObj => {
 				const tr = rowObj.row;
-				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+				if (this.#isResetRow(tr) || this.#isFooterRow(tr)) return;
 
 				const td = this.#getCellByColumnId(tr, columnIndex);
 				if (td) {
@@ -1961,27 +2085,22 @@ class CWidgetTableModuleRME extends CWidget {
 			const valuesArray = Array.from(filterValues);
 
 			// Determine column type
-			const columnType = this.#detectColumnType(valuesArray);
-			this.#columnTypes.set(columnId, columnType);
+			columnInfo.columnType = this.#detectColumnType(valuesArray);
 
-			const sortedValues = this.#sortFilterValues(valuesArray, columnType);
+			// Don't cache sorted values here: do it lazily when opening popup for first time
 
 			// Set default filter type based on column type (only if not already set)
-			const filterState = this.#filterStates.get(columnId);
-			if (!filterState.type) {
-				if (columnType === 'numeric') {
-					filterState.type = 'equals';
-				}
-				else if (columnType === 'ip') {
-					filterState.type = 'contains';
+			if (!columnInfo.filterState.type || columnInfo.filterState.type === 'contains') {
+				if (columnInfo.columnType === 'numeric') {
+					columnInfo.filterState.type = 'equals';
 				}
 				else {
-					filterState.type = 'contains';
+					columnInfo.filterState.type = 'contains';
 				}
 			}
 
-			// Create filter icon and popup for this column
-			this.#createFilterUI(th, columnId, sortedValues, columnType);
+			// Create filter icon (popup will be lazy loaded on click)
+			this.#createFilterUI(th, columnId);
 		});
 	}
 
@@ -1997,9 +2116,38 @@ class CWidgetTableModuleRME extends CWidget {
 			return;
 		}
 
-		// Get possible values using shared method
-		const sortedVisibleValues = this.#getPossibleValuesForColumn(columnId);
-		const filterState = this.#filterStates.get(columnId);
+		const filterState = this.#getFilterState(columnId);
+		const columnInfo = this.#getColumnData(columnId);
+
+		// Check if this is a reopening (popup was hidden, not just created)
+		const isReopening = popup.dataset.hasBeenOpened === 'true';
+
+		// Check if other filters are active
+		const otherFiltersActive = Array.from(this.#activeFilters).some(id => id !== columnId);
+
+		// Determine if we need to recalculate or can use cache
+		let sortedVisibleValues;
+
+		if (otherFiltersActive) {
+			// Other filters active MUST recalculate to show only available values
+			sortedVisibleValues = this.#getPossibleValuesForColumn(columnId);
+			// Update cache with new filtered values
+			columnInfo.cachedSortedValues = sortedVisibleValues;
+
+			this.#updateFilterPopupValues(popup, columnId, sortedVisibleValues, filterState);
+		}
+		else if (isReopening) {
+			// Reopening, no other filters can use cached values
+			sortedVisibleValues = columnInfo.cachedSortedValues;
+
+			this.#updateFilterPopupValues(popup, columnId, sortedVisibleValues, filterState);
+		}
+		else {
+			// First open, no other filters - values are already fresh from popup creation
+		}
+
+		// Mark that this popup has been opened
+		popup.dataset.hasBeenOpened = 'true';
 
 		// STORE INITIAL STATE in popup's dataset
 		popup.dataset.initialState = JSON.stringify({
@@ -2007,8 +2155,6 @@ class CWidgetTableModuleRME extends CWidget {
 			checked: [...(filterState.checked || [])],
 			type: filterState.type
 		});
-
-		this.#updateFilterPopupValues(popup, columnId, sortedVisibleValues, filterState);
 
 		popup.style.visibility = 'hidden';
 		popup.style.display = 'flex';
@@ -2052,7 +2198,7 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#updateFilterIconState(filterIcon, columnId) {
-		const filterState = this.#filterStates.get(columnId);
+		const filterState = this.#getFilterState(columnId);
 		if (!filterState) return;
 
 		const hasChecked = filterState.checked.length > 0;
@@ -2073,17 +2219,13 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#updateFilterPopupValues(popup, columnId, sortedValues, filterState) {
-		const scrollContainer = popup.querySelector('[style*="max-height: 300px"]');
-		const spacer = scrollContainer?.querySelector('[style*="position: relative"]');
-		const checkboxContainer = spacer?.querySelector('.filter-popup-checkboxes');
+		// Use cached element references
+		const { scrollContainer, spacer, checkboxContainer, searchInput, summary, toggleButton } = popup._elements || {};
 
 		if (!scrollContainer || !spacer || !checkboxContainer) return;
 
 		// Store the new sortedValues in the popup's dataset so handleInput can access them
 		popup.dataset.sortedValues = JSON.stringify(sortedValues);
-
-		// Find the search input and trigger handleInput to re-render with new values
-		const searchInput = popup.querySelector('input[type="text"]');
 
 		if (searchInput && searchInput._handleInputFunction) {
 			// If handleInput exists, trigger it to recalculate filteredValues with new sortedValues
@@ -2096,29 +2238,13 @@ class CWidgetTableModuleRME extends CWidget {
 
 			// Simple render without filtering
 			const renderBasic = () => {
-				const scrollTop = scrollContainer.scrollTop;
-				const visibleCount = 25;
-				const startIndex = Math.floor(scrollTop / 30);
-				const endIndex = Math.min(startIndex + visibleCount, sortedValues.length);
-
-				checkboxContainer.style.top = `${startIndex * 30}px`;
-				checkboxContainer.innerHTML = '';
-
-				for (let i = startIndex; i < endIndex; i++) {
-					const value = sortedValues[i];
-					const id = `filter_${columnId}_${String(value).replace(/[^a-zA-Z0-9]/g, '_')}`;
-					const label = document.createElement('label');
-					label.classList.add('custom-checkbox');
-					label.innerHTML = `
-						<input type="checkbox" id="${id}" value="${value}">
-						<span>${value}</span>
-					`;
-
-					const checkbox = label.querySelector('input[type="checkbox"]');
-					checkbox.checked = filterState.checked.includes(String(value).toLowerCase());
-					label.setAttribute('data-index', i);
-					checkboxContainer.appendChild(label);
-				}
+				this.#renderCheckboxes({
+					checkboxContainer,
+					scrollContainer,
+					values: sortedValues,
+					filterState,
+					columnId
+				});
 			};
 
 			renderBasic();
@@ -2135,13 +2261,11 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		// Update summary
-		const summary = popup.querySelector('.summary');
 		if (summary) {
 			summary.textContent = `${filterState.checked.length} selected`;
 		}
 
 		// Update toggle button text
-		const toggleButton = popup.querySelector('.toggle-row button');
 		if (toggleButton) {
 			const isAllSelected = sortedValues.length > 0 &&
 				sortedValues.every(v => filterState.checked.includes(String(v).toLowerCase()));
@@ -2150,119 +2274,119 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#refreshAllFilterPopups() {
-		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+		// Pre-compute all column info
+		const columnInfoMap = new Map();
 
-		this.#filterStates.forEach((filterState, columnId) => {
+		this.#columnData.forEach((columnInfo, columnId) => {
+			const filterState = columnInfo.filterState;
+			const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
+			if (!th) return;
+
 			const popupId = `${this.#values_table.id}-${this._widgetid}-popup-${columnId}`;
 			const popup = document.getElementById(popupId);
-
 			if (!popup) return;
 
-			const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
-			if (!th) return; // Column no longer exists
+			const useAllValues = filterState.search === '' && filterState.checked.length > 0;
 
-			// Collect values from currently displayed rows for this column
-			const visibleValues = new Set();
-			const columnIndex = parseInt(th.id);
+			columnInfoMap.set(columnId, {
+				th,
+				popup,
+				filterState,
+				columnIndex: parseInt(th.id),
+				visibleValues: useAllValues
+					? this.#getPossibleValuesForColumn(columnId)
+					: new Set(),
+				skipVisibleRowScan: useAllValues
+			});
+		});
 
-			displayedRows.forEach(rowObj => {
-				const tr = rowObj.row;
-				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+		// Single pass through visible rows - collect all column values at once
+		this.#visibleRows.forEach(rowObj => {
+			const tr = rowObj.row;
+			if (this.#isResetRow(tr) || this.#isFooterRow(tr)) return;
 
-				const td = this.#getCellByColumnId(tr, columnIndex);
+			// Get the pre-cached cell map for this row
+			const metadata = this.#rowMetadata.get(tr);
+			if (!metadata) return;
+
+			const cellMap = metadata.cellsByColumn;
+
+			// Collect values for all columns in one pass
+			columnInfoMap.forEach((info) => {
+				if (info.skipVisibleRowScan) return;
+
+				const td = cellMap.get(info.columnIndex);
 				if (td) {
 					const value = this.#extractCellValue(td);
-					if (value) visibleValues.add(value);
+					if (value) info.visibleValues.add(value);
 				}
 			});
+		});
 
-			const visibleValuesArray = Array.from(visibleValues);
-			const columnType = this.#columnTypes.get(columnId) || 'text';
+		// Update all popups
+		columnInfoMap.forEach((info, columnId) => {
+			const visibleValuesArray = Array.from(info.visibleValues);
+			const columnType = this.#getColumnType(columnId) || 'text';
 			const sortedVisibleValues = this.#sortFilterValues(visibleValuesArray, columnType);
 
-			// Update the popup's checkbox list
-			this.#updateFilterPopupValues(popup, columnId, sortedVisibleValues, filterState);
+			// Update cache since filters changed
+			const columnInfo = this.#getColumnData(columnId);
+			if (columnInfo) {
+				columnInfo.cachedSortedValues = sortedVisibleValues;
+			}
+
+			this.#updateFilterPopupValues(info.popup, columnId, sortedVisibleValues, info.filterState);
 		});
 	}
 
 	#applyAllFilters(updateDisplayNow = true) {
-		function getColumnInfo(td, columns) {
-			const indexStr = td.getAttribute('column-id');
-			if (indexStr == null) return null;
-
-			const indexNum = parseInt(indexStr, 10);
-			if (isNaN(indexNum)) return null;
-
-			const columnDef = columns?.[indexNum];
-			if (!columnDef) return null;
-
-			return { indexNum, columnDef };
-		}
-
-		function resolveMinMaxSum(columnDef, dynamicStats, indexNum) {
-			const staticMin = columnDef.min !== undefined && columnDef.min !== '' ? parseFloat(columnDef.min) : null;
-			const staticMax = columnDef.max !== undefined && columnDef.max !== '' ? parseFloat(columnDef.max) : null;
-
-			const min = staticMin !== null ? staticMin : dynamicStats[indexNum]?.min;
-			const max = staticMax !== null ? staticMax : dynamicStats[indexNum]?.max;
-			const sum = dynamicStats[indexNum]?.sum;
-
-			return { min, max, sum };
-		}
-
-		function extractValueFromHintbox(hintboxContent) {
-			const match = hintboxContent.match(/<div class="hintbox-wrap">(.*?)<\/div>/);
-			if (match && match[1]) {
-				const numericValue = parseFloat(match[1]);
-				if (!isNaN(numericValue)) {
-					return numericValue;
-				}
-			}
-			return null;
-		}
-
 		this.invalidRegex = false;
-		let columnStats = [];
 		const columns = this._fields.columns;
+		const hasBarGauges = this._fields.bar_gauge_layout === 0 || this._fields.layout === 50;
 
-		// Rebuild active filters set based on current filter states
+		// Rebuild active filters set and cache column lookups
 		this.#activeFilters.clear();
-		this.#filterStates.forEach((filterState, columnId) => {
+		const activeFilterCache = new Map();
+
+		this.#columnData.forEach((columnInfo, columnId) => {
+			const filterState = columnInfo.filterState;
 			const hasChecked = filterState.checked && filterState.checked.length > 0;
 			const hasSearch = filterState.search && filterState.search.trim() !== '';
 
 			if (hasChecked || hasSearch) {
 				this.#activeFilters.add(columnId);
+
+				const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
+				if (th) {
+					const columnType = columnInfo.columnType || 'text';
+					const checkedSet = hasChecked ? new Set(filterState.checked) : null;
+
+					activeFilterCache.set(columnId, {
+						filterState,
+						columnType,
+						columnIndex: parseInt(th.id),
+						checkedSet,
+						searchValue: (filterState.search || '').trim().toLowerCase(),
+						filterMode: filterState.type || 'contains'
+					});
+				}
 			}
 		});
 
 		// Apply filters to all rows
-		this.#rowsArray.forEach(rowObj => {
+		for (const rowObj of this.#rowsArray) {
 			const tr = rowObj.row;
-			const isResetRow = tr.querySelector('[reset-row]') !== null;
-			const isFooterRow = tr.querySelector('[footer-row]') !== null;
 
-			if (isResetRow || isFooterRow) {
+			if (this.#isResetRow(tr) || this.#isFooterRow(tr)) {
 				rowObj.status = 'display';
-				return;
+				continue;
 			}
 
 			let showRow = true;
 
-			// Check all active filters
-			for (const columnId of this.#activeFilters) {
-				const filterState = this.#filterStates.get(columnId);
-				const columnType = this.#columnTypes.get(columnId) || 'text';
+			for (const [columnId, filterCache] of activeFilterCache) {
+				const { filterState, columnType, columnIndex, checkedSet, searchValue, filterMode } = filterCache;
 
-				if (!filterState) continue;
-
-				const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
-				if (!th) {
-					// Column no longer exists, skip this filter
-					continue;
-				}
-
-				const columnIndex = parseInt(th.id); // Get current position
 				const td = this.#getCellByColumnId(tr, columnIndex);
 
 				if (!td) {
@@ -2271,19 +2395,10 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 
 				const text = this.#extractCellValue(td).toLowerCase();
-				const checkedValues = filterState.checked || [];
-				const searchValue = (filterState.search || '').trim().toLowerCase();
-				const filterMode = filterState.type || 'contains';
-
 				let matchesThisColumn = true;
 
-				// Handle Top N / Bottom N specially.
-				if (columnType === 'numeric' && (filterMode === 'top n' || filterMode === 'bottom n')) {
-					// Mark for later processing don't filter out yet
-					matchesThisColumn = true;
-				}
-				else if (checkedValues.length > 0) {
-					matchesThisColumn = checkedValues.includes(text);
+				if (checkedSet) {
+					matchesThisColumn = checkedSet.has(text);
 				}
 				else if (searchValue !== '') {
 					matchesThisColumn = this.#matchesFilter(text, searchValue, filterMode, false, columnType);
@@ -2296,65 +2411,158 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			rowObj.status = showRow ? 'display' : 'hidden';
-		});
+		}
 
-		// Collect stats for bar gauges/sparklines if row is displayed
-		if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
-			const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+		this.#updateVisibleRowsCache();
 
-			displayedRows.forEach(rowObj => {
+		// COMBINED PASS: Collect stats AND update bar gauges in single iteration
+		let columnStats = [];
+		if (hasBarGauges) {
+			// Pre-cache static column definitions to avoid repeated lookups
+			const columnDefCache = new Map();
+
+			for (const rowObj of this.#visibleRows) {
 				const tr = rowObj.row;
-				const allTdsInRow = tr.querySelectorAll('td');
+				const allTdsInRow = tr.children;
 
-				allTdsInRow.forEach((td, index) => {
-					if (this._isBarGauge(td) || this._isSparkLine(td)) return;
+				for (let i = 0; i < allTdsInRow.length; i++) {
+					const td = allTdsInRow[i];
 
-					let value = null;
+					// Check if this is a bar gauge
+					const gauge = td.querySelector('z-bar-gauge');
+					const isBarGauge = gauge !== null;
+					const isSparkLine = !isBarGauge && td.querySelector('z-sparkline') !== null;
+
+					if (isSparkLine) continue;
 
 					const hintboxContent = td.getAttribute('data-hintbox-contents');
-					if (hintboxContent) {
-						value = extractValueFromHintbox(hintboxContent);
-					}
+					if (!hintboxContent) continue;
 
-					if (value === null) return;
-
-					const info = getColumnInfo(td, columns);
-					if (!info) return;
-
-					const { indexNum, columnDef } = info;
-
-					const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
-					const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
-
-					if (!this._isNumeric(value)) return;
-
-					if (!columnStats[indexNum]) {
-						columnStats[indexNum] = {
-							min: hasStaticMin ? columnDef.min : value,
-							max: hasStaticMax ? columnDef.max : value,
-							sum: value
-						};
+					let value;
+					if (isBarGauge && gauge) {
+						value = parseFloat(gauge.getAttribute('value'));
+						if (isNaN(value)) continue;
 					}
 					else {
-						columnStats[indexNum].sum += value;
-						if (!hasStaticMin) {
-							columnStats[indexNum].min = Math.min(columnStats[indexNum].min, value);
-						}
+						value = this.#extractCellValue(td, { parseNumeric: true });
+						if (value === null) continue;
+					}
 
-						if (!hasStaticMax) {
-							columnStats[indexNum].max = Math.max(columnStats[indexNum].max, value);
+					// Get or create cached column definition
+					let cachedDef = columnDefCache.get(i);
+					if (!cachedDef) {
+						const indexStr = td.getAttribute('column-id');
+						if (indexStr == null) continue;
+
+						const indexNum = parseInt(indexStr, 10);
+						if (isNaN(indexNum)) continue;
+
+						const columnDef = columns?.[indexNum];
+						if (!columnDef) continue;
+
+						const hasStaticMin = columnDef.min !== undefined && columnDef.min !== '';
+						const hasStaticMax = columnDef.max !== undefined && columnDef.max !== '';
+						const staticMin = hasStaticMin ? parseFloat(columnDef.min) : null;
+						const staticMax = hasStaticMax ? parseFloat(columnDef.max) : null;
+
+						cachedDef = { indexNum, hasStaticMin, hasStaticMax, staticMin, staticMax };
+						columnDefCache.set(i, cachedDef);
+					}
+
+					const { indexNum, hasStaticMin, hasStaticMax, staticMin, staticMax } = cachedDef;
+
+					// Accumulate stats
+					if (!columnStats[indexNum]) {
+						columnStats[indexNum] = {
+							min: hasStaticMin ? staticMin : Infinity,
+							max: hasStaticMax ? staticMax : -Infinity,
+							sum: 0,
+							needsUpdate: false
+						};
+					}
+
+					columnStats[indexNum].sum += value;
+
+					if (!hasStaticMin) {
+						const newMin = Math.min(columnStats[indexNum].min, value);
+						if (newMin !== columnStats[indexNum].min) {
+							columnStats[indexNum].min = newMin;
+							columnStats[indexNum].needsUpdate = true;
 						}
 					}
-				});
-			});
+
+					if (!hasStaticMax) {
+						const newMax = Math.max(columnStats[indexNum].max, value);
+						if (newMax !== columnStats[indexNum].max) {
+							columnStats[indexNum].max = newMax;
+							columnStats[indexNum].needsUpdate = true;
+						}
+					}
+				}
+			}
+
+			// Second pass ONLY for bar gauges that need updating
+			// This is much faster since we skip non-gauge cells and only update what changed
+			const tooltipMode = this._fields.bar_gauge_tooltip;
+			const useMaxTooltip = tooltipMode === 0;
+			const useSumTooltip = tooltipMode === 1;
+
+			for (const rowObj of this.#visibleRows) {
+				const tr = rowObj.row;
+				const allTdsInRow = tr.children;
+
+				for (let i = 0; i < allTdsInRow.length; i++) {
+					const td = allTdsInRow[i];
+					const gauge = td.querySelector('z-bar-gauge');
+					if (!gauge) continue;
+
+					const cachedDef = columnDefCache.get(i);
+					if (!cachedDef) continue;
+
+					const { indexNum, staticMin, staticMax } = cachedDef;
+					const stats = columnStats[indexNum];
+					if (!stats) continue;
+
+					const min = staticMin !== null ? staticMin : stats.min;
+					const max = staticMax !== null ? staticMax : stats.max;
+					const sum = stats.sum;
+
+					if (min === undefined || max === undefined) continue;
+
+					const bgValue = parseFloat(gauge.getAttribute('value'));
+
+					// Update gauge attributes
+					gauge.setAttribute('min', min);
+					let formatted = null;
+					if (useMaxTooltip) {
+						const newTooltipValue = bgValue / max * 100;
+						formatted = `${newTooltipValue.toFixed(3)} % of column max`;
+						gauge.setAttribute('max', max);
+					}
+					else if (useSumTooltip) {
+						const newTooltipValue = bgValue / sum * 100;
+						hintStrValue = ' % of column sum';
+						formatted = `${newTooltipValue.toFixed(3)} % of column sum`;
+						gauge.setAttribute('max', sum);
+					}
+					else {
+						gauge.setAttribute('max', max);
+					}
+
+					// Only update hintbox if we calculated a new formatted value
+					if (formatted !== null) {
+						const oldHint = td.getAttribute('data-hintbox-contents');
+						const newHint = oldHint.replace(/>.*?</, `>${formatted}<`);
+						td.setAttribute('data-hintbox-contents', newHint);
+					}
+				}
+			}
 		}
 
 		// Filter selected items based on visible rows
 		const selectedItemsBefore = [...this.#selected_items];
-		const displayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
 		this.#filterSelectedItems();
 
-		// Handle the case where clear filters was clicked with selections
 		if (this.#clearFiltersClickedWithSelections) {
 			this.#selected_items = [{ itemid: this.#null_id, name: null }];
 			this.#selected_hostid = this.#null_id;
@@ -2364,58 +2572,7 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#selected_items = [{ itemid: this.#null_id, name: null }];
 		}
 
-		// Update bar gauges if needed
-		if (this._fields.bar_gauge_layout === 0 || this._fields.layout === 50) {
-			displayedRows.forEach(rowObj => {
-				const tr = rowObj.row;
-				const allTdsInRow = tr.querySelectorAll('td');
-
-				allTdsInRow.forEach((td, index) => {
-					const gauge = this._isBarGauge(td);
-					if (!gauge) return;
-
-					const info = getColumnInfo(td, columns);
-					if (!info) return;
-
-					const { indexNum, columnDef } = info;
-					const { min, max, sum } = resolveMinMaxSum(columnDef, columnStats, indexNum);
-
-					if (min === undefined || max === undefined) return;
-
-					const bgValue = parseFloat(gauge.getAttribute('value'));
-
-					let newTooltipValue = null;
-					let hintStrValue = '';
-					let formatted = newTooltipValue;
-
-					if (this._fields.bar_gauge_tooltip === 0) {
-						newTooltipValue = bgValue / max * 100;
-						hintStrValue = ' % of column max';
-						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
-						gauge.setAttribute('max', max);
-					}
-					else if (this._fields.bar_gauge_tooltip === 1) {
-						newTooltipValue = bgValue / sum * 100;
-						hintStrValue = ' % of column sum';
-						formatted = `${newTooltipValue.toFixed(3)} ${hintStrValue}`;
-						gauge.setAttribute('max', sum);
-					}
-					else {
-						gauge.setAttribute('max', max);
-					}
-
-					if (formatted !== null) {
-						const oldHint = td.getAttribute('data-hintbox-contents');
-						const newHint = oldHint.replace(/>.*?</, `>${formatted}<`);
-						td.setAttribute('data-hintbox-contents', newHint);
-					}
-
-					gauge.setAttribute('min', min);
-				});
-			});
-		}
-
-		this.#totalRows = displayedRows.length;
+		this.#totalRows = this.#visibleRows.length;
 		this.#currentPage = 1;
 
 		this.#removePaginationControls();
@@ -2423,97 +2580,17 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#displayPaginationControls();
 		}
 
-		// Handle Top N/Bottom N filters
-		for (const columnId of this.#activeFilters) {
-			const filterState = this.#filterStates.get(columnId);
-			const columnType = this.#columnTypes.get(columnId);
-
-			if (columnType === 'numeric' && (filterState.type === 'top n' || filterState.type === 'bottom n')) {
-				const n = parseInt(filterState.search);
-				if (isNaN(n) || n <= 0) {
-					console.warn(`Invalid N value for ${filterState.type}: "${filterState.search}"`);
-					continue;
-				}
-
-				const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
-				if (!th) continue; // Column no longer exists
-
-				const columnIndex = parseInt(th.id);
-
-				// Get all currently displayed rows with their values
-				const displayedWithValues = this.#rowsArray
-					.filter(rowObj => {
-						// Only consider rows that passed all other filters
-						if (rowObj.status !== 'display') return false;
-
-						// Skip reset and footer rows
-						const tr = rowObj.row;
-						if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return false;
-
-						return true;
-					})
-					.map(rowObj => {
-						const td = this.#getCellByColumnId(rowObj.row, columnIndex);
-						const valueStr = this.#extractCellValue(td);
-						const value = parseFloat(valueStr);
-						return { rowObj, value, valueStr };
-					})
-					.filter(item => !isNaN(item.value)); // Only keep valid numeric values
-
-				if (displayedWithValues.length === 0) {
-					console.warn(`No valid numeric values found in column ${columnId} for ${filterState.type}`);
-					continue;
-				}
-
-				// Sort based on filter type
-				displayedWithValues.sort((a, b) => {
-					return filterState.type === 'top n' ? b.value - a.value : a.value - b.value;
-				});
-
-				// Take top/bottom N
-				const keepCount = Math.min(n, displayedWithValues.length);
-				const keepSet = new Set(displayedWithValues.slice(0, keepCount).map(item => item.rowObj));
-
-				// Hide rows not in top/bottom N
-				this.#rowsArray.forEach(rowObj => {
-					// Only hide rows that were previously set to display
-					if (rowObj.status === 'display' && !keepSet.has(rowObj)) {
-						const tr = rowObj.row;
-						// Don't hide reset or footer rows
-
-						if (!tr.querySelector('[reset-row]') && !tr.querySelector('[footer-row]')) {
-							rowObj.status = 'hidden';
-						}
-					}
-				});
-			}
-		}
-
-		const finalDisplayedRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
-		this.#totalRows = finalDisplayedRows.length;
-		this.#currentPage = 1;
-
-		// Update pagination if needed
-		this.#removePaginationControls();
-		if (this.#totalRows > this.#rowsPerPage) {
-			this.#displayPaginationControls();
-		}
-
-		// Add hide button after pagination is settled
 		if (this._fields.display_on_click && this.#displayButtonClicked) {
 			this.#addHideButton();
 		}
 
 		if (updateDisplayNow) {
-			// Decide whether to scroll to top based on flag
 			if (this.#isUserInitiatedFilterChange) {
-				// User clicked Apply or Clear Filters scroll to top
 				this._contents.scrollTop = 0;
 			}
 			this.#updateDisplay(false, true, false);
 		}
 
-		// Update all filter icon states
 		this.allThs.forEach(th => {
 			const filterIcon = th.querySelector('.filter-icon');
 			if (filterIcon) {
@@ -2522,7 +2599,6 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		});
 
-		// Refresh all filter popups to show only values from visible rows
 		this.#refreshAllFilterPopups();
 
 		this.checkAndRemarkSelected();
@@ -2574,7 +2650,7 @@ class CWidgetTableModuleRME extends CWidget {
 			document.querySelectorAll('.filter-popup').forEach(popup => {
 				if (popup.style.display === 'flex') {
 					const columnId = popup.dataset.columnId;
-					const filterState = this.#filterStates.get(columnId);
+					const filterState = this.#getFilterState(columnId);
 
 					// Only process if filterState exists
 					if (filterState) {
@@ -2698,17 +2774,40 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		let tdClicked = td;
-		var nextTd = tdClicked.nextElementSibling;
-		var previousTd = tdClicked.previousElementSibling;
+		const row = td.parentNode;
 
-		let element = td.querySelector(this.#menu_selector);
-		if (this._isDoubleSpanColumn(tdClicked)) {
-			element = nextTd.querySelector(this.#menu_selector);
+		// Get menu cells for this row
+		let menuCells = this.#getMenuCells(row);
+
+		// If not cached (shouldn't happen, but safety fallback), find it manually
+		if (!menuCells || menuCells.length === 0) {
+			const element = td.querySelector(this.#menu_selector) ||
+				(this._isDoubleSpanColumn(td) && td.nextElementSibling?.querySelector(this.#menu_selector));
+
+			if (!element) return;
+
+			const dataset = JSON.parse(element.dataset.menu);
+			// Rebuild minimal cache entry for this row
+			menuCells = [{
+				td: this._isDoubleSpanColumn(td) ? td.nextElementSibling : td,
+				dataset: dataset,
+				isNumericCellOfDoubleSpan: this._isDoubleSpanColumn(td),
+				barGaugeTd: this._isDoubleSpanColumn(td) ? td : null
+			}];
+
+			// Update cache
+			const metadata = this.#rowMetadata.get(row);
+			if (metadata) {
+				metadata.menuCells = menuCells;
+			}
 		}
 
-		if (!element) return;
+		// Find the menu cell that matches the clicked td
+		let cellInfo = menuCells.find(cell => cell.td === td || cell.barGaugeTd === td);
 
-		const dataset = JSON.parse(element.dataset.menu);
+		if (!cellInfo) return;
+
+		const dataset = cellInfo.dataset;
 
 		if (dataset?.type === this.#dataset_item) {
 			const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
@@ -2769,6 +2868,12 @@ class CWidgetTableModuleRME extends CWidget {
 	#selectRange(td) {
 		if (!this.#lastClickedCell) return;
 
+		// Check if lastClickedCell still exists in the current DOM
+		if (!this.#lastClickedCell.parentNode || !document.body.contains(this.#lastClickedCell)) {
+			this.#lastClickedCell = null;
+			return;
+		}
+
 		const startIndex = this.#lastClickedCell.parentNode.rowIndex;
 		const endIndex = td.parentNode.rowIndex;
 		const columnIndex = this.#lastClickedCell.cellIndex;
@@ -2777,15 +2882,25 @@ class CWidgetTableModuleRME extends CWidget {
 		const end = Math.max(startIndex, endIndex);
 
 		for (let i = start; i <= end; i++) {
-			const cell = this.#values_table.rows[i].cells[columnIndex];
-			let element = cell.querySelector(this.#menu_selector);
-			if (this._isDoubleSpanColumn(cell)) {
-				element = cell.nextElementSibling.querySelector(this.#menu_selector);
-			}
+			const row = this.#values_table.rows[i];
 
-			if (!element) continue;
+			// Skip if row doesn't exist (can happen with pagination)
+			if (!row || !row.cells) continue;
 
-			const dataset = JSON.parse(element.dataset.menu);
+			const cell = row.cells[columnIndex];
+
+			// Skip if cell doesn't exist
+			if (!cell) continue;
+
+			// Get menu cells for this row
+			const menuCells = this.#getMenuCells(row);
+			if (!menuCells || menuCells.length === 0) continue;
+
+			// Find the menu cell that matches this column
+			const cellInfo = menuCells.find(c => c.td === cell || c.barGaugeTd === cell);
+			if (!cellInfo) continue;
+
+			const dataset = cellInfo.dataset;
 			const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
 			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags };
 
@@ -2794,99 +2909,93 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	_markSelected(type, refresh = false) {
-		const tds = [];
-
-		this.#rowsArray.forEach(rowObj => {
-			const tr = rowObj.row;
-			tr.querySelectorAll('td').forEach(td => tds.push(td));
-		});
-
-		var prevTd = null;
-		let hasItemMarking = false;
-		let hasHostMarking = false;
-		var tdsToMark = [];
-		const nameTracking = [];
-		const actualsFound = [];
-
-		const isItemSelected = (dataset) => {
-			return this.#selected_items.some(item =>
-				item.itemid === dataset.itemid && item.name === dataset.name
-			);
-		};
-
-		const hasName = (dataset) => {
-			return this.#selected_items.some(item =>
-				item.name === dataset.name
-			);
-		};
-
-		for (const td of tds) {
-			const origStyle = td.style.cssText;
-			let element = td.querySelector(this.#menu_selector);
-
-			if (!element) {
-				prevTd = td;
-				continue;
-			}
-
-			const dataset = JSON.parse(element.dataset.menu);
-			const cell_key = dataset?.itemid + "_" + td.getAttribute('id');
-
-			if (dataset?.type === this.#dataset_host) {
-				if (type === this.#dataset_item) continue;
-
-				if (dataset.hostid === this.#selected_hostid) {
-					hasHostMarking = true;
-					td.style.backgroundColor = this.host_bg_color;
-					td.style.color = this.font_color;
-				}
-				else {
-					td.style.backgroundColor = td.style.color = '';
-				}
-			}
-
-			else if (dataset?.type === this.#dataset_item) {
-				if (type === this.#dataset_host) continue;
-
-				if (isItemSelected(dataset)) {
-					hasItemMarking = true;
-					const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
-					actualsFound.push({ itemid: dataset.itemid, name: dataset.name, tags: tags });
-
-					if (this._isDoubleSpanColumn(prevTd)) {
-						td.style.backgroundColor = prevTd.style.backgroundColor = this.bg_color;
-						td.style.color = prevTd.style.color = this.font_color;
-					}
-					else {
-						td.style.backgroundColor = this.bg_color;
-						td.style.color = this.font_color;
-					}
-				}
-				else {
-					if (this._isDoubleSpanColumn(prevTd)) {
-						if (this._isBarGauge(prevTd)) {
-							td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
-						}
-						else if (this._isSparkLine(prevTd)) {
-							td.style = this.#cssStyleMap.get(cell_key);
-							prevTd.style = ''
-						}
-					}
-					else {
-						td.style = this.#cssStyleMap.get(cell_key);
-					}
-				}
-
-				if (hasName(dataset) && !nameTracking.includes(dataset.name)) {
-					tdsToMark.push(td);
-					nameTracking.push(dataset.name);
-				}
-			}
-
-			prevTd = td;
+		// Early exit if nothing to mark
+		if (type === this.#dataset_item && this.#selected_items.length === 0) {
+			this.#clearAllHighlights(type);
+			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
+			return;
 		}
 
-		if (!hasHostMarking && type === this.#dataset_host) {
+		if (type === this.#dataset_host && (!this.#selected_hostid || this.#selected_hostid === this.#null_id)) {
+			this.#clearAllHighlights(type);
+			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
+			return;
+		}
+
+		let hasItemMarking = false;
+		let hasHostMarking = false;
+		const tdsToMark = [];
+		const nameTracking = new Set();
+		const actualsFound = [];
+
+		// Pre-build lookup sets ONCE
+		const selectedItemKeys = type === this.#dataset_item
+			? new Set(this.#selected_items.map(item => `${item.itemid}__${item.name}`))
+			: null;
+
+		const selectedNames = type === this.#dataset_item
+			? new Set(this.#selected_items.map(item => item.name))
+			: null;
+
+		const cellsToHighlight = type === this.#dataset_item
+			? new Set()
+			: (type === this.#dataset_host ? new Set() : null);
+
+		// Single pass through visible rows
+		for (const rowObj of this.#visibleRows) {
+			const row = rowObj.row;
+			const menuCells = this.#getMenuCells(row);
+
+			if (!menuCells || menuCells.length === 0) continue;
+
+			// Process each menu cell in this row
+			for (const cellInfo of menuCells) {
+				const { td, dataset } = cellInfo;
+
+				// Handle host - check ALL host cells every time
+				if (dataset.type === this.#dataset_host) {
+					// Skip if we're processing items
+					if (type === this.#dataset_item) continue;
+
+					if (dataset.hostid === this.#selected_hostid) {
+						hasHostMarking = true;
+						cellsToHighlight.add(td);
+					}
+				}
+				// Handle item marking
+				else if (dataset.type === this.#dataset_item) {
+					// Skip if we're processing hosts
+					if (type === this.#dataset_host) continue;
+
+					const itemKey = `${dataset.itemid}__${dataset.name}`;
+					const isSelected = selectedItemKeys.has(itemKey);
+
+					if (isSelected) {
+						hasItemMarking = true;
+
+						const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
+						actualsFound.push({
+							itemid: dataset.itemid,
+							name: dataset.name,
+							tags: tags
+						});
+
+						cellsToHighlight.add(td);
+					}
+
+					if (selectedNames.has(dataset.name) && !nameTracking.has(dataset.name)) {
+						tdsToMark.push(td);
+						nameTracking.add(dataset.name);
+					}
+				}
+			}
+		}
+
+		// Batch update cell styles
+		this.#batchUpdateCellStyles(cellsToHighlight, type);
+
+		// Handle broadcasts and post-processing
+		if (type === this.#dataset_host && !hasHostMarking) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
 		}
 
@@ -2900,7 +3009,6 @@ class CWidgetTableModuleRME extends CWidget {
 							ctrlKey: index !== 0,
 							view: window
 						});
-
 						this.#handleCellClick(td, ctrlClickEvent);
 					});
 				}
@@ -2908,17 +3016,13 @@ class CWidgetTableModuleRME extends CWidget {
 						refresh &&
 						this.#selected_items[0]['itemid'] !== this.#null_id) {
 					this.#first_td_value_cell = null;
-					const allTds = this.#values_table.querySelectorAll('td');
-					for (const td of allTds) {
-						let element = td.querySelector(this.#menu_selector);
-						if (element) {
-							if (this._isDoubleSpanColumn(td)) {
-								const newTd = td.nextElementSibling;
-								element = newTd.querySelector(this.#menu_selector);
-							}
-							const dataset = JSON.parse(element.dataset.menu);
-							if (dataset.itemid) {
-								this.#first_td_value_cell = td;
+
+					for (const rowObj of this.#visibleRows) {
+						const menuCells = this.#getMenuCells(rowObj.row);
+						if (menuCells) {
+							const firstItemCell = menuCells.find(cell => cell.dataset.itemid);
+							if (firstItemCell) {
+								this.#first_td_value_cell = firstItemCell.td;
 								break;
 							}
 						}
@@ -2943,6 +3047,106 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
+	#batchUpdateCellStyles(cellsToHighlight, type) {
+		const previousCells = type === this.#dataset_item
+			? this.#highlightedCells
+			: this.#highlightedHostCells;
+
+		const bgColor = type === this.#dataset_item ? this.bg_color : this.host_bg_color;
+		const fontColor = this.font_color;
+
+		// Clear cells that shouldn't be highlighted anymore
+		for (const td of previousCells) {
+			if (!cellsToHighlight.has(td)) {
+				const row = td.parentNode;
+				const menuCells = this.#getMenuCells(row);
+				if (menuCells && menuCells.length > 0) {
+					const cellInfo = menuCells.find(c => c.td === td);
+					if (cellInfo) this.#clearCellStyles(cellInfo);
+				}
+			}
+		}
+
+		// Highlight new cells
+		for (const td of cellsToHighlight) {
+			if (!previousCells.has(td)) {
+				const row = td.parentNode;
+				const menuCells = this.#getMenuCells(row);
+				if (menuCells && menuCells.length > 0) {
+					const cellInfo = menuCells.find(c => c.td === td);
+					if (cellInfo) this.#applyCellStyles(cellInfo, bgColor, fontColor);
+				}
+			}
+		}
+
+		// Update tracking
+		if (type === this.#dataset_item) {
+			this.#highlightedCells = cellsToHighlight;
+		}
+		else {
+			this.#highlightedHostCells = cellsToHighlight;
+		}
+	}
+
+	#clearAllHighlights(type) {
+		const cellSet = type === this.#dataset_item
+			? this.#highlightedCells
+			: this.#highlightedHostCells;
+
+		for (const td of cellSet) {
+			const row = td.parentNode;
+			const menuCells = this.#getMenuCells(row);
+			if (menuCells && menuCells.length > 0) {
+				const cellInfo = menuCells.find(c => c.td === td);
+				if (cellInfo) this.#clearCellStyles(cellInfo);
+			}
+		}
+
+		cellSet.clear();
+	}
+
+	// Helper method to apply styles
+	#applyCellStyles(cellInfo, bgColor, fontColor) {
+		const { td, isNumericCellOfDoubleSpan, barGaugeTd } = cellInfo;
+
+		if (isNumericCellOfDoubleSpan && barGaugeTd) {
+			td.style.backgroundColor = barGaugeTd.style.backgroundColor = bgColor;
+			td.style.color = barGaugeTd.style.color = fontColor;
+		}
+		else {
+			td.style.backgroundColor = bgColor;
+			td.style.color = fontColor;
+		}
+	}
+
+	// Help method to clear styles
+	#clearCellStyles(cellInfo) {
+		const { td, dataset, isNumericCellOfDoubleSpan, barGaugeTd } = cellInfo;
+
+		// Use the correct ID based on cell type
+		const id = dataset.type === this.#dataset_host ? dataset.hostid : dataset.itemid;
+		const cell_key = `${id}_${td.getAttribute('id')}`;
+
+		if (isNumericCellOfDoubleSpan && barGaugeTd) {
+			const cachedStyle = this.#cssStyleMap.get(cell_key);
+			if (cachedStyle !== undefined) {
+				if (this._isBarGauge(barGaugeTd)) {
+					td.style.cssText = barGaugeTd.style.cssText = cachedStyle;
+				}
+				else if (this._isSparkLine(barGaugeTd)) {
+					td.style.cssText = cachedStyle;
+					barGaugeTd.style.cssText = '';
+				}
+			}
+		}
+		else {
+			const cachedStyle = this.#cssStyleMap.get(cell_key);
+			if (cachedStyle !== undefined) {
+				td.style.cssText = cachedStyle;
+			}
+		}
+	}
+
 	checkAndRemarkSelected() {
 		if (this.#selected_hostid !== null) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
@@ -2962,15 +3166,131 @@ class CWidgetTableModuleRME extends CWidget {
 
 	// ========== Sorting Methods ========== //
 
+	get _sortableRows() {
+		return this.#rowsArray.filter(rowObj => {
+			const row = rowObj.row;
+			return !this.#isResetRow(row) && !this.#isFooterRow(row);
+		});
+	}
+
+	#initializeColumnMetadata(columnIndex) {
+		// Find the column by index to get its stable ID
+		const th = this.allThs.find(t => t.id === String(columnIndex));
+		if (!th) return null;
+
+		const columnId = this.#getStableColumnId(th);
+
+		// Try to get existing column data, or create it if it doesn't exist
+		let columnInfo = this.#getColumnData(columnId);
+		if (!columnInfo) {
+			// Column wasn't initialize by filters yet - initialize it now
+			columnInfo = this.#initializeColumn(th, columnIndex);
+		}
+
+		// If sort metadata already exists, return it
+		if (columnInfo.sortMetadata) {
+			return columnInfo.sortMetadata;
+		}
+
+		// Build new sort metadata
+		const metadata = {
+			allNumeric: true,
+			values: new Map()
+		};
+
+		// Get sortable rows using the getter
+		const sortableRows = this._sortableRows;
+
+		// Single pass with early detection
+		let nonNumericFound = false;
+		const tempValues = [];
+
+		for (const rowObj of sortableRows) {
+			const row = rowObj.row;
+
+			if (!nonNumericFound) {
+				// Try numeric first
+				const valueObj = this._getNumValue(row, columnIndex, true, true);
+
+				if (valueObj.type === 'text') {
+					nonNumericFound = true;
+					metadata.allNumeric = false;
+
+					// Reprocess all cached values
+					for (const [cachedRow, cachedValueObj] of tempValues) {
+						const correctedValueObj = this._getNumValue(cachedRow, columnIndex, true, false);
+						const textValue = this._getTextValue(cachedRow, columnIndex);
+						metadata.values.set(cachedRow, { valueObj: correctedValueObj, textValue });
+					}
+
+					// Process current row
+					const correctedValueObj = this._getNumValue(row, columnIndex, true, false);
+					const textValue = this._getTextValue(row, columnIndex);
+					metadata.values.set(row, { valueObj: correctedValueObj, textValue });
+				}
+				else {
+					// Still numeric, cache temporarily
+					tempValues.push([row, valueObj]);
+				}
+			}
+			else {
+				// Already know it's not all numeric
+				const valueObj = this._getNumValue(row, columnIndex, true, false);
+				const textValue = this._getTextValue(row, columnIndex);
+				metadata.values.set(row, { valueObj, textValue });
+			}
+		}
+
+		// If all were numeric, transfer temp cache
+		if (!nonNumericFound) {
+			for (const [row, valueObj] of tempValues) {
+				metadata.values.set(row, { valueObj, textValue: null });
+			}
+		}
+
+		columnInfo.sortMetadata = metadata;
+		return metadata;
+	}
+
+	// Invalidate cache when data changes
+	#invalidateColumnMetadata(columnIndex = null) {
+		if (columnIndex !== null) {
+			const th = this.allThs.find(t => parseInt(t.id) === columnIndex);
+			if (th) {
+				const columnId = this.#getStableColumnId(th);
+				const columnInfo = this.#getColumnData(columnId);
+				if (columnInfo) {
+					columnInfo.sortMetadata = null;
+				}
+			}
+		}
+		else {
+			// Clear all sort metadata
+			this.#columnData.forEach(columnInfo => {
+				columnInfo.sortMetadata = null;
+			});
+		}
+	}
 
 	#sortTable(th, ascending, span, preserve = false) {
+		// Store the stable column ID instead of just the th reference
+		const stableColumnId = this.#getStableColumnId(th);
+
 		this._sortTableRowsByColumn(th.id, ascending);
 		th.dataset['sort'] = ascending ? 'asc' : 'desc';
 		span.className = ascending ? 'arrow-up' : 'arrow-down';
-		if (!preserve) {
+
+		if (preserve) {
 			this.#currentPage = 1;
 		}
+
 		this.#updateDisplay();
+
+		// Store both the column ID and sort direction
+		this.#lastSortState = {
+			stableColumnId: stableColumnId,
+			ascending: ascending
+		};
 	}
 
 	_handleDateStr(x, regex) {
@@ -3061,82 +3381,73 @@ class CWidgetTableModuleRME extends CWidget {
 
 	}
 
-
 	_getNumValue(x, index, convert, allNumeric) {
-		try {
-			var x = x.cells[index].innerText;
-		}
-		catch(err) {
-			var x = '-1';
+		const cell = x.cells[index];
+		if (!cell) {
+			return { type: 'empty', value: '-1' };
 		}
 
-		var obj = new Object();
+		// Try hintbox first (most common case for sortable numeric data)
+		const hintboxContent = cell.getAttribute('data-hintbox-contents');
+		if (hintboxContent) {
+			// Faster regex: directly capture the number
+			const match = hintboxContent.match(/>([^<]+)</);
+			if (match && match[1]) {
+				const rawValue = match[1].trim();
 
+				// Fast path: Check if it's numeric without additional parsing
+				if (this._isNumeric(rawValue)) {
+					return {
+						type: 'number',
+						value: parseFloat(rawValue)
+					};
+				}
+
+				// Non-numeric hintbox content
+				if (convert) {
+					return {
+						type: 'text',
+						value: rawValue
+					};
+				}
+			}
+		}
+
+		// Slow path: Only for cells without hintbox (headers, text columns, etc')
+		x = cell.innerText;
+
+		if (x === '') {
+			return {
+				type: convert && allNumeric ? 'number' : 'empty',
+				value: convert && allNumeric ? '-1' : ''
+			};
+		}
+
+		// Keep previous logic here for edge cases
 		x = this._checkIfDate(x);
 
-		if (x == '') {
-			if (convert) {
-				if (allNumeric) {
-					obj.type = 'number';
-					obj.value = '-1';
-				}
-				else {
-					obj.type = 'text';
-					obj.value = x;
-				}
-			}
-			else {
-				obj.type = 'empty';
-				obj.value = x;
-			}
-			return obj;
+		if (this._isNumeric(x)) {
+			return { type: 'number', value: x };
 		}
 
-		var splitx = x.split(' ');
-		if (splitx.length == 2) {
-			var numValue = splitx[0];
-			var units_in_display = splitx[1];
+		const splitx = x.split(' ');
+		if (splitx.length === 2) {
+			const numValue = splitx[0];
+			const units_in_display = splitx[1];
 
 			if (this._isNumeric(numValue)) {
-				obj.type = 'number';
-				if (units_in_display !== undefined) {
-					var multiplier = this.#Multiplier.get(units_in_display.charAt(0));
-
-					if (multiplier) {
-						obj.value = parseFloat(numValue) * multiplier;
-					}
-					else {
-						obj.value = numValue;
-					}
-				}
-				else {
-					obj.value = numValue;
-				}
-			}
-			else {
-				obj.type = 'text';
-				obj.value = x.toString();
+				const multiplier = this.#Multiplier.get(units_in_display.charAt(0));
+				return {
+					type: 'number',
+					value: multiplier ? parseFloat(numValue) * multiplier : numValue
+				};
 			}
 		}
-		else {
-			if (splitx.length == 1) {
-				var numValue = splitx[0];
-				if (this._isNumeric(numValue)) {
-					obj.type = 'number';
-					obj.value = numValue;
-				}
-				else {
-					obj.type = 'text';
-					obj.value = x.toString();
-				}
-			}
-			else {
-				obj.type = 'text';
-				obj.value = x.toString();
-			}
+		else if (splitx.length === 1 && this._isNumeric(splitx[0])) {
+			return { type: 'number', value: splitx[0] };
 		}
 
-		return obj;
+		return { type: 'text', value: x.toString() };
 	}
 
 	_getTextValue(x, index) {
@@ -3148,75 +3459,69 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
-
 	_sortTableRowsByColumn(columnIndex, ascending) {
-		const allRows = this.#rowsArray;
+		// Get or initialize cached metadata for this column
+		const columnMeta = this.#initializeColumnMetadata(columnIndex);
 
-		const resetRows = [];
-		const footerRows = [];
-		const sortableRows = [];
+		// Get sortable rows using the getter
+		const sortableRows = this._sortableRows;
 
-		for (const rowObj of allRows) {
-			const row = rowObj.row;
-			let isReset = false;
-			let isFooter = false;
+		// Check if we need to refresh cached values (in case rows were added/modified by filters)
+		const needsRefresh = sortableRows.some(rowObj =>
+			!columnMeta.values.has(rowObj.row)
+		);
 
-			const cells = row.getElementsByTagName('td');
-			for (let c = 0; c < cells.length; c++) {
-				if (cells[c].querySelector('[reset-row]')) {
-					isReset = true;
-					break;
+		if (needsRefresh) {
+			for (const rowObj of sortableRows) {
+				if (!columnMeta.values.has(rowObj.row)) {
+					const valueObj = this._getNumValue(rowObj.row, columnIndex, true, columnMeta.allNumeric);
+					const textValue = columnMeta.allNumeric ? null : this._getTextValue(rowObj.row, columnIndex);
+
+					columnMeta.values.set(rowObj.row, {
+						valueObj,
+						textValue
+					});
 				}
-				if (cells[c].hasAttribute('footer-row')) {
-					isFooter = true;
-					break;
-				}
-			}
-
-			if (isReset) {
-				resetRows.push(rowObj);
-			}
-			else if (isFooter) {
-				footerRows.push(rowObj);
-			}
-			else {
-				sortableRows.push(rowObj);
 			}
 		}
 
-		const prelimValues = sortableRows.map(rowObj => this._getNumValue(rowObj.row, columnIndex, false, true));
-		const allNumeric = !prelimValues.some(obj => obj.type === 'text');
+		// Sort sortableRows
+		if (columnMeta.allNumeric) {
+			// Numeric sort - fast path
+			sortableRows.sort((a, b) => {
+				const aCache = columnMeta.values.get(a.row);
+				const bCache = columnMeta.values.get(b.row);
 
-		const rowsWithValues = sortableRows.map(rowObj => ({
-			rowObj,
-			valueObj: this._getNumValue(rowObj.row, columnIndex, true, allNumeric),
-			textValue: this._getTextValue(rowObj.row, columnIndex)
-		}));
+				const aVal = aCache.valueObj.value;
+				const bVal = bCache.valueObj.value;
 
-		rowsWithValues.sort((a, b) => {
-			if (!allNumeric) {
-				return ascending
-					? a.textValue.localeCompare(b.textValue)
-					: b.textValue.localeCompare(a.textValue);
-			}
-
-			const aVal = a.valueObj.value;
-			const bVal = b.valueObj.value;
-
-			if (a.valueObj.type === 'number' && b.valueObj.type === 'number') {
 				return ascending ? aVal - bVal : bVal - aVal;
-			}
+			});
+		}
+		else {
+			// Text sort - use localeCompare
+			sortableRows.sort((a, b) => {
+				const aText = columnMeta.values.get(a.row).textValue;
+				const bText = columnMeta.values.get(b.row).textValue;
 
-			return ascending
-				? aVal.toString().localeCompare(bVal.toString())
-				: bVal.toString().localeCompare(aVal.toString());
-		});
+				return ascending
+					? aText.localeCompare(bText)
+					: bText.localeCompare(aText);
+			});
+		}
 
-		this.#rowsArray = [...resetRows, ...rowsWithValues.map(obj => obj.rowObj), ...footerRows];
+		const resetRows = this.#rowsArray.filter(rowObj => this.#isResetRow(rowObj.row));
+		const footerRows = this.#rowsArray.filter(rowObj => this.#isFooterRow(rowObj.row));
 
+		this.#rowsArray = [...resetRows, ...sortableRows, ...footerRows];
+		this.#updateVisibleRowsCache();
 	}
 
 	// ========== Display and Update Methods ========== //
+
+	#updateVisibleRowsCache() {
+		this.#visibleRows = this.#rowsArray.filter(rowObj => rowObj.status === 'display');
+	}
 
 	#updateDisplay(scrollToTop = false, updateFooter = false, firstRun = false, restoreScrollTop = null) {
 		// Don't save on first run from setContents
@@ -3224,16 +3529,15 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#saveScrollPosition();
 		}
 
-		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
-		const maxPages = Math.ceil(visibleRows.length / this.#rowsPerPage);
+		const maxPages = Math.ceil(this.#visibleRows.length / this.#rowsPerPage);
 
 		if (this.#currentPage > maxPages) {
 			this.#currentPage = 1;
 		}
 
 		const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
-		const endIndex = Math.min(startIndex + this.#rowsPerPage, visibleRows.length);
-		const displayedRows = visibleRows.slice(startIndex, endIndex);
+		const endIndex = Math.min(startIndex + this.#rowsPerPage, this.#visibleRows.length);
+		const displayedRows = this.#visibleRows.slice(startIndex, endIndex);
 
 		let blurAdded = false;
 		if (!updateFooter && maxPages > 1 &&
@@ -3308,11 +3612,7 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	updateTableFooter() {
-		const footerRowObj = this.#rowsArray.find(({ row }) =>
-			row.querySelector('td[footer-row]')
-		);
-
-		const visibleRows = this.#rowsArray.filter(({ status }) => status === 'display');
+		const footerRowObj = this.#rowsArray.find(rowObj => this.#isFooterRow(rowObj.row));
 
 		if (!footerRowObj) {
 			return;
@@ -3341,7 +3641,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 			const values = [];
 			const unitsSet = new Set();
-			visibleRows.forEach(rowObj => {
+			this.#visibleRows.forEach(rowObj => {
 				const td = rowObj.row.querySelectorAll('td')[colIndex];
 				if (!td) return;
 				const rawHtml = td.getAttribute('data-hintbox-contents');
@@ -3669,7 +3969,7 @@ class CWidgetTableModuleRME extends CWidget {
 			this._hide_preloader_animation_frame = null;
 		}
 
-		container.classList.add('is-loading');
+		container.classList.add('is-loading', 'widget-blur');
 		container.classList.remove('is-loading-fadein', 'delayed-15s');
 	}
 
@@ -3783,45 +4083,97 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#values_table = this._target.getElementsByClassName('list-table').item(0);
 		this.#parent_container = this.#values_table.closest('.dashboard-grid-widget-container');
 		const allRows = Array.from(this.#values_table.querySelectorAll('tbody tr'));
+
 		var colIndex = 0;
 
-		const allTds = this.#values_table.querySelectorAll('td');
-		this.allThs = this.#values_table.querySelectorAll('th');
+		this.allThs = Array.from(this.#values_table.querySelectorAll('th'));
 
-		let id = 0;
-		allTds.forEach(td => {
-			td.setAttribute('id', id);
-			let key = td.innerText.trim();
-			let element = td.querySelector(this.#menu_selector);
-			if (element) {
-				if (this._isDoubleSpanColumn(td)) {
-					let newTd = td.nextElementSibling;
-					element = newTd.querySelector(this.#menu_selector);
-				}
-				const dataset = JSON.parse(element.dataset.menu);
-				try {
-					if (dataset.itemid) {
-						if (this.#first_td_value_cell === null) {
-							this.#first_td_value_cell = td;
+		this.#first_td_value_cell = null;
+		this.#first_td_host_cell = null;
+
+		const newCssMap = new Map();
+
+		let globalTdIndex = 0;
+
+		// Build rowsArray and cache all metadata in a single pass
+		this.#rowsArray = allRows.map(row => {
+			const cells = row.querySelectorAll('td');
+			const cellsByColumn = new Map();
+			const menuCells = [];
+			let isReset = false;
+			let isFooter = false;
+			let currentColumnId = 0;
+
+			cells.forEach(cell => {
+				// Set global ID
+				cell.setAttribute('id', globalTdIndex);
+
+				// Cache by column index
+				cellsByColumn.set(currentColumnId, cell);
+
+				// Check for menu data
+				const element = cell.querySelector(this.#menu_selector);
+				let key = globalTdIndex;
+
+				if (element?.dataset.menu) {
+					try {
+						const dataset = JSON.parse(element.dataset.menu);
+						const prevTd = cell.previousElementSibling;
+						const isNumericCellOfDoubleSpan = prevTd && this._isDoubleSpanColumn(prevTd);
+
+						menuCells.push({
+							td: cell,
+							dataset: dataset,
+							isNumericCellOfDoubleSpan: isNumericCellOfDoubleSpan,
+							barGaugeTd: isNumericCellOfDoubleSpan ? prevTd : null
+						});
+
+						// Track first clickable cells
+						if (dataset.itemid) {
+							this.#first_td_value_cell ??= cell;
+							key = dataset.itemid;
 						}
-						key = dataset.itemid;
-					}
-					else if (dataset.hostid) {
-						if (this.#first_td_host_cell === null) {
-							this.#first_td_host_cell = td;
+						else if (dataset.hostid) {
+							this.#first_td_host_cell ??= cell;
+							key = dataset.hostid;
 						}
-						key = dataset.hostid;
+					}
+					catch (error) {
+						console.error('Failed to parse menu data:', error);
 					}
 				}
-				catch (error) {
-					console.log('Fail', td)
+
+				// Cache CSS styles
+				newCssMap.set(`${key}_${globalTdIndex}`, cell.style.cssText || '');
+
+				// Check row type markers
+				if (cell.querySelector('[reset-row]')) {
+					isReset = true;
 				}
-			}
-			key = [key, td.getAttribute('id')].join("_");
-			let style = td.getAttribute('style') || '';
-			this.#cssStyleMap.set(key, style);
-			id++;
+				if (cell.hasAttribute('footer-row')) {
+					isFooter = true;
+				}
+
+				const colspan = cell.hasAttribute('colspan') ? parseInt(cell.getAttribute('colspan')) : 1;
+				currentColumnId += colspan;
+				globalTdIndex++;
+			});
+
+			// Store metadata for this row
+			this.#rowMetadata.set(row, {
+				cellsByColumn,
+				menuCells,
+				isReset,
+				isFooter
+			});
+
+			return {
+				row,
+				status: 'display'
+			};
 		});
+
+		this.#cssStyleMap = newCssMap;
 
 		this.allThs.forEach((th) => {
 			// FIRST: Add the arrow span to the existing HTML
@@ -3874,12 +4226,8 @@ class CWidgetTableModuleRME extends CWidget {
 			th.insertBefore(textSpan, th.firstChild);
 		});
 
-		this.#rowsArray = allRows.map(row => {
-			return {
-				row,
-				status: 'display'
-			};
-		});
+		// Clear column metadata cache when data changes
+		this.#invalidateColumnMetadata();
 
 		this.#values_table.addEventListener('click', (event) => {
 			if (event.target.closest('.filter-icon')) {
@@ -3914,19 +4262,32 @@ class CWidgetTableModuleRME extends CWidget {
 
 
 		// Store existing filter states before recreating filters
-		const existingFilterStates = new Map(this.#filterStates);
+		const existingColumnData = new Map();
+		this.#columnData.forEach((columnInfo, columnId) => {
+			existingColumnData.set(columnId, {
+				filterState: { ...columnInfo.filterState },
+				columnType: columnInfo.columnType
+			});
+		});
 
 		this.#createColumnFilters();
 
 		// Restore filter states after recreation
-		existingFilterStates.forEach((filterState, columnId) => {
-			if (this.#filterStates.has(columnId)) {
-				this.#filterStates.set(columnId, filterState);
+		existingColumnData.forEach((savedData, columnId) => {
+			const columnInfo = this.#getColumnData(columnId);
+			if (columnInfo) {
+				columnInfo.filterState = savedData.filterState;
+				if (savedData.columnType) {
+					columnInfo.columnType = savedData.columnType;
+				}
+				// Invalidate cached sorted values - data has changed
+				columnInfo.cachedSortedValues = null;
 			}
 		});
 
 		// Update the popup UI elements to reflect the restored state
-		existingFilterStates.forEach((filterState, columnId) => {
+		existingColumnData.forEach((savedData, columnId) => {
+			const filterState = savedData.filterState;
 			const popupId = `${this.#values_table.id}-${this._widgetid}-popup-${columnId}`;
 			const popup = document.getElementById(popupId);
 			if (popup) {
@@ -3952,17 +4313,18 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 
 		// Validate and clean up filter states based on current data
-		this.#filterStates.forEach((filterState, columnId) => {
+		this.#columnData.forEach((columnInfo, columnId) => {
+			const filterState = columnInfo.filterState;
 			// Skip if no checkbox selections
 			if (!filterState.checked || filterState.checked.length === 0) {
 				return;
 			}
 
 			// Find the column
-			const th = Array.from(this.allThs).find(t => this.#getStableColumnId(t) === columnId);
+			const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
 			if (!th) {
 				// Column doesn't exist anymore, clear the filter
-				this.#filterStates.delete(columnId);
+				this.#columnData.delete(columnId);
 				this.#activeFilters.delete(columnId);
 				return;
 			}
@@ -3973,7 +4335,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 			this.#rowsArray.forEach(rowObj => {
 				const tr = rowObj.row;
-				if (tr.querySelector('[reset-row]') || tr.querySelector('[footer-row]')) return;
+				if (this.#isResetRow(tr) || this.#isFooterRow(tr)) return;
 
 				const td = this.#getCellByColumnId(tr, columnIndex);
 				if (td) {
@@ -4008,9 +4370,9 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 
 		// Check if we have active filters
-		const hasActiveFilters = existingFilterStates.size > 0 &&
-			Array.from(existingFilterStates.values()).some(
-				state => state.checked.length > 0 || state.search !== ''
+		const hasActiveFilters = existingColumnData.size > 0 &&
+			Array.from(existingColumnData.values()).some(
+				savedData => savedData.filterState.checked.length > 0 || savedData.filterState.search !== ''
 			);
 
 		// If we have active filters, apply them BEFORE showing the table
@@ -4018,25 +4380,32 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#applyAllFilters(false); // <-- This applies filters SYNCHRONOUSLY
 		}
 
+		this.#updateVisibleRowsCache();
+
 		// Apply sort BEFORE displaying (if a sort was previously active)
-		if (this.#th !== undefined) {
-			const previousSortedTh = Array.from(this.allThs).find(
-				th => th.getAttribute('id') === this.#th.getAttribute('id')
+		if (this.#lastSortState !== null) {
+			// Find the column by stable ID instead of position
+			const previousSortedTh = this.allThs.find(
+				th => this.#getStableColumnId(th) === this.#lastSortState.stableColumnId
 			);
 
 			if (previousSortedTh) {
 				const span = this.#getSetSpans(previousSortedTh);
-				const ascending = this.#th.getAttribute('data-sort') === 'asc' ? true : false;
+				const ascending = this.#lastSortState.ascending;
+
 				// Sort the rowsArray directly without calling #sortTable to avoid the display update
 				this._sortTableRowsByColumn(previousSortedTh.id, ascending);
 				previousSortedTh.dataset['sort'] = ascending ? 'asc' : 'desc';
 				span.className = ascending ? 'arrow-up' : 'arrow-down';
-				this.#th = previousSortedTh;
+			}
+			else {
+				// Column no longer exists (e.g., system column was removed)
+				this.#lastSortState = null;
 			}
 		}
 
 		// NOW set up display AFTER filters AND sort are applied
-		this.#totalRows = this.#rowsArray.filter(r => r.status === 'display').length;
+		this.#totalRows = this.#visibleRows.length;
 		this.#updateDisplay(false, true, true, this.#scrollPosition.top);
 
 		this.#removePaginationControls();
@@ -4045,9 +4414,6 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		this.closeFilterPopupHandler = this.closeFilterPopup.bind(this);
-		this.boundMouseDown = this.handleMouseDownTi.bind(this);
-		this.boundMouseMove = this.handleMouseMoveTi.bind(this);
-		this.boundMouseUp = this.handleMouseUpTi.bind(this);
 		this.attachListeners();
 
 		if (this._fields.use_host_storage && CWidgetTableModuleRME.#hasManualSelection) {
@@ -4133,9 +4499,7 @@ class CWidgetTableModuleRME extends CWidget {
 			return;
 		}
 
-		const displayRows = this.#rowsArray
-			.filter(item => item.status === 'display')
-			.map(item => item.row);
+		const displayRows = this.#visibleRows.map(item => item.row);
 
 		if (displayRows.length === 0) {
 			return;
