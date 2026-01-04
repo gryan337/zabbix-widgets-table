@@ -2897,99 +2897,11 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	_markSelected(type, refresh = false) {
-		const tds = [];
-
-		this.#rowsArray.forEach(rowObj => {
-			const tr = rowObj.row;
-			tr.querySelectorAll('td').forEach(td => tds.push(td));
-		});
-
-		var prevTd = null;
-		let hasItemMarking = false;
-		let hasHostMarking = false;
-		var tdsToMark = [];
-		const nameTracking = [];
-		const actualsFound = [];
-
-		const isItemSelected = (dataset) => {
-			return this.#selected_items.some(item =>
-				item.itemid === dataset.itemid && item.name === dataset.name
-			);
-		};
-
-		const hasName = (dataset) => {
-			return this.#selected_items.some(item =>
-				item.name === dataset.name
-			);
-		};
-
-		for (const td of tds) {
-			const origStyle = td.style.cssText;
-			let element = td.querySelector(this.#menu_selector);
-
-			if (!element) {
-				prevTd = td;
-				continue;
-			}
-
-			const dataset = JSON.parse(element.dataset.menu);
-			const cell_key = dataset?.itemid + "_" + td.getAttribute('id');
-
-			if (dataset?.type === this.#dataset_host) {
-				if (type === this.#dataset_item) continue;
-
-				if (dataset.hostid === this.#selected_hostid) {
-					hasHostMarking = true;
-					td.style.backgroundColor = this.host_bg_color;
-					td.style.color = this.font_color;
-				}
-				else {
-					td.style.backgroundColor = td.style.color = '';
-				}
-			}
-
-			else if (dataset?.type === this.#dataset_item) {
-				if (type === this.#dataset_host) continue;
-
-				if (isItemSelected(dataset)) {
-					hasItemMarking = true;
-					const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
-					actualsFound.push({ itemid: dataset.itemid, name: dataset.name, tags: tags });
-
-					if (this._isDoubleSpanColumn(prevTd)) {
-						td.style.backgroundColor = prevTd.style.backgroundColor = this.bg_color;
-						td.style.color = prevTd.style.color = this.font_color;
-					}
-					else {
-						td.style.backgroundColor = this.bg_color;
-						td.style.color = this.font_color;
-					}
-				}
-				else {
-					if (this._isDoubleSpanColumn(prevTd)) {
-						if (this._isBarGauge(prevTd)) {
-							td.style = prevTd.style = this.#cssStyleMap.get(cell_key);
-						}
-					}
-					else {
-						td.style = this.#cssStyleMap.get(cell_key);
-					}
-				}
-
-				if (hasName(dataset) && !nameTracking.includes(dataset.name)) {
-					tdsToMark.push(td);
-					nameTracking.push(dataset.name);
-				}
-			}
-
-			prevTd = td;
-=======
 		// Early exit if nothing to mark
 		if (type === this.#dataset_item && this.#selected_items.length === 0) {
 			this.#clearAllHighlights(type);
 			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
 			return;
->>>>>>> 75fc966 (Issue #35 consolidate memoization as best we can. Add lazy loaded popups on click. Vastly improve column sorting performance even on incredibly large tables of 20000+ rows. Eliminate lag when clicking table cells to broadcast by caching selected cells. Vastly improve other areas of redundant looping and enacting single-pass logic when possible.)
 		}
 
 		if (type === this.#dataset_host && (!this.#selected_hostid || this.#selected_hostid === this.#null_id)) {
