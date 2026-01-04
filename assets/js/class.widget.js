@@ -3121,10 +3121,6 @@ class CWidgetTableModuleRME extends CWidget {
 				if (this._isBarGauge(barGaugeTd)) {
 					td.style.cssText = barGaugeTd.style.cssText = cachedStyle;
 				}
-				else if (this._isSparkLine(barGaugeTd)) {
-					td.style.cssText = cachedStyle;
-					barGaugeTd.style.cssText = '';
-				}
 			}
 		}
 		else {
