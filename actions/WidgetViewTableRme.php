@@ -837,6 +837,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 	private function applyItemOrderingLimitThreeCol(array &$table): void {
 		$complete_set = [];
+
 		foreach ($table as &$row) {
 			foreach ($row as $hostid => &$values) {
 				foreach ($values as $index => &$metric) {
@@ -848,54 +849,42 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 					else {
 						unset($row[$hostid][$index]);
 					}
-					unset($metric);
 				}
-				unset($values);
+				unset($metric);
 			}
-			unset($row);
+			unset($values);
 		}
+		unset($row);
 		
 		switch ($this->fields_values['item_ordering_order']) {
 			case WidgetForm::ORDER_TOP_N:
 				usort($complete_set, function($a, $b) {
-					return $b[2] <=> $a[2];
+					return $b[Widget::CELL_VALUE] <=> $a[Widget::CELL_VALUE];
 				});
 				break;
 			case WidgetForm::ORDER_BOTTOM_N:
 				usort($complete_set, function($a, $b) {
-					return $a[2] <=> $b[2];
+					return $a[Widget::CELL_VALUE] <=> $b[Widget::CELL_VALUE];
 				});
 				break;
-				
 		}
 		
 		$complete_set = array_slice($complete_set, 0, $this->fields_values['item_ordering_limit']);
-		$itemids_to_keep = [];
-		$itemid_map = [];
-		foreach ($complete_set as $metric) {
-			$itemid = $metric[Widget::CELL_ITEMID];
-			if (!isset($itemid_map[$itemid])) {
-				$itemids_to_keep[] = $itemid;
-				$itemid_map[$itemid] = true;
-			}
-		}
+
+		$itemids_to_keep = array_column($complete_set, Widget::CELL_ITEMID);
+		$itemid_map = array_flip($itemids_to_keep);
 		
 		foreach ($table as &$rowb) {
 			foreach ($rowb as $hostidb => &$valuesb) {
-				foreach ($valuesb as $indexb => &$metricb) {
-					$itemida = $metricb[Widget::CELL_ITEMID];
-					if (isset($itemid_map[$itemida]) && $itemid_map[$itemida]) {
-						$itemid_map[$itemida] = false;
-					}
-					else {
-						unset($rowb[$hostidb][$indexb]);
-					}
-					unset($metricb);
-				}
-				unset($valueb);
+				$valuesb = array_filter($valuesb, function($metricb) use ($itemid_map) {
+					return isset($itemid_map[$metricb[Widget::CELL_ITEMID]]);
+				});
+
+				$valuesb = array_values($valuesb);
 			}
-			unset($rowb);
+			unset($valuesb);
 		}
+		unset($rowb);
 	}
 	
 	private function applyItemOrdering(array &$table, array $db_hosts): void {
