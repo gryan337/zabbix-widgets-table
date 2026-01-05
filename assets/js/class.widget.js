@@ -2647,7 +2647,10 @@ class CWidgetTableModuleRME extends CWidget {
 
 		if (!clickedPopup && !clickedFilterIcon) {
 			// Restore initial state for any open popups before closing
-			document.querySelectorAll('.filter-popup').forEach(popup => {
+			this.#popupIds.forEach(popupId => {
+				const popup = document.getElementById(popupId);
+				if (!popup) return;
+
 				if (popup.style.display === 'flex') {
 					const columnId = popup.dataset.columnId;
 					const filterState = this.#getFilterState(columnId);
