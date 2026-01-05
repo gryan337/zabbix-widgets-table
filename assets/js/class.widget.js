@@ -1682,6 +1682,10 @@ class CWidgetTableModuleRME extends CWidget {
 			updateClearFiltersButton();
 		};
 
+		filterTypeSelect.addEventListener('filterTypeChanged', (e) => {
+			handleInput();
+		});
+
 		// Store handleInput reference so #updateFilterPopupValues can call it
 		searchInput._handleInputFunction = handleInput;
 
