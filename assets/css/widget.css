@@ -155,18 +155,26 @@ a.ext-btn:focus-visible {
   border: 1px solid #333;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
   font-family: Arial, Tahoma, Verdana, sans-serif;
-  border-radius: 4px;
+  border-radius: 8px;
   min-width: 400px;
-  max-width: 700px;
-  max-height: 450px;
+  max-width: 600px;
+  max-height: 400px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   font-size: 13px;
 }
 
+.filter-popup-width-calc {
+  visibility: hidden;
+  position: absolute;
+  white-space: nowrap;
+  font: 13px sans-serif;
+}
+
 .filter-popup-header {
   display: flex;
+  cursor: grab;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
@@ -201,10 +209,26 @@ a.ext-btn:focus-visible {
   font-size: 11px;
 }
 
+.filter-popup-scroll-container {
+  max-height: 250px;
+  min-height: 100px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  padding-right: 6px;
+  box-sizing: border-box;
+}
+
 .filter-popup-checkboxes {
   padding: 8px;
   overflow-y: auto;
   flex: 1;
+  position: absolute;
+  width: 100%;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: block;
 }
 
 .filter-popup-checkboxes label {
@@ -268,13 +292,20 @@ a.ext-btn:focus-visible {
   font-size: 12px;
 }
 
+.filter-popup-footer .buttons-row {
+  display: flex;
+  justify-content: flex-start;
+  gap: 6px;
+  padding-left: 10px;
+}
+
 .filter-popup-footer button {
   background: #2c72d3;
   color: white;
   border: none;
   padding: 6px 12px;
   font-size: 13px;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -282,6 +313,12 @@ a.ext-btn:focus-visible {
   height: 30px;
   min-width: 80px;
   top: 1px;
+}
+
+.filter-popup-footer button.select {
+  background: #455a64;
+  color: #eeeeee;
+  font-weight: bold;
 }
 
 .filter-popup-footer button.cancel {
@@ -294,6 +331,7 @@ a.ext-btn:focus-visible {
   visibility: hidden;
   background-color: #F06292;
   color: #fff;
+  padding: 6px 12px;
 }
 
 .filter-popup-footer button:hover {
@@ -313,6 +351,19 @@ a.ext-btn:focus-visible {
 
 .filter-popup-footer .footer-action-row {
   margin-top: 10px;
+}
+
+.filter-icon {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  position: relative;
+  top = 0;
 }
 
 .filter-icon.active svg path {
@@ -335,7 +386,7 @@ a.ext-btn:focus-visible {
 
 .filter-warning-icon {
   cursor: help;
-  display: flex;
+  display: none;
   align-items: center;
   margin-left: 12px;
   position: relative;
@@ -353,6 +404,9 @@ a.ext-btn:focus-visible {
   border-radius: 3px;
   font-size: 12px;
   white-space: nowrap;
+  display: none;
+  pointer-events: none;
+  position: absolute;
   z-index: 10000;
 }
 
@@ -653,6 +707,66 @@ tbody tr {
   padding-left: 0px;
 }
 
+/* backdrop overlay */
+.custom-alert-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-alert-box {
+  background: var(--alert-box-bg);
+  border: 2px solid #ff6b6b;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+  min-width: 300px;
+  max-width: 500px;
+  text-align: center;
+}
+
+.custom-alert-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ff6b6b;
+  margin-bottom: 10px;
+}
+
+.custom-alert-msg {
+  font-size: 14px;
+  color: var(--alert-box-msg);;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.custom-alert-backdrop .custom-alert-okbtn {
+  background: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 2px 24px;
+  font-size: 14px;
+  font-weight: bold;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 80px;
+}
+
+.custom-alert-backdrop .custom-alert-okbtn:hover {
+  background: #ff5252;
+}
+
+.custom-alert-backdrop .custom-alert-okbtn:focus {
+  outline: 2px solid #ff5252;
+  outline-offset: 2px;
+}
+
 /* Enhanced header background */
 .dashboard-widget-tablemodulerme th {
   background: linear-gradient(180deg, rgba(71, 150, 196, 0.15) 0%, rgba(71, 150, 196, 0.05) 100%);
@@ -723,6 +837,8 @@ tbody tr {
   --header-bg-hover: rgba(71, 150, 196, 0.35);
   --header-shadow-hover: rgba(0, 0, 0, 0.15);
   --loading-overlay: rgba(255, 255, 255, 1);
+  --alert-box-bg: #ffffff;
+  --alert-box-msg: #333333;
 }
 
 [theme="dark-theme"],
@@ -732,6 +848,8 @@ tbody tr {
   --button-hover-bg: #555;
   --header-bg-hover: rgba(71, 150, 196, 0.2);
   --header-shadow-hover: rgba(0, 0, 0, 0.1);
+  --alert-box-bg: #2a2a2a;
+  --alert-box-msg: #f2f2f2;
 }
 
 [theme="hc-dark"] {

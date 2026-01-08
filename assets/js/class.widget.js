@@ -892,75 +892,25 @@ class CWidgetTableModuleRME extends CWidget {
 		// Create backdrop
 		const backdrop = document.createElement('div');
 		backdrop.className = 'custom-alert-backdrop';
-		backdrop.style.cssText = `
-			position: fixed;
-			top: 0;
-			left: 0;
-			width: 100%;
-			height: 100%;
-			background-color: rgba(0, 0, 0, 0.6);
-			z-index: 10000;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-		`;
 
 		// Create alert box
 		const alertBox = document.createElement('div');
 		alertBox.className = 'custom-alert-box';
-		alertBox.style.cssText = `
-			background: ${this.#theme === 'hc-light' || this.#theme === 'blue-theme' ? '#ffffff' : '#2a2a2a'};
-			border: 2px solid #ff6b6b;
-			border-radius: 8px;
-			box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-			padding: 20px;
-			min-width: 300px;
-			max-width: 500px;
-			text-align: center;
-		`;
 
 		// Create title
 		const alertTitle = document.createElement('div');
-		alertTitle.style.cssText = `
-			font-size: 16px;
-			font-weight: bold;
-			color: #ff6b6b;
-			margin-bottom: 10px;
-		`;
+		alertTitle.className = 'custom-alert-title';
 		alertTitle.textContent = title;
 
 		// Create message
 		const alertMessage = document.createElement('div');
-		alertMessage.style.cssText = `
-			font-size: 14px;
-			color: ${this.#theme === 'hc-light' || this.#theme === 'blue-theme' ? '#333' : '#f2f2f2'};
-			margin-bottom: 20px;
-			line-height: 1.5;
-		`;
+		alertMessage.className = 'custom-alert-msg';
 		alertMessage.textContent = message;
 
 		// Create OK button
 		const okButton = document.createElement('button');
+		okButton.className = 'custom-alert-okbtn';
 		okButton.textContent = 'OK';
-		okButton.style.cssText = `
-			background: #ff6b6b;
-			color: white;
-			border: none;
-			padding: 2px 24px;
-			font-size: 14px;
-			font-weight: bold;
-			border-radius: 4px;
-			cursor: pointer;
-			min-width: 80px;
-		`;
-
-		okButton.addEventListener('mouseover', () => {
-			okButton.style.background = '#ff5252';
-		});
-
-		okButton.addEventListener('mouseout', () => {
-			okButton.style.background = '#ff6b6b';
-		});
 
 		okButton.addEventListener('click', (e) => {
 			e.stopPropagation();
@@ -1011,10 +961,7 @@ class CWidgetTableModuleRME extends CWidget {
 			: sortedValues;
 
 		const tempSpan = document.createElement('span');
-		tempSpan.style.visibility = 'hidden';
-		tempSpan.style.position = 'absolute';
-		tempSpan.style.whiteSpace = 'nowrap';
-		tempSpan.style.font = '13px sans-serif';
+		tempSpan.className = 'filter-popup-width-calc';
 		document.body.appendChild(tempSpan);
 
 		let maxWidth = 0;
@@ -1024,7 +971,7 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 		document.body.removeChild(tempSpan);
 
-		return Math.min(Math.max(maxWidth + 150, 400), 700);
+		return Math.min(Math.max(maxWidth + 150, 400), 600);
 	}
 
 	#createHelpTooltip(helpIcon, helpText) {
@@ -1033,7 +980,6 @@ class CWidgetTableModuleRME extends CWidget {
 		tooltip.id = tooltipId;
 		tooltip.className = 'filter-tooltip';
 		tooltip.textContent = helpText;
-		tooltip.style.display = 'none';
 		document.body.appendChild(tooltip);
 
 		this.#filterTooltipIds.add(tooltipId);
@@ -1061,7 +1007,6 @@ class CWidgetTableModuleRME extends CWidget {
 
 		const warningIcon = document.createElement('span');
 		warningIcon.className = 'filter-warning-icon';
-		warningIcon.style.display = 'none';
 		warningIcon.innerHTML = warningSvg;
 
 		// Warning tooltip with widget-specific ID
@@ -1070,9 +1015,6 @@ class CWidgetTableModuleRME extends CWidget {
 		tooltip.id = tooltipId;
 		tooltip.className = 'custom-tooltip';
 		tooltip.textContent = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
-		tooltip.style.position = 'absolute';
-		tooltip.style.display = 'none';
-		tooltip.style.pointerEvents = 'none';
 		document.body.appendChild(tooltip);
 
 		this.#filterTooltipIds.add(tooltipId);
@@ -1094,25 +1036,13 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#createCheckboxContainer() {
 		const scrollContainer = document.createElement('div');
-		scrollContainer.style.maxHeight = '300px';
-		scrollContainer.style.minHeight = '100px';
-		scrollContainer.style.overflowY = 'auto';
-		scrollContainer.style.overflowX = 'hidden';
-		scrollContainer.style.position = 'relative';
-		scrollContainer.style.paddingRight = '6px';
-		scrollContainer.style.boxSizing = 'border-box';
+		scrollContainer.className = 'filter-popup-scroll-container';
 
 		const spacer = document.createElement('div');
 		spacer.style.position = 'relative';
 
 		const checkboxContainer = document.createElement('div');
 		checkboxContainer.className = 'filter-popup-checkboxes';
-		checkboxContainer.style.position = 'absolute';
-		checkboxContainer.style.width = '100%';
-		checkboxContainer.style.top = '0';
-		checkboxContainer.style.left = '0';
-		checkboxContainer.style.right = '0';
-		checkboxContainer.style.display = 'block';
 
 		spacer.appendChild(checkboxContainer);
 		scrollContainer.appendChild(spacer);
@@ -1133,14 +1063,11 @@ class CWidgetTableModuleRME extends CWidget {
 		sectionContainer.appendChild(summary);
 
 		const toggleRow = document.createElement('div');
-		toggleRow.style.marginTop = '6px';
 		toggleRow.className = 'toggle-row';
 
 		const toggleButton = document.createElement('button');
 		toggleButton.textContent = 'Select All';
-		toggleButton.style.background = '#455A64';
-		toggleButton.style.color = '#eee';
-		toggleButton.style.fontWeight = 'bold';
+		toggleButton.className = 'select';
 		toggleButton.type = 'button';
 		toggleRow.appendChild(toggleButton);
 
@@ -1152,30 +1079,21 @@ class CWidgetTableModuleRME extends CWidget {
 		footer.appendChild(gap);
 
 		const buttonsRow = document.createElement('div');
-		buttonsRow.style.display = 'flex';
-		buttonsRow.style.justifyContent = 'flex-start';
-		buttonsRow.style.gap = '8px';
-		buttonsRow.style.paddingLeft = '10px';
+		buttonsRow.className = 'buttons-row';
 
 		const applyButton = document.createElement('button');
 		applyButton.textContent = 'Apply';
 		applyButton.type = 'button';
-		applyButton.style.minWidth = '80px';
-		applyButton.style.padding = '6px 12px';
 
 		const resetButton = document.createElement('button');
 		resetButton.textContent = 'Cancel';
 		resetButton.className = 'cancel';
 		resetButton.type = 'button';
-		resetButton.style.minWidth = '80px';
-		resetButton.style.padding = '6px 12px';
 
 		const clearFiltersButton = document.createElement('button');
 		clearFiltersButton.textContent = 'Clear Filters';
 		clearFiltersButton.className = 'clear-filters';
 		clearFiltersButton.type = 'button';
-		clearFiltersButton.style.padding = '6px 12px';
-		clearFiltersButton.style.visibility = 'hidden';
 
 		const warningIcon = this.#createWarningIcon();
 
@@ -1532,7 +1450,10 @@ class CWidgetTableModuleRME extends CWidget {
 		checkboxContainer.style.top = `${startIndex * 30}px`;
 		checkboxContainer.innerHTML = '';
 
+		const checkedSet = new Set(filterState.checked.map(v => v.toLowerCase()));
+
 		const idPrefix = `filter_${columnId}_`;
+		const fragment = document.createDocumentFragment();
 		const spansToCheck = [];
 
 		for (let i = startIndex; i < endIndex; i++) {
@@ -1546,7 +1467,7 @@ class CWidgetTableModuleRME extends CWidget {
 			checkbox.type = 'checkbox';
 			checkbox.id = id;
 			checkbox.value = value;
-			checkbox.checked = filterState.checked.includes(String(value).toLowerCase());
+			checkbox.checked = checkedSet.has(String(value).toLowerCase());
 
 			const span = document.createElement('span');
 			span.textContent = value;
@@ -1555,9 +1476,11 @@ class CWidgetTableModuleRME extends CWidget {
 			label.appendChild(span);
 			label.setAttribute('data-index', i);
 
-			checkboxContainer.appendChild(label);
+			fragment.appendChild(label);
 			spansToCheck.push(span);
 		}
+
+		checkboxContainer.appendChild(fragment);
 
 		// Check for visual truncation after render completes
 		requestAnimationFrame(() => {
@@ -1788,9 +1711,11 @@ class CWidgetTableModuleRME extends CWidget {
 			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 		});
 
+		let rafId = null;
 		scrollContainer.addEventListener('scroll', () => {
-			renderVisibleCheckboxes();
-		});
+			if (rafId) cancelAnimationFrame(rafId);
+			rafId = requestAnimationFrame(renderVisibleCheckboxes);
+		}, { passive: true });
 
 		applyButton.addEventListener('click', (e) => {
 			e.stopPropagation();
@@ -1863,6 +1788,13 @@ class CWidgetTableModuleRME extends CWidget {
 			searchInput.value = '';
 			filterState.checked = [];
 			filterState.search = '';
+
+			if (filterTypeButton.getAttribute('aria-expanded') === 'true') {
+				filterTypeButton.click();
+			}
+
+			filterTypeButton.textContent = columnType === 'text' ? 'Contains' : 'Equals';
+			filterTypeSelect.value = columnType === 'text' ? 'contains' : 'equals';
 
 			isAllSelected = false;
 			toggleButton.textContent = 'Select All';
@@ -1960,9 +1892,7 @@ class CWidgetTableModuleRME extends CWidget {
 			checkboxContainer,
 			searchInput,
 			summary,
-			toggleButton,
-			filterTypeSelect,
-			filterTypeButton
+			toggleButton
 		};
 
 		// Setup event handlers
@@ -1996,16 +1926,6 @@ class CWidgetTableModuleRME extends CWidget {
 	#createFilterUI(th, columnId) {
 		const filterIcon = document.createElement('span');
 		filterIcon.className = 'filter-icon';
-		filterIcon.style.cursor = 'pointer';
-		filterIcon.style.display = 'inline-flex';
-		filterIcon.style.alignItems = 'center';
-		filterIcon.style.justifyContent = 'center';
-		filterIcon.style.marginLeft = '2px';
-		filterIcon.style.width = '18px';
-		filterIcon.style.height = '18px';
-		filterIcon.style.verticalAlign = 'middle';
-		filterIcon.style.position = 'relative';
-		filterIcon.style.top = '0';
 		filterIcon.title = 'Click to filter this column';
 		filterIcon.dataset.columnId = columnId;
 
@@ -2153,7 +2073,7 @@ class CWidgetTableModuleRME extends CWidget {
 		popup.style.left = '0px';
 		popup.style.top = '0px';
 
-		const scrollContainer = popup.querySelector('[style*="max-height: 300px"]');
+		const scrollContainer = popup.querySelector('.filter-popup-scroll-container');
 		if (scrollContainer) {
 			scrollContainer.scrollTop = 0;
 		}
@@ -2177,9 +2097,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		popup.style.left = `${leftPos}px`;
 		popup.style.top = `${topPos}px`;
-
 		popup.style.visibility = 'visible';
-		popup.style.display = 'flex';
 
 		requestAnimationFrame(() => {
 			const searchInput = popup.querySelector('input[type="text"]');
@@ -2687,8 +2605,6 @@ class CWidgetTableModuleRME extends CWidget {
 			offsetY: 0
 		});
 
-		handle.style.cursor = 'grab';
-
 		// Create bound handlers specific to this popup
 		const boundMouseDown = (e) => this.handleMouseDownTi(e, popupId, popup, handle);
 
@@ -2840,8 +2756,6 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			this._markSelected(this.#dataset_item);
-			const itemsSelected = this.#processItemIds();
-			this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, itemsSelected);
 		}
 		else if (dataset?.type === this.#dataset_host) {
 			if (this.#selected_hostid === dataset.hostid) {
