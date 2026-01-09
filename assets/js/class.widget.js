@@ -1013,7 +1013,7 @@ class CWidgetTableModuleRME extends CWidget {
 		const tooltip = document.createElement('div');
 		const tooltipId = `${this._widgetid}-warning-tooltip-${Math.random().toString(36).substr(2, 9)}`;
 		tooltip.id = tooltipId;
-		tooltip.className = 'custom-tooltip';
+		tooltip.className = 'warning-tooltip';
 		tooltip.textContent = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
 		document.body.appendChild(tooltip);
 
@@ -2029,36 +2029,6 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		const filterState = this.#getFilterState(columnId);
-		const columnInfo = this.#getColumnData(columnId);
-
-		// Check if this is a reopening (popup was hidden, not just created)
-		const isReopening = popup.dataset.hasBeenOpened === 'true';
-
-		// Check if other filters are active
-		const otherFiltersActive = Array.from(this.#activeFilters).some(id => id !== columnId);
-
-		// Determine if we need to recalculate or can use cache
-		let sortedVisibleValues;
-
-		if (otherFiltersActive) {
-			// Other filters active MUST recalculate to show only available values
-			sortedVisibleValues = this.#getPossibleValuesForColumn(columnId);
-			// Update cache with new filtered values
-			columnInfo.cachedSortedValues = sortedVisibleValues;
-
-			this.#updateFilterPopupValues(popup, columnId, sortedVisibleValues, filterState);
-		}
-		else if (isReopening) {
-			// Reopening, no other filters can use cached values
-			sortedVisibleValues = columnInfo.cachedSortedValues;
-
-			this.#updateFilterPopupValues(popup, columnId, sortedVisibleValues, filterState);
-		}
-		else {
-			// First open, no other filters - values are already fresh from popup creation
-		}
-
-		// Mark that this popup has been opened
 		popup.dataset.hasBeenOpened = 'true';
 
 		// STORE INITIAL STATE in popup's dataset
@@ -2204,7 +2174,7 @@ class CWidgetTableModuleRME extends CWidget {
 				filterState,
 				columnIndex: parseInt(th.id),
 				visibleValues: useAllValues
-					? this.#getPossibleValuesForColumn(columnId)
+					? new Set(this.#getPossibleValuesForColumn(columnId))
 					: new Set(),
 				skipVisibleRowScan: useAllValues
 			});
