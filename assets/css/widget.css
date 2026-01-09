@@ -366,7 +366,7 @@ a.ext-btn:focus-visible {
   height: 18px;
   vertical-align: middle;
   position: relative;
-  top = 0;
+  top: 0;
 }
 
 .filter-icon.active svg path {
@@ -400,7 +400,7 @@ a.ext-btn:focus-visible {
   display: block;
 }
 
-.custom-tooltip {
+.warning-tooltip {
   background-color: var(--warning-tooltip-bg);
   border: 1px solid #ccc;
   padding: 4px 8px;
