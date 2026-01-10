@@ -185,7 +185,7 @@ $thresholds = (new CDiv([
 		)),
 	(new CTemplateTag('thresholds-row-tmpl'))
 		->addItem((new CRow([
-			(new CColor('highlights[#{rowNum}][color]', '#{color}'))->appendColorPickerJs(false),
+			(new CColor('thresholds[#{rowNum}][color]', '#{color}'))->appendColorPickerJs(false),
 			(new CTextBox('thresholds[#{rowNum}][threshold]', '#{threshold}', false))
 				->setWidth(ZBX_TEXTAREA_TINY_WIDTH)
 				->setAriaRequired(),
