@@ -15,6 +15,120 @@ use Modules\TableModuleRME\Includes\{
 use Modules\TableModuleRME\Actions\WidgetViewTableRme;
 use Modules\TableModuleRME\Widget;
 
+class DateConverter {
+	private static $cache = [];
+	private static $cacheSize = 0;
+	private static $maxCacheSize = 10000;
+
+	public static function convert($dateString) {
+		// Handle non-string types first
+		if (!is_string($dateString)) {
+			// If it's already numeric (int, float), just return it
+			if (is_numeric($dateString)) {
+				return $dateString;
+			}
+			//For other types (bool, array, object, null), convert to string
+			$dateString = (string)$dateString;
+		}
+
+		// Check cache (only for strings)
+		if (isset(self::$cache[$dateString])) {
+			return self::$cache[$dateString];
+		}
+
+		$result = self::convertInternal($dateString);
+
+		// Cache the result (with size limit)
+		if (self::$cacheSize < self::$maxCacheSize) {
+			self::$cache[$dateString] = $result;
+			self::$cacheSize++;
+		}
+
+		return $result;
+	}
+
+	private static function convertInternal($dateString) {
+		// Fast bail-outs first
+		if (empty($dateString)) {
+			return $dateString;
+		}
+
+		$firstChar = $dateString[0];
+		$len = strlen($dateString);
+
+		// Fast path: Pure numeric timestamp
+		if ($firstChar >= '0' && $firstChar <= '9') {
+			if (ctype_digit($dateString) && $len >= 9 && $len <= 10) {
+				$timestamp = (int)$dateString;
+				if ($timestamp <= 4133980800) {
+					return $timestamp;
+				}
+			}
+
+			// Version-like pattern.
+			if ($len < 20 && strpos($dateString, '.') !== false) {
+				$dotCount = substr_count($dateString, '.');
+				if ($dotCount >= 1 && $dotCount <= 4) {
+					if (preg_match('/^\d+(\.\d+)+$/', $dateString)) {
+						return $dateString;
+					}
+				}
+			}
+		}
+
+		// Negative timestamp check
+		if ($firstChar === '-' && $len < 12 && is_numeric($dateString)) {
+			return (int)$dateString;
+		}
+
+		// Month name check
+		if (stripos($dateString, 'jan') !== false ||
+			stripos($dateString, 'feb') !== false ||
+			stripos($dateString, 'mar') !== false ||
+			stripos($dateString, 'apr') !== false ||
+			stripos($dateString, 'may') !== false ||
+			stripos($dateString, 'jun') !== false ||
+			stripos($dateString, 'jul') !== false ||
+			stripos($dateString, 'aug') !== false ||
+			stripos($dateString, 'sep') !== false ||
+			stripos($dateString, 'oct') !== false ||
+			stripos($dateString, 'nov') !== false ||
+			stripos($dateString, 'dec') !== false) {
+			goto parse_date;
+		}
+
+		// Timezone indicators.
+		if ($len > 3 && (stripos($dateString, 'gmt') !== false ||
+				stripos($dateString, 'utc') !== false)) {
+			goto parse_date;
+		}
+
+		// ISO format: YYYY-MM-DD
+		if ($len >= 10 && $dateString[4] === '-' && $dateString[7] === '-') {
+			if ($firstChar >= '1' && $firstChar <= '2') {
+				goto parse_date;
+			}
+		}
+
+		// Slash-based dates: MM/DD/YYYY or DD/MM/YYYY
+		if ($len >= 8 && $len <= 10 && substr_count($dateString, '/') === 2) {
+			goto parse_date;
+		}
+
+		// Doesn't look like a date or epoch
+		return $dateString;
+
+		parse_date:
+		$dt = @date_create($dateString);
+		return ($dt !== false) ? $dt->getTimestamp() : $dateString;
+	}
+
+	public static function clearCache() {
+		self::$cache = [];
+		self::$cacheSize = 0;
+	}
+}
+
 $table = (new CTableInfo())->addClass(ZBX_STYLE_LIST_TABLE_STICKY_HEADER);
 $groupby_host = false;
 
@@ -1097,7 +1211,13 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 	}
 
 	if ($value !== '') {
-		$value_cell->setHint((new CDiv($value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
+		$result = DateConverter::convert($value);
+		if (is_numeric($result) && $result > 1000000) {
+			$value_cell->setHint((new CDiv($result))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
+		}
+		else {
+			$value_cell->setHint((new CDiv($value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
+		}
 	}
 
 	$styles = ['background-color: #' . $color];
@@ -1437,6 +1557,10 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 		->addClass(ZBX_STYLE_NOWRAP);
 
 	if ($value !== '') {
+		$result = DateConverter::convert($value);
+		if (is_numeric($result) && $result > 1000000) {
+			$value = $result;
+		}
 		$value_cell->setHint((new CDiv($value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
 	}
 
@@ -1561,6 +1685,10 @@ function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value
 		->addClass(ZBX_STYLE_NOWRAP);
 
 	if ($value !== '') {
+		$result = DateConverter::convert($value);
+		if (is_numeric($result) && $result > 1000000) {
+			$value = $result;
+		}
 		$value_cell->setHint((new CDiv($value))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false);
 	}
 
