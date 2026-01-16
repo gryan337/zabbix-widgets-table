@@ -175,6 +175,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'url_open_in' =>ZBX_WIDGET_FIELD_TYPE_INT32,
 			'min' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'max' => ZBX_WIDGET_FIELD_TYPE_STR,
+			'background_gradiency' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'decimal_places' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'go_to_history_values' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'valuemap_override' => ZBX_WIDGET_FIELD_TYPE_INT32,
@@ -203,6 +204,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'max' => '',
 			'highlights' => [],
 			'thresholds' => [],
+			'background_gradiency' => 0,
 			'decimal_places' => CWidgetFieldColumnsList::DEFAULT_DECIMAL_PLACES,
 			'go_to_history_values' => 0,
 			'valuemap_override' => CWidgetFieldColumnsList::VALUEMAP_AS_IS,
@@ -340,6 +342,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'font_color'			=> ['type' => API_COLOR, 'default' => ''],
 			'min'					=> ['type' => API_NUMERIC, 'default' => ''],
 			'max'					=> ['type' => API_NUMERIC, 'default' => ''],
+			'background_gradiency'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'decimal_places'		=> ['type' => API_INT32, 'in' => '0:10', 'default' => self::DEFAULT_DECIMAL_PLACES],
 			'go_to_history_values'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'highlights'			=> ['type' =>  API_OBJECTS, 'uniq' => [['pattern']], 'fields' => [
