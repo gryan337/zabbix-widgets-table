@@ -3000,11 +3000,11 @@ class CWidgetTableModuleRME extends CWidget {
 		const { td, isNumericCellOfDoubleSpan, barGaugeTd } = cellInfo;
 
 		if (isNumericCellOfDoubleSpan && barGaugeTd) {
-			td.style.backgroundColor = barGaugeTd.style.backgroundColor = bgColor;
+			td.style.background = barGaugeTd.style.backgroundColor = bgColor;
 			td.style.color = barGaugeTd.style.color = fontColor;
 		}
 		else {
-			td.style.backgroundColor = bgColor;
+			td.style.background = bgColor;
 			td.style.color = fontColor;
 		}
 	}
