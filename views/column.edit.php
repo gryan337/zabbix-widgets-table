@@ -212,6 +212,20 @@ $form_grid->addItem([
 	(new CFormField($thresholds))->addClass('js-thresholds-row')
 ]);
 
+// Set linear color gradiency (automatic gradiency chosen)
+$form_grid->addItem([
+	(new CLabel([
+		_('Background gradiency'),
+		makeHelpIcon([
+			_('Checking this box will add a gradiency to the cell background color, including threshold colors and text highlight colors'), BR(),
+			_('Bar gauges and sparklines will not be affected')
+		])
+	]))->addClass('js-background-gradiency'),
+	(new CFormField(
+		(new CCheckBox('background_gradiency'))->setChecked($data['background_gradiency'])
+	))->addClass('js-background-gradiency')
+]);
+
 // Decimal places.
 $form_grid->addItem([
 	(new CLabel(_('Decimal places'), 'decimal_places'))->addClass('js-decimals-row'),

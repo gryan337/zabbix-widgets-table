@@ -989,7 +989,7 @@ function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false
 	}
 
 	$last_row = [];
-	$style = 'background-color: #' . $bg_color . '; color: #' . $ft_color;
+	$style = 'background: #' . $bg_color . '; color: #' . $ft_color;
 	$last_row[] = (new CCol($footer_title))
 		->setAttribute('footer-row', '')
 		->addStyle($style);
@@ -1051,7 +1051,7 @@ function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false
 				$override_icon = (new CSpan(new CHtmlEntity('&#9432;')))
 					->addClass('override-icon')
 					->setTitle($tooltip_text)
-					->addStyle('background-color: blue; color: white; border-radius: 50%; padding: 0 4px; cursor: pointer; margin-left: 3px;');
+					->addStyle('background: blue; color: white; border-radius: 50%; padding: 0 4px; cursor: pointer; margin-left: 3px;');
 				$value_span->addItem($override_icon);
 			}
 		}
@@ -1220,7 +1220,12 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 		}
 	}
 
-	$styles = ['background-color: #' . $color];
+	if ($column['background_gradiency']) {
+		$styles = [getGradientBackground($color)];
+	}
+	else {
+		$styles = ['background: #' . $color];
+	}
 
 	if ($font_color !== '') {
 		$styles[] = 'color: #' . $font_color;
@@ -1241,13 +1246,18 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 						}
 
 						foreach ($styles as $key => $style) {
-							if (strpos($style, 'background-color:') === 0) {
+							if (strpos($style, 'background:') === 0) {
 								unset($styles[$key]);
 								break;
 							}
 						}
 
-						$styles[] = 'background-color: #' . $threshold['color'];
+						if ($column['background_gradiency']) {
+							$styles[] = getGradientBackground($threshold['color']);
+						}
+						else {
+							$styles[] = 'background: #' . $threshold['color'];
+						}
 					}
 				}
 			}
@@ -1269,13 +1279,18 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 					}
 
 					foreach ($styles as $key => $style) {
-						if (strpos($style, 'background-color:') === 0) {
+						if (strpos($style, 'background:') === 0) {
 							unset($styles[$key]);
 							break;
 						}
 					}
 					
-					$styles[] = 'background-color: #' . $threshold['color'];
+					if ($column['background_gradiency']) {
+						$styles[] = getGradientBackground($threshold['color']);
+					}
+					else {
+						$styles[] = 'background: #' . $threshold['color'];
+					}
 				}
 			}
 
@@ -1529,7 +1544,12 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 
 	$styles = [];
 	if ($color !== '') {
-		$styles[] = 'background-color: #' . $color;
+		if ($column['background_gradiency']) {
+			$styles[] = getGradientBackground($color);
+		}
+		else {
+			$styles[] = 'background: #' . $color;
+		}
 	}
 
 	if ($font_color !== '') {
@@ -1597,7 +1617,12 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 
 	$styles = [];
 	if ($color !== '') {
-		$styles[] = 'background-color: #' . $color;
+		if ($column['background_gradiency']) {
+			$styles[] = getGradientBackground($color);
+		}
+		else {
+			$styles[] = 'background: #' . $color;
+		}
 	}
 
 	$style_link = null;
@@ -1697,4 +1722,34 @@ function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value
 	}
 
 	return [$value_cell->addStyle('text-align: center;')];
+}
+
+function getGradientBackground($hexColor, $intensity = 0.3, $direction = 'to bottom') {
+	$hex = ltrim($hexColor, '#');
+
+	if (strlen($hex) !== 6) {
+		return 'background: #' . $hex;
+	}
+
+	$r = hexdec(substr($hex, 0, 2));
+	$g = hexdec(substr($hex, 2, 2));
+	$b = hexdec(substr($hex, 4, 2));
+
+	// Calculate luminance to determine if color is light or dark
+	$luminance = (0.299 * $r + 0.587 * $g + 0.114 * $b) / 255;
+
+	// For dark colors, lighten; for light colors, darken
+	$factor = $luminance > 0.5 ? -$intensity : $intensity;
+
+	// Generate second color
+	$r2 = max(0, min(255, round($r + ($r * $factor))));
+	$g2 = max(0, min(255, round($g + ($g * $factor))));
+	$b2 = max(0, min(255, round($b + ($b * $factor))));
+
+	return sprintf(
+		'background: linear-gradient(%s, rgb(%d, %d, %d), rgb(%d, %d, %d))',
+		$direction,
+		$r, $g, $b,
+		$r2, $g2, $b2
+	);
 }
