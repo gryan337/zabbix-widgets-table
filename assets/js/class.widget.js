@@ -2433,7 +2433,6 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 					else if (useSumTooltip) {
 						const newTooltipValue = bgValue / sum * 100;
-						hintStrValue = ' % of column sum';
 						formatted = `${newTooltipValue.toFixed(3)} % of column sum`;
 						gauge.setAttribute('max', sum);
 					}
