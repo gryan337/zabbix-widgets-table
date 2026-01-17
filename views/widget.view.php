@@ -1674,15 +1674,36 @@ function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value
 }
 
 function getGradientBackground($hexColor, $intensity = 0.3, $direction = 'to bottom') {
+	// Handle null or non-string input
+	if (!is_string($hexColor) || empty($hexColor)) {
+		return 'background: ' . $hexColor;
+	}
+
 	$hex = ltrim($hexColor, '#');
 
-	if (strlen($hex) !== 6) {
+	// Validate hex string contains only valid hexadecimal characters
+	if (!ctype_xdigit($hex) || strlen($hex) !== 6) {
 		return 'background: #' . $hex;
 	}
 
 	$r = hexdec(substr($hex, 0, 2));
 	$g = hexdec(substr($hex, 2, 2));
 	$b = hexdec(substr($hex, 4, 2));
+
+	// Validate intensity
+	$intensity = is_numeric($intensity) ? (float)$intensity : 0.3;
+	$intensity = max(0, min(1, $intensity));
+
+	// Validate directon
+	$validDirections = [
+		'to bottom', 'to top', 'to right',
+		'to left', 'to bottom right', 'to bottom left',
+		'to top right', 'to top left'
+	];
+
+	if (!in_array($direction, $validDirections)) {
+		$direction = 'to bottom';
+	}
 
 	// Calculate luminance to determine if color is light or dark
 	$luminance = (0.299 * $r + 0.587 * $g + 0.114 * $b) / 255;
