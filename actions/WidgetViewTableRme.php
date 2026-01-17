@@ -514,23 +514,33 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		$itemidArray = [];
 		$tagsArray = [];
 
+		if (!is_array($inputArray)) {
+			$inputArray = [$inputArray];
+		}
+
 		foreach ($inputArray as $item) {
 			if (is_string($item) && json_decode($item) !== null) {
-				$decodeArray = json_decode($item, true);
-				foreach ($decodeArray as $subItem) {
-					if (isset($subItem['itemid'])) {
-						$itemidArray[] = $subItem['itemid'];
-					}
+				$decodedArray = json_decode($item, true);
 
-					if (isset($subItem['tags'])) {
-						foreach ($subItem['tags'] as $tag) {
-							$tagsArray[] = [
-								'operator' => 1,
-								'tag' => $tag['tag'],
-								'value' => $tag['value']
-							];
+				if (is_array($decodedArray)) {
+					foreach ($decodedArray as $subItem) {
+						if (isset($subItem['itemid'])) {
+							$itemidArray[] = $subItem['itemid'];
+						}
+
+						if (isset($subItem['tags'])) {
+							foreach ($subItem['tags'] as $tag) {
+								$tagsArray[] = [
+									'operator' => 1,
+									'tag' => $tag['tag'],
+									'value' => $tag['value']
+								];
+							}
 						}
 					}
+				}
+				else {
+					$itemidArray[] = $decodedArray;
 				}
 			}
 			else {
