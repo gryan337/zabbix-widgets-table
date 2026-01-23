@@ -4395,13 +4395,16 @@ class CWidgetTableModuleRME extends CWidget {
 			return;
 		}
 
+		// Build map of visualization column indices from header structure
+		const vizIndices = this.buildVisualizationColumnMap();
+
 		const baseHeaders = this.getHeaders();
 
-		const columnUnits = this.collectUnitsPerColumn(displayRows);
+		const columnUnits = this.collectUnitsPerColumn(displayRows, vizIndices);
 
 		const headers = this.addUnitsToHeaders(baseHeaders, columnUnits);
 
-		const dataRows = displayRows.map(row => this.extractRowData(row).data);
+		const dataRows = displayRows.map(row => this.extractRowData(row, vizIndices).data);
 
 		const allData = [headers, ...dataRows];
 
@@ -4437,13 +4440,40 @@ class CWidgetTableModuleRME extends CWidget {
 		return headers;
 	}
 
-	extractRowData(rowElement) {
+	buildVisualizationColumnMap() {
+		const vizIndices = new Set();
+		let tdIndex = 0;
+
+		// Analyze the header row to find columns with colspan > 1
+		this.allThs.forEach((th) => {
+			const colspan = parseInt(th.getAttribute('colspan') || '1', 10);
+
+			// If colspan is 2, the first td cell is the visualization (skip it)
+			if (colspan === 2) {
+				vizIndices.add(tdIndex);
+				tdIndex += 2;
+			}
+			else {
+				tdIndex += 1;
+			}
+		});
+
+		return vizIndices;
+	}
+
+	extractRowData(rowElement, vizIndices) {
 		const data = [];
 		const units = [];
 		const cells = rowElement.querySelectorAll('td');
 
-		cells.forEach(cell => {
+		cells.forEach((cell, index) => {
+			// Skip sparklines and bar gauges
 			if (this._isSparkLine(cell) || this._isBarGauge(cell)) {
+				return;
+			}
+
+			// Skip if this index is known to be a visualization column
+			if (vizIndices && vizIndices.has(index)) {
 				return;
 			}
 
@@ -4473,11 +4503,11 @@ class CWidgetTableModuleRME extends CWidget {
 		return { data, units };
 	}
 
-	collectUnitsPerColumn(displayRows) {
+	collectUnitsPerColumn(displayRows, vizIndices) {
 		const columnUnits = [];
 
 		displayRows.forEach(row => {
-			const { units } = this.extractRowData(row);
+			const { units } = this.extractRowData(row, vizIndices);
 
 			units.forEach((unit, colIndex) => {
 				if (!columnUnits[colIndex]) {
