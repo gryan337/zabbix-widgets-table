@@ -259,6 +259,12 @@ class WidgetForm extends CWidgetForm {
 		}
 
 		$item_groupings = $this->getField('item_group_by')->getValue();
+
+		if ($this->getField('layout')->getValue() == self::LAYOUT_COLUMN_PER && empty($item_groupings)) {
+			$errors[] = _s('At least one Item grouping is required when using \'Column per pattern\'');
+			return $errors;
+		}
+
 		if (!$this->isTemplateDashboard() &&
 				$this->getField('aggregate_all_hosts')->getValue() == 1 &&
 				count($item_groupings) == 1 &&
