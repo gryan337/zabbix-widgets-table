@@ -118,6 +118,9 @@ class WidgetForm extends CWidgetForm {
 				new CWidgetFieldTableModuleItemGrouping('item_group_by', _('Item grouping'))
 			)
 			->addField(
+				new CWidgetFieldCheckBox('split_groupings', _('Split groupings into columns'))
+			)
+			->addField(
 				(new CWidgetFieldTextBox('grouping_delimiter', _('Grouping delimiter')))
 					->setValue(self::DEFAULT_DELIMITER)
 					->setFlags(CWidgetField::FLAG_NOT_EMPTY)

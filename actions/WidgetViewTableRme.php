@@ -329,7 +329,8 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'num_hosts' => [],
 			'bar_gauge_layout' => $this->fields_values['bar_gauge_layout'],
 			'bar_gauge_tooltip' => $this->fields_values['bar_gauge_tooltip'],
-			'delimiter' => $this->fields_values['grouping_delimiter']
+			'delimiter' => $this->fields_values['grouping_delimiter'],
+			'split_groupings' => $this->fields_values['split_groupings']
 		];
 		
 		if (!$this->isTemplateDashboard() &&
@@ -372,6 +373,27 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 	
 	private function computeNameForPerColumn(array $tags, array $groupings): string {
 		$delimiter = $this->fields_values['grouping_delimiter'];
+
+		if ($this->fields_values['split_groupings']) {
+			$parts = [];
+
+			// Create a lookup map for faster tag searching
+			$tag_map = [];
+			foreach ($tags as $tag) {
+				$tag_map[$tag['tag']] = $tag['value'];
+			}
+
+			// Build parts array with one entry per grouping tag
+			foreach ($groupings as $attrs) {
+				$tag_name = $attrs['tag_name'];
+				// Use empty string if tag doesn't exist
+				$parts[] = $tag_map[$tag_name] ?? '';
+			}
+
+			// Join all parts with delimiter
+			return implode($delimiter, $parts);
+		}
+
 		$delimiter_length = mb_strlen($delimiter, 'UTF-8');
 		$name = '';
 		foreach ($groupings as $i => $attrs) {
@@ -383,6 +405,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				}
 			}
 		}
+
 		$name = substr($name, 0, -$delimiter_length);
 		return $name;
 	}

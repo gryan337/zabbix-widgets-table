@@ -1,13 +1,6 @@
 <?php declare(strict_types = 0);
 
 
-/**
- * Top items widget view.
- *
- * @var CView $this
- * @var array $data
- */
-
 use Modules\TableModuleRME\Includes\{
 	CWidgetFieldColumnsList,
 	WidgetForm
@@ -136,6 +129,7 @@ if ($data['error'] !== null) {
 	$table->setNoDataMessage($data['error'], null, ZBX_ICON_SEARCH_LARGE);
 }
 else {
+	$action_column_svg = getActionColumnIcon();
 	$header = [];
 	$item_header = empty($data['item_header']) ? 'Items' : $data['item_header'];
 	$host_header = empty($data['host_header']) ? 'Host' : $data['host_header'];
@@ -146,6 +140,16 @@ else {
 				$config['display'] === CWidgetFieldColumnsList::DISPLAY_AS_IS) {
 			$class = ZBX_STYLE_CENTER;
 			break;
+		}
+	}
+
+	$has_broadcast_column = $data['show_grouping_only'] ? true : false;
+	if (!$has_broadcast_column) {
+		foreach ($data['configuration'] as $config) {
+			if (isset($config['broadcast_in_group_row']) && $config['broadcast_in_group_row']) {
+				$has_broadcast_column = true;
+				break;
+			}
 		}
 	}
 
@@ -206,10 +210,28 @@ else {
 			? true
 			: false;
 
-		if (!$groupby_host) {
-			$header[] = new CColHeader(_($item_header));
+		// Add action column header when split_groupings is enabled
+		if (!$groupby_host && $data['split_groupings'] && $has_broadcast_column) {
+			$header[] = (new CColHeader($action_column_svg))
+				->addClass('action-column')
+				->addStyle('width: 20px; text-align: center; vertical-align: middle;')
+				->setTitle('Action column: broadcast metrics for the table row');
 		}
 
+		// Add headers for each grouping tag (if split_groupings is enabled)
+		if (!$groupby_host) {
+			if ($data['split_groupings']) {
+				foreach ($data['item_grouping'] as $grouping) {
+					$header[] = (new CColHeader(_(ucwords(strtolower($grouping['tag_name'])))))
+						->setTitle('Item tag: '.$grouping['tag_name']);
+				}
+			}
+			else {
+				$header[] = new CColHeader(_($item_header));
+			}
+		}
+
+		// Add host header after grouping columns
 		if (count($data['num_hosts']) > 1 || $groupby_host) {
 			$header[] = new CColHeader(_($host_header));
 		}
@@ -439,8 +461,27 @@ else {
 			}
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER && (count($data['num_hosts']) > 1 || $groupby_host)) {
+			$reset_row = [];
+
 			if (!$groupby_host) {
-				$reset_row = [(new CCol()), (new CCol($host_cell_values))];
+				// Add empty action column cell when split_groupings is enabled
+				if ($data['split_groupings'] && $has_broadcast_column) {
+					$reset_row[] = (new CCol())
+						->addClass('action-column')
+						->addStyle('width: 20px;');
+
+					// Span across all grouping columns
+					$num_grouping_cols = count($data['item_grouping']);
+					$reset_row[] = (new CCol($host_cell_values))->setColSpan($num_grouping_cols);
+				}
+				else {
+					// Single grouping column
+					$reset_row[] = (new CCol());
+					$reset_row[] = (new CCol($host_cell_values));
+				}
+
+				// Add host column
+				$reset_row[] = (new CCol());
 			}
 			else {
 				$reset_row = [(new CCol($host_cell_values))];
@@ -480,8 +521,8 @@ else {
 				}
 			}
 
-            ['name' => $title] = $data_row[0][Widget::CELL_METADATA];
-        	$table_row[] = new CCol($title);
+			['name' => $title] = $data_row[0][Widget::CELL_METADATA];
+			$table_row[] = new CCol($title);
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
 			if ($data['footer']) {
@@ -515,14 +556,17 @@ else {
 		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
 			$dmt = ['type' => 'item'];
 			$dm_itemids = [];
+			$grouping_name = '';
+
 			foreach ($data_row as $index => $cell) {
 				if ($cell && 
 						($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['broadcast_in_group_row'] || $data['show_grouping_only']) &&
 						$cell[Widget::CELL_ITEMID]) {
-					$dmt['name'] = $cell[Widget::CELL_METADATA]['grouping_name'];
+					$grouping_name = $cell[Widget::CELL_METADATA]['grouping_name'];
+					$dmt['name'] = $grouping_name;
 					$tags = [];
 					foreach ($data['item_grouping'] as $index => $grouping) {
-						$grouping_name_parts = explode($data['delimiter'], $cell[Widget::CELL_METADATA]['grouping_name']);
+						$grouping_name_parts = explode($data['delimiter'], $grouping_name);
 						$tag_value = $grouping_name_parts[$index] ?? '';
 						$tags[] = ['tag' => $grouping['tag_name'], 'value' => $tag_value];
 					}
@@ -542,25 +586,95 @@ else {
 			$dmt['itemid'] = json_encode($dm_itemids);
 
 			if ($data['footer']) {
-				$bottom_row['host_column'] = (count($data['num_hosts']) > 1) ? 1 : 0;
+				$bottom_row['host_column'] = (count($data['num_hosts']) > 1 || $groupby_host) ? 1 : 0;
+				// Track whether broadcast column exists for footer
+				if ($data['split_groupings'] && $has_broadcast_column) {
+					$bottom_row['grouping_columns'] = count($data['item_grouping']);
+					$bottom_row['action_column'] = 1;
+				}
+				else {
+					$bottom_row['grouping_columns'] = 1;
+					$bottom_row['action_column'] = 0;
+				}
 				foreach ($data_row as $i => $r) {
 					$bottom_row = buildBottomRow($bottom_row, $r, $i, $data, $is_view_value);
 				}
 			}
 
-			if (count($data['num_hosts']) > 1 || $groupby_host) {
-				if (!$groupby_host) {
-					if ($dm_itemids) {
-						$dmt_items = (new CSpan(explode(chr(31), $row_index)[0]))
-							->addClass(ZBX_STYLE_CURSOR_POINTER)
-							->setAttribute('data-menu', json_encode($dmt));
-						$table_row[] = (new CCol($dmt_items))->addStyle('word-break: break-word; max-width: 35ch; color: #1187ff; text-decoration: underline');
-					}
-					else {
-						$table_row[] = (new CCol(explode(chr(31), $row_index)[0]))->addStyle('word-break: break-word; max-width: 35ch;');
+			// Extract grouping name from row_index or from first non-empty cell
+			if ($grouping_name) {
+				foreach ($data_row as $cell) {
+					if ($cell && isset($cell[Widget::CELL_METADATA]['grouping_name'])) {
+						$grouping_name = $cell[Widget::CELL_METADATA]['grouping_name'];
+						break;
 					}
 				}
+			}
 
+			// If still no grouping name, use row_index (without chr(31) host separator)
+			if (!$grouping_name) {
+				$grouping_name = explode(chr(31), $row_index)[0];
+			}
+
+			// Create action column when split_groupings is enabled
+			if (!$groupby_host && $data['split_groupings'] && $has_broadcast_column) {
+				if ($dm_itemids) {
+					$broadcast_icon = (new CSpan($action_column_svg))
+						->addClass(ZBX_STYLE_CURSOR_POINTER)
+						->setAttribute('data-menu', json_encode($dmt))
+						->setHint(
+							(new CDiv('Click to broadcast selected metrics for this row'))->addClass(ZBX_STYLE_HINTBOX_WRAP),
+							'',
+							false,
+							'',
+							100
+						);
+
+					$table_row[] = (new CCol($broadcast_icon))
+						->addClass('action-column')
+						->addStyle('width: 20px; text-align: center; color: #1187ff;');
+				}
+				else {
+					$table_row[] = (new CCol())
+						->addClass('action-column')
+						->addStyle('width: 20px;');
+				}
+			}
+
+			// Create grouping columns based on split_groupings setting
+			if (!$groupby_host) {
+				if ($data['split_groupings']) {
+					// Split grouping name by delimiter into separate columns
+					$grouping_parts = explode($data['delimiter'], $grouping_name);
+
+					foreach ($data['item_grouping'] as $grouping_index => $grouping) {
+						$grouping_value = isset($grouping_parts[$grouping_index]) ? trim ($grouping_parts[$grouping_index]) : '';
+						$table_row[] = (new CCol($grouping_value))->addStyle('word-break; break-word; width: 0;');
+					}
+				}
+				else {
+					// Original behavior: single column combined grouping name
+					if (count($data['num_hosts']) > 1) {
+						$display_name = explode(chr(31), $row_index)[0];
+					}
+					else {
+						$display_name = $row_index;
+					}
+
+					if ($dm_itemids) {
+						$dmt_items = (new CSpan($display_name))
+							->addClass(ZBX_STYLE_CURSOR_POINTER)
+							->setAttribute('data-menu', json_encode($dmt));
+						$table_row[] = (new CCol($dmt_items))->addStyle('word-break: break-word; width: 0; max-width: 35ch; min-width: 20ch; color: #1187ff; text-decoration: underline');
+					}
+					else {
+						$table_row[] = (new CCol($display_name))->addStyle('word-break: break-word; width: 0; max-width: 35ch; min-width: 20ch');
+					}
+				}
+			}
+
+			// Add host column after grouping columns
+			if (count($data['num_hosts']) > 1 || $groupby_host) {
 				foreach ($data_row as $row) {
 					if ($row && $row[Widget::CELL_HOSTID]) {
 						$host_attributes['hostid'] = $row[Widget::CELL_HOSTID];
@@ -582,7 +696,8 @@ else {
 							)
 							->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
 
-						$table_row[] = new CCol([$host_cell_values, $host_context_button]);
+						$table_row[] = (new CCol([$host_cell_values, $host_context_button]))
+							->addStyle('width: 0; max-width: 35ch; min-width: 20ch;');
 					}
 					else {
 						$table_row[] = new CCol('');
@@ -599,23 +714,11 @@ else {
 							)
 							->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
 
-						$table_row[] = new CCol([$host_cell_values, $host_context_button]);
+						$table_row[] = (new CCol([$host_cell_values, $host_context_button]))
+							->addStyle('width: 0; max-width: 35ch; min-width: 20ch;');
 					}
 					else {
 						$table_row[] = new CCol('');
-					}
-				}
-			}
-			else {
-				if (!$groupby_host) {
-					if ($dm_itemids) {
-						$dmt_items = (new CSpan($row_index))
-							->addClass(ZBX_STYLE_CURSOR_POINTER)
-							->setAttribute('data-menu', json_encode($dmt));
-						$table_row[] = (new CCol($dmt_items))->addStyle('word-break: break-word; max-width: 35ch; color: #1187ff; text-decoration: underline');
-					}
-					else {
-						$table_row[] = (new CCol($row_index))->addStyle('word-break: break-word; max-width: 35ch;');
 					}
 				}
 			}
@@ -680,11 +783,11 @@ else {
 	if ($data['footer']) {
 		if ($bottom_row && !$data['show_grouping_only']) {
 			if (count($data['num_hosts']) <= 1 && $data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
-				$last_row = addBottomRow($data, $bottom_row, $groupby_host);
+				$last_row = addBottomRow($data, $bottom_row, $groupby_host, $has_broadcast_column);
 				$table->addRow($last_row);
 			}
 			else {
-				$last_row = addBottomRow($data, $bottom_row, $groupby_host);
+				$last_row = addBottomRow($data, $bottom_row, $groupby_host, $has_broadcast_column);
 				$table->addRow($last_row);
 			}
 		}
@@ -696,6 +799,34 @@ else {
 	->addItem($table)
 	->show();
 
+function getActionColumnIcon() {
+	// Create broadcast icon with context menu
+	$svg = (new CTag('svg', true))
+		->setAttribute('width', '16')
+		->setAttribute('height', '16')
+		->setAttribute('viewBox', '0 0 24 24')
+		->setAttribute('fill', 'none')
+		->addStyle('vertical-align: middle; display: inline-block;');
+
+	$circle = (new CTag('circle', true))
+		->setAttribute('cx', '12')
+		->setAttribute('cy', '12')
+		->setAttribute('r', '2')
+		->setAttribute('fill', '#FF9800')
+		->setAttribute('stroke', '#FF9800')
+		->setAttribute('stroke-width', '2');
+
+	$path = (new CTag('path', true))
+		->setAttribute('d', 'M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14')
+		->setAttribute('stroke', '#FF9800')
+		->setAttribute('stroke-width', '2')
+		->setAttribute('stroke-linecap', 'round');
+
+	$svg->addItem($circle);
+	$svg->addItem($path);
+
+	return $svg;
+}
 
 function makeUrl($cell, $column) {
 	$urlItemids = array_map('trim', explode(',', $cell[Widget::CELL_ITEMID]));
@@ -907,7 +1038,7 @@ function safeBcAdd($num1, $num2, $scale = 0) {
 	return bcadd((string)$num1, (string)$num2, $scale);
 }
 
-function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false): array {
+function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false, bool $has_broadcast_column = false): array {
 	$user_theme = CWebUser::$data['theme'] === 'default'
 		? CSettingsHelper::get(CSettingsHelper::DEFAULT_THEME)
 		: CWebUser::$data['theme'];
@@ -933,8 +1064,12 @@ function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false
 	}
 
 	$new_bottom_row = [];
-	$host_column = $bottom_row['host_column'];
+	$host_column = $bottom_row['host_column'] ?? 0;
+	$grouping_columns = $bottom_row['grouping_columns'] ?? 1;
+	$action_column = $bottom_row['action_column'] ?? 0;
 	unset($bottom_row['host_column']);
+	unset($bottom_row['grouping_columns']);
+	unset($bottom_row['action_column']);
 
 	$footer_title = $data['footer'] == WidgetForm::FOOTER_SUM ? 'Total' : 'Average';
 
@@ -990,9 +1125,34 @@ function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false
 
 	$last_row = [];
 	$style = 'background: #' . $bg_color . '; color: #' . $ft_color;
-	$last_row[] = (new CCol($footer_title))
-		->setAttribute('footer-row', '')
-		->addStyle($style);
+
+	// Add empty action column if present
+	if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER && !$groupby_host && $action_column && $has_broadcast_column) {
+		$last_row[] = (new CCol())
+			->addClass('action-column')
+			->addStyle($style . '; width: 20px;');
+	}
+
+	// For LAYOUT_COLUMN_PER, create separate columns for each grouping
+	if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER && !$groupby_host) {
+		for ($i = 0; $i < $grouping_columns; $i++) {
+			if ($i === 0) {
+				$last_row[] = (new CCol($footer_title))
+					->setAttribute('footer-row', '')
+					->addStyle($style);
+			}
+			else {
+				$last_row[] = (new CCol())
+					->addStyle($style);
+			}
+		}
+	}
+	else {
+		$last_row[] = (new CCol($footer_title))
+			->setAttribute('footer-row', '')
+			->addStyle($style);
+	}
+
 	$style .= '; text-align: center';
 
 	if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER || $data['layout'] == WidgetForm::LAYOUT_THREE_COL) {

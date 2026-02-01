@@ -82,6 +82,13 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 			}
 		}
 
+		for (const split_groupings_field of this.#form.querySelectorAll('.field_split_groupings')) {
+			split_groupings_field.style.display = !column_per_pattern ? 'none' : '';
+			for (const input of split_groupings_field.querySelectorAll('input')) {
+				input.disabled = !column_per_pattern;
+			}
+		}
+
 		for (const aggregate_all_field of this.#form.querySelectorAll('.field_aggregate_all_hosts')) {
 			aggregate_all_field.style.display = !column_per_pattern ? 'none' : '';
 			for (const input of aggregate_all_field.querySelectorAll('input')) {
