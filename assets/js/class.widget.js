@@ -1972,6 +1972,11 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#createColumnFilters() {
 		this.allThs.forEach((th) => {
+			// Skip action column
+			if (th.classList.contains('action-column')) {
+				return;
+			}
+
 			const columnId = this.#getStableColumnId(th);
 			const columnIndex = parseInt(th.id);
 
@@ -4049,19 +4054,28 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#cssStyleMap = newCssMap;
 
 		this.allThs.forEach((th) => {
+			const colspan = th.hasAttribute('colspan') ? parseFloat(th.getAttribute('colspan')) : 1;
+			th.id = colIndex + colspan - 1;
+			colIndex = parseFloat(th.id) + 1;
+
+			// Skip action column
+			if (th.classList.contains('action-column')) {
+				return;
+			}
+
 			// FIRST: Add the arrow span to the existing HTML
 			th.innerHTML += `<span class="new-arrow" id="arrow"></span>`;
 			th.setAttribute('style', `color: #4796c4; font-weight: bold;`);
 			th.classList.remove('cursor-pointer'); // Remove this we'll add it to span only
-
-			const colspan = th.hasAttribute('colspan') ? parseFloat(th.getAttribute('colspan')) : 1;
-			th.id = colIndex + colspan - 1;
-
-			colIndex = parseFloat(th.id) + 1;
 		});
 
 		// Wrap the text content before filter icons are added
 		this.allThs.forEach((th) => {
+			// Skip action column
+			if (th.classList.contains('action-column')) {
+				return;
+			}
+
 			// Check if we already wrapped it (in case of multiple updates)
 			if (th.querySelector('.sortable-header-text')) {
 				return;
@@ -4110,6 +4124,11 @@ class CWidgetTableModuleRME extends CWidget {
 			const target = event.target.closest('th') || event.target.closest('td');
 
 			if (target && target.tagName === 'TH') {
+				// Skip action column
+				if (target.classList.contains('action-column')) {
+					return;
+				}
+
 				// Only sort if the click was on the sortable text span
 				const clickedTextSpan = event.target.closest('.sortable-header-text');
 				if (!clickedTextSpan) {

@@ -72,12 +72,22 @@ $form
 		(new CWidgetFieldTableModuleItemGroupingView($data['fields']['item_group_by']))
 			->setFieldHint(
 				makeHelpIcon([
-					_('The tags chosen will be displayed in first column of the table.'), BR(),
+					_('The tags specified will determine how the metrics are grouped in the table rows.'), BR(),
 					_('Alternatively, you can just group the metrics by host, which will omit the first column, '),
 					_('by specifying a grouping of \'{HOST.HOST}\'')
 				])
 			)
 			->addRowClass('field_item_group_by')
+	)
+	->addField(
+		(new CWidgetFieldCheckBoxView($data['fields']['split_groupings']))
+			->setFieldHint(
+				makeHelpIcon([
+					_('If checked, each item grouping will be split into a distinct table column.'), BR(),
+					_('The column headers will automatically be set using the corresponding tag names.')
+				])
+			)
+			->addRowClass('field_split_groupings')
 	)
 	->addField(
 		(new CWidgetFieldTextBoxView($data['fields']['grouping_delimiter']))
