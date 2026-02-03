@@ -584,7 +584,7 @@ else {
 			if ($data['footer']) {
 				$bottom_row['host_column'] = (count($data['num_hosts']) > 1 || $groupby_host) ? 1 : 0;
 				// Track whether broadcast column exists for footer
-				if ($data['split_groupings'] && $has_broadcast_column) {
+				if ($data['split_groupings']) {
 					$bottom_row['grouping_columns'] = count($data['item_grouping']);
 					$bottom_row['action_column'] = 1;
 				}
@@ -645,7 +645,9 @@ else {
 
 					foreach ($data['item_grouping'] as $grouping_index => $grouping) {
 						$grouping_value = isset($grouping_parts[$grouping_index]) ? trim ($grouping_parts[$grouping_index]) : '';
-						$table_row[] = (new CCol($grouping_value))->addStyle('word-break; break-word; width: 0;');
+						$table_row[] = (new CCol($grouping_value))
+							->addClass(ZBX_STYLE_NOWRAP)
+							->addStyle('word-break; break-word; width: 0;');
 					}
 				}
 				else {
@@ -1279,10 +1281,11 @@ function makeTableCellViews(array $cell, array $data): array {
 	}
 
 	if ($itemid === null || $value === null) {
+		$style = 'width: 0; padding-left: 10px; padding-right: 10px; white-space: nowrap; ';
 		if ($is_view_value) {
-			return [(new CCol()), (new CCol())];
+			return [(new CCol())->addStyle($style), (new CCol())->addStyle($style)];
 		}
-		return [(new CCol())];
+		return [(new CCol())->addStyle($style)];
 	}
 
 	$formatted_value = makeTableCellViewFormattedValue($cell, $data);
@@ -1387,10 +1390,14 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 		$styles[] = 'color: #' . $font_color;
 	}
 
-	$styles[] = 'text-align: center';
-
 	switch ($column['display']) {
 		case CWidgetFieldColumnsList::DISPLAY_AS_IS:
+			if ($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL) {
+				$styles[] = 'text-align: center; width: 0; padding-left: 20px; padding-right: 20px; white-space: nowrap; ';
+			}
+			else {
+				$styles[] = 'text-align: center; width: 0; padding-left: 10px; padding-right: 10px; white-space: nowrap; ';
+			}
 			if ($column['thresholds']) {
 				$is_numeric_data = in_array($item['value_type'], [ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64]) ||
 						CAggFunctionData::isNumericResult($column['aggregate_function']);
@@ -1429,7 +1436,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 
 		case CWidgetFieldColumnsList::DISPLAY_INDICATORS:
 		case CWidgetFieldColumnsList::DISPLAY_BAR:
-			$style = 'text-align: center; ';
+			$style = 'width: 0; padding-left: 15px; padding-right: 15px; white-space: nowrap; ';
 			$style .= $font_color !== '' ? 'color: #'.$font_color : null;
 			$value_cell->addStyle($style);
 
