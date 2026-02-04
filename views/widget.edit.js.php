@@ -64,6 +64,7 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 	#updateForm() {
 		const column_per_pattern = this.#form.querySelector('#layout_3').checked;
 		const vertical_layout = this.#form.querySelector('#layout_1').checked;
+		const horizontal_layout = this.#form.querySelector('#layout_0').checked;
 		const item_grouping_table = this.#form.querySelector('[id=item_group_by-table]');
 		const item_grouping_table_rows = item_grouping_table.querySelectorAll(':scope > tbody > tr');
 
@@ -103,6 +104,13 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 			}
 		}
 
+		for (const item_name_strip_field of this.#form.querySelectorAll('.field_item_name_strip')) {
+			item_name_strip_field.style.display = column_per_pattern ? 'none' : '';
+			for (const input of item_name_strip_field.querySelectorAll('input')) {
+				input.disabled = column_per_pattern;
+			}
+		}
+
 		for (const bc_hostid_field of this.#form.querySelectorAll('.field_no_broadcast_hostid')) {
 			bc_hostid_field.style.display = vertical_layout ? 'none' : '';
 			for (const input of bc_hostid_field.querySelectorAll('input')) {
@@ -114,6 +122,27 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 			use_host_storage_field.style.display = vertical_layout ? 'none' : '';
 			for (const input of use_host_storage_field.querySelectorAll('input')) {
 				input.disabled = vertical_layout;
+			}
+		}
+
+		for (const reset_row_field of this.#form.querySelectorAll('.field_reset_row')) {
+			reset_row_field.style.display = vertical_layout ? 'none' : '';
+			for (const input of reset_row_field.querySelectorAll('input')) {
+				input.disabled = vertical_layout;
+			}
+		}
+
+		for (const host_header_field of this.#form.querySelectorAll('.field_host_header')) {
+			host_header_field.style.display = vertical_layout ? 'none' : '';
+			for (const input of host_header_field.querySelectorAll('input')) {
+				input.disabled = vertical_layout;
+			}
+		}
+
+		for (const item_header_field of this.#form.querySelectorAll('.field_item_header')) {
+			item_header_field.style.display = horizontal_layout ? 'none' : '';
+			for (const input of item_header_field.querySelectorAll('input')) {
+				input.disabled = horizontal_layout;
 			}
 		}
 
