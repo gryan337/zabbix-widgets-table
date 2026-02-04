@@ -3014,7 +3014,8 @@ class CWidgetTableModuleRME extends CWidget {
 			const cachedStyle = this.#cssStyleMap.get(cell_key);
 			if (cachedStyle !== undefined) {
 				if (this._isBarGauge(barGaugeTd)) {
-					td.style.cssText = barGaugeTd.style.cssText = cachedStyle;
+					td.style.cssText = cachedStyle;
+					barGaugeTd.style.cssText = '';
 				}
 			}
 		}
