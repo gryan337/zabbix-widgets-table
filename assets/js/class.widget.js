@@ -3025,10 +3025,7 @@ class CWidgetTableModuleRME extends CWidget {
 		if (isNumericCellOfDoubleSpan && barGaugeTd) {
 			const cachedStyle = this.#cssStyleMap.get(cell_key);
 			if (cachedStyle !== undefined) {
-				if (this._isBarGauge(barGaugeTd)) {
-					td.style.cssText = barGaugeTd.style.cssText = cachedStyle;
-				}
-				else if (this._isSparkLine(barGaugeTd)) {
+				if (this._isBarGauge(barGaugeTd) || this._isSparkLine(barGaugeTd)) {
 					td.style.cssText = cachedStyle;
 					barGaugeTd.style.cssText = '';
 				}

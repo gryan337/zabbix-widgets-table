@@ -190,6 +190,7 @@ $form
 					_('Changes the header name from the default of \'Items\' to this value when using all layouts except Horizontal')
 				])
 			)
+			->addRowClass('field_item_header')
 	)
 	->addField(
 		(new CWidgetFieldTextBoxView($data['fields']['host_header']))
@@ -198,6 +199,7 @@ $form
 					_('Changes the header name from the default of \'Host\' to this value when using all layouts except Vertical')
 				])
 			)
+			->addRowClass('field_host_header')
 	)
 	->addField(
 		(new CWidgetFieldTextBoxView($data['fields']['reset_row']))
@@ -208,6 +210,7 @@ $form
 					_('After a click on the reset row value, connected widgets will reset back to their base configurations.')
 				])
 			)
+			->addRowClass('field_reset_row')
 	)
 	->addField(
 		(new CWidgetFieldTextAreaView($data['fields']['item_name_strip']))
@@ -223,6 +226,7 @@ $form
 					]))->addClass(ZBX_STYLE_LIST_DASHED)
 				])
 			)
+			->addRowClass('field_item_name_strip')
 	)
 	->addFieldset(
 		(new CWidgetFormFieldsetCollapsibleView(_('Advanced configuration')))
