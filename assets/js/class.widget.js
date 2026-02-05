@@ -230,6 +230,26 @@ class CWidgetTableModuleRME extends CWidget {
 		const createButton = (label) => {
 			const button = document.createElement('button');
 			button.textContent = label;
+
+			let ariaLabel = '';
+			switch(label) {
+				case '<<':
+					ariaLabel = 'Go to first page';
+					break;
+				case '<':
+					ariaLabel = 'Go to previous page';
+					break;
+				case '>':
+					ariaLabel = 'Go to next page';
+					break;
+				case '>>':
+					ariaLabel = 'Go to last page';
+					break;
+			}
+
+			button.title = ariaLabel;
+			button.setAttribute('aria-label', ariaLabel);
+
 			button.addEventListener('click', () => this.#handlePaginationClick(label));
 			return button;
 		};
@@ -1069,6 +1089,9 @@ class CWidgetTableModuleRME extends CWidget {
 		toggleButton.textContent = 'Select All';
 		toggleButton.className = 'select';
 		toggleButton.type = 'button';
+		let tbText = 'Click to select/un-select all checkboxes above';
+		toggleButton.title = tbText;
+		toggleButton.setAttribute('aria-label', tbText);
 		toggleRow.appendChild(toggleButton);
 
 		sectionContainer.appendChild(toggleRow);
@@ -1084,16 +1107,25 @@ class CWidgetTableModuleRME extends CWidget {
 		const applyButton = document.createElement('button');
 		applyButton.textContent = 'Apply';
 		applyButton.type = 'button';
+		let abText = 'Applies the selected filter and updates the table display';
+		applyButton.title = abText;
+		applyButton.setAttribute('aria-label', abText);
 
 		const resetButton = document.createElement('button');
 		resetButton.textContent = 'Cancel';
 		resetButton.className = 'cancel';
 		resetButton.type = 'button';
+		let rbText = 'Cancels any changes and closes the filter popup';
+		resetButton.title = rbText;
+		resetButton.setAttribute('aria-label', rbText);
 
 		const clearFiltersButton = document.createElement('button');
 		clearFiltersButton.textContent = 'Clear Filters';
 		clearFiltersButton.className = 'clear-filters';
 		clearFiltersButton.type = 'button';
+		let cfbText = 'Clears all filters but does not close the popup. You must then click the \'Apply\' button to update the table display';
+		clearFiltersButton.title = cfbText;
+		clearFiltersButton.setAttribute('aria-label', cfbText);
 
 		const warningIcon = this.#createWarningIcon();
 
@@ -1142,6 +1174,30 @@ class CWidgetTableModuleRME extends CWidget {
 							filterTypeButton.textContent = matchingOption.dataset.label;
 						}
 					}
+				}
+
+				if (popup._cancelCallbacks) {
+					const {
+						updateSummary,
+						updateWarningIcon,
+						updateClearFiltersButton,
+						renderVisibleCheckboxes,
+						toggleButton,
+						getCurrentFilteredValues
+					} = popup._cancelCallbacks;
+
+					// Update isAllSelected based on restored state
+					const currentFilteredValues = getCurrentFilteredValues();
+					const isAllSelected = filterState.checked.length > 0 &&
+						filterState.checked.length === currentFilteredValues.length;
+
+					toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+
+					// Re-render UI
+					updateSummary();
+					updateWarningIcon();
+					updateClearFiltersButton();
+					renderVisibleCheckboxes();
 				}
 			}
 
@@ -1329,6 +1385,9 @@ class CWidgetTableModuleRME extends CWidget {
 
 		const button = document.createElement('button');
 		button.type = 'button';
+		let ftText = 'Select filter type';
+		button.title = ftText;
+		button.setAttribute('aria-label', ftText);
 		container.appendChild(button);
 
 		let options;
@@ -1412,9 +1471,12 @@ class CWidgetTableModuleRME extends CWidget {
 		searchInput.value = filterState.search || '';
 
 		// Search input clear button
-		const clearBtn = document.createElement('span');
+		const clearBtn = document.createElement('button');
 		clearBtn.className = 'clear-btn';
 		clearBtn.textContent = '✕ Clear';
+		let cbText = 'Clear the search text';
+		clearBtn.title = cbText;
+		clearBtn.setAttribute('aria-label', cbText);
 
 		filterControls.appendChild(filterTypeContainer.container);
 		filterControls.appendChild(searchInput);
@@ -1448,6 +1510,14 @@ class CWidgetTableModuleRME extends CWidget {
 		const endIndex = Math.min(startIndex + visibleCount, values.length);
 
 		checkboxContainer.style.top = `${startIndex * 30}px`;
+
+		// Save currently focused checkbox value before clearing
+		const activeElement = document.activeElement;
+		const focusedValue = (activeElement && activeElement.type === 'checkbox' &&
+							 checkboxContainer.contains(activeElement))
+			? activeElement.value
+			: null;
+
 		checkboxContainer.innerHTML = '';
 
 		const checkedSet = new Set(filterState.checked.map(v => v.toLowerCase()));
@@ -1482,6 +1552,16 @@ class CWidgetTableModuleRME extends CWidget {
 
 		checkboxContainer.appendChild(fragment);
 
+		// Restore focus after re-render
+		if (focusedValue !== null) {
+			requestAnimationFrame(() => {
+				const checkboxToFocus = checkboxContainer.querySelector(`input[value="${CSS.escape(focusedValue)}"]`);
+				if (checkboxToFocus) {
+					checkboxToFocus.focus();
+				}
+			});
+		}
+
 		// Check for visual truncation after render completes
 		requestAnimationFrame(() => {
 			const TOOLTIP_MAX_LENGTH = 1000;
@@ -1498,6 +1578,154 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 			}
 		});
+	}
+
+	#setupCheckboxKeyboardNavigation(checkboxContainer, scrollContainer) {
+		checkboxContainer.addEventListener('keydown', (e) => {
+			const target = e.target;
+
+			// Only handle if we're on a checkbox
+			if (target.type !== 'checkbox') return;
+
+			const currentLabel = target.closest('label');
+			if (!currentLabel) return;
+
+			let nextLabel = null;
+
+			switch(e.key) {
+				case 'ArrowDown':
+					e.preventDefault();
+					nextLabel = currentLabel.nextElementSibling;
+
+					// If no next sibling, we need to scroll down to render more
+					if (!nextLabel) {
+						const currentIndex = parseInt(currentLabel.getAttribute('data-index'), 10);
+						const newScrollTop = (currentIndex + 2) * 30; // Scroll down one row
+						scrollContainer.scrollTop = newScrollTop;
+
+						// Wait for re-render, then focus next checkbox
+						requestAnimationFrame(() => {
+							requestAnimationFrame(() => {
+								const labels = checkboxContainer.querySelectorAll('label');
+								const nextCheckbox = Array.from(labels).find(
+									lbl => parseInt(lbl.getAttribute('data-index'), 10) === currentIndex + 1
+								)?.querySelector('input[type="checkbox"]');
+
+								if (nextCheckbox) {
+									nextCheckbox.focus();
+								}
+							});
+						});
+						return;
+					}
+					break;
+
+				case 'ArrowUp':
+					e.preventDefault();
+					nextLabel = currentLabel.previousElementSibling;
+
+					// If no previous sibling, we need to scroll up to render more
+					if (!nextLabel) {
+						const currentIndex = parseInt(currentLabel.getAttribute('data-index'), 10);
+						if (currentIndex > 0) {
+							const newScrollTop = Math.max(0, (currentIndex - 2) * 30); // Scroll up one row
+							scrollContainer.scrollTop = newScrollTop;
+
+							// Wait for re-render, then focus previous checkbox
+							requestAnimationFrame(() => {
+								requestAnimationFrame(() => {
+									const labels = checkboxContainer.querySelectorAll('label');
+									const prevCheckbox = Array.from(labels).find(
+										lbl => parseInt(lbl.getAttribute('data-index'), 10) === currentIndex - 1
+									)?.querySelector('input[type="checkbox"]');
+
+									if (prevCheckbox) {
+										prevCheckbox.focus();
+									}
+								});
+							});
+						}
+						return;
+					}
+					break;
+
+				case 'Tab':
+					// Let tab work naturally, but ensure visibility
+					requestAnimationFrame(() => {
+						if (document.activeElement && document.activeElement.type === 'checkbox') {
+							const activeLabel = document.activeElement.closest('label');
+							if (activeLabel) {
+								this.#scrollCheckboxIntoView(activeLabel, scrollContainer);
+							}
+						}
+					});
+					return; // Don't prevent default for Tab
+
+				case 'Home':
+					e.preventDefault();
+					scrollContainer.scrollTop = 0;
+
+					// Wait for re-render, then focus first checkbox
+					requestAnimationFrame(() => {
+						requestAnimationFrame(() => {
+							nextLabel = checkboxContainer.firstElementChild;
+							if (nextLabel) {
+								const nextCheckbox = nextLabel.querySelector('input[type="checkbox"]');
+								if (nextCheckbox) {
+									nextCheckbox.focus();
+								}
+							}
+						});
+					});
+					return;
+
+				case 'End':
+					e.preventDefault();
+					scrollContainer.scrollTop = scrollContainer.scrollHeight;
+
+					// Wait for re-render, then focus last checkbox
+					requestAnimationFrame(() => {
+						requestAnimationFrame(() => {
+							nextLabel = checkboxContainer.lastElementChild;
+							if (nextLabel) {
+								const nextCheckbox = nextLabel.querySelector('input[type="checkbox"]');
+								if (nextCheckbox) {
+									nextCheckbox.focus();
+								}
+							}
+						});
+					});
+					return;
+
+				default:
+					return;
+			}
+
+			if (nextLabel) {
+				const nextCheckbox = nextLabel.querySelector('input[type="checkbox"]');
+				if (nextCheckbox) {
+					nextCheckbox.focus();
+					this.#scrollCheckboxIntoView(nextLabel, scrollContainer);
+				}
+			}
+		});
+	}
+
+	#scrollCheckboxIntoView(label, scrollContainer) {
+		const labelRect = label.getBoundingClientRect();
+		const containerRect = scrollContainer.getBoundingClientRect();
+
+		const labelTop = labelRect.top - containerRect.top + scrollContainer.scrollTop;
+		const labelBottom = labelRect.bottom - containerRect.top + scrollContainer.scrollTop;
+
+		// Scroll if label is above visible area
+		if (labelTop < scrollContainer.scrollTop) {
+			scrollContainer.scrollTop = labelTop;
+		}
+		// Scroll if label is below visible area
+		else if (labelBottom > scrollContainer.scrollTop + scrollContainer.clientHeight) {
+			scrollContainer.scrollTop = labelBottom - scrollContainer.clientHeight;
+		}
 	}
 
 	#setupPopupEventHandlers(config) {
@@ -1717,6 +1945,8 @@ class CWidgetTableModuleRME extends CWidget {
 			rafId = requestAnimationFrame(renderVisibleCheckboxes);
 		}, { passive: true });
 
+		this.#setupCheckboxKeyboardNavigation(checkboxContainer, scrollContainer);
+
 		applyButton.addEventListener('click', (e) => {
 			e.stopPropagation();
 			e.preventDefault();
@@ -1826,6 +2056,16 @@ class CWidgetTableModuleRME extends CWidget {
 
 			this.#isUserInitiatedFilterChange = true;
 		});
+
+		// Store callback references on popup for Cancel button access
+		popup._cancelCallbacks = {
+			updateSummary,
+			updateWarningIcon,
+			updateClearFiltersButton,
+			renderVisibleCheckboxes,
+			toggleButton,
+			getCurrentFilteredValues: () => filteredValues
+		};
 
 		// Initial render
 		const filterState = this.#getFilterState(columnId);
