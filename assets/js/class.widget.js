@@ -1069,6 +1069,7 @@ class CWidgetTableModuleRME extends CWidget {
 	#createCheckboxContainer() {
 		const scrollContainer = document.createElement('div');
 		scrollContainer.className = 'filter-popup-scroll-container';
+		scrollContainer.tabIndex = 0;
 
 		const spacer = document.createElement('div');
 		spacer.style.position = 'relative';
@@ -1736,6 +1737,7 @@ class CWidgetTableModuleRME extends CWidget {
 					if (document.activeElement && document.activeElement.type === 'checkbox') {
 						document.activeElement.blur();
 					}
+					scrollContainer.focus();
 					return;
 
 				default:
