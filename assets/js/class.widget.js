@@ -1158,6 +1158,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 				if (searchInput) {
 					searchInput.value = initialState.search;
+					searchInput._handleInputFunction();
 				}
 
 				if (filterTypeSelect) {
@@ -1581,11 +1582,43 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#setupCheckboxKeyboardNavigation(checkboxContainer, scrollContainer) {
+		let isKeyboardMode = false;
+		let mouseWheelTimeout = null;
+
+		// Detect mouse wheel usage to exit keyboard mode
+		const handleWheel = (e) => {
+			// Clear any pending timeout
+			if (mouseWheelTimeout) {
+				clearTimeout(mouseWheelTimeout);
+			}
+
+			// Immediately blur if we're in keyboard mode
+			if (isKeyboardMode) {
+				isKeyboardMode = false;
+
+				// Blur the current focused checkbox synchronously
+				if (document.activeElement &&
+						document.activeElement.type === 'checkbox' &&
+						checkboxContainer.contains(document.activeElement)) {
+					document.activeElement.blur();
+					scrollContainer.focus();
+				}
+			}
+		};
+
+		// Attach wheel listener to scroll container
+		scrollContainer.addEventListener('wheel', handleWheel, { passive: true });
+
+		// Store reference for cleanup
+		scrollContainer._wheelHandler = handleWheel;
+
 		checkboxContainer.addEventListener('keydown', (e) => {
 			const target = e.target;
 
 			// Only handle if we're on a checkbox
 			if (target.type !== 'checkbox') return;
+
+			isKeyboardMode = true;
 
 			const currentLabel = target.closest('label');
 			if (!currentLabel) return;
@@ -1611,7 +1644,7 @@ class CWidgetTableModuleRME extends CWidget {
 									lbl => parseInt(lbl.getAttribute('data-index'), 10) === currentIndex + 1
 								)?.querySelector('input[type="checkbox"]');
 
-								if (nextCheckbox) {
+								if (nextCheckbox && isKeyboardMode) {
 									nextCheckbox.focus();
 								}
 							});
@@ -1639,7 +1672,7 @@ class CWidgetTableModuleRME extends CWidget {
 										lbl => parseInt(lbl.getAttribute('data-index'), 10) === currentIndex - 1
 									)?.querySelector('input[type="checkbox"]');
 
-									if (prevCheckbox) {
+									if (prevCheckbox && isKeyboardMode) {
 										prevCheckbox.focus();
 									}
 								});
@@ -1649,18 +1682,6 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 					break;
 
-				case 'Tab':
-					// Let tab work naturally, but ensure visibility
-					requestAnimationFrame(() => {
-						if (document.activeElement && document.activeElement.type === 'checkbox') {
-							const activeLabel = document.activeElement.closest('label');
-							if (activeLabel) {
-								this.#scrollCheckboxIntoView(activeLabel, scrollContainer);
-							}
-						}
-					});
-					return; // Don't prevent default for Tab
-
 				case 'Home':
 					e.preventDefault();
 					scrollContainer.scrollTop = 0;
@@ -1669,7 +1690,7 @@ class CWidgetTableModuleRME extends CWidget {
 					requestAnimationFrame(() => {
 						requestAnimationFrame(() => {
 							nextLabel = checkboxContainer.firstElementChild;
-							if (nextLabel) {
+							if (nextLabel && isKeyboardMode) {
 								const nextCheckbox = nextLabel.querySelector('input[type="checkbox"]');
 								if (nextCheckbox) {
 									nextCheckbox.focus();
@@ -1687,7 +1708,7 @@ class CWidgetTableModuleRME extends CWidget {
 					requestAnimationFrame(() => {
 						requestAnimationFrame(() => {
 							nextLabel = checkboxContainer.lastElementChild;
-							if (nextLabel) {
+							if (nextLabel && isKeyboardMode) {
 								const nextCheckbox = nextLabel.querySelector('input[type="checkbox"]');
 								if (nextCheckbox) {
 									nextCheckbox.focus();
@@ -1697,13 +1718,21 @@ class CWidgetTableModuleRME extends CWidget {
 					});
 					return;
 
+				case 'Escape':
+					// Escape exists keyboard mode
+					isKeyboardMode = false;
+					if (document.activeElement && document.activeElement.type === 'checkbox') {
+						document.activeElement.blur();
+					}
+					return;
+
 				default:
 					return;
 			}
 
 			if (nextLabel) {
 				const nextCheckbox = nextLabel.querySelector('input[type="checkbox"]');
-				if (nextCheckbox) {
+				if (nextCheckbox && isKeyboardMode) {
 					nextCheckbox.focus();
 					this.#scrollCheckboxIntoView(nextLabel, scrollContainer);
 				}
