@@ -1,6 +1,9 @@
 # 📊 Zabbix Custom Widget – Table
 A **powerful table widget** with advanced functionality for the Zabbix dashboard.
 
+## Training and Demonstration Videos
+[RME Table Training and Demonstration Videos](https://www.youtube.com/playlist?list=PLVBaXiAwXB7GKKJ_4eoQuOkan9SPfzEVs)
+
 ---
 
 ## 🌐 Overview
