@@ -2310,6 +2310,9 @@ class CWidgetTableModuleRME extends CWidget {
 				const tr = rowObj.row;
 				const allTdsInRow = tr.children;
 
+				// Track which columns we've already processed in this row to avoid duplicates
+				const processedColumns = new Set();
+
 				for (let i = 0; i < allTdsInRow.length; i++) {
 					const td = allTdsInRow[i];
 
@@ -2323,6 +2326,16 @@ class CWidgetTableModuleRME extends CWidget {
 					const hintboxContent = td.getAttribute('data-hintbox-contents');
 					if (!hintboxContent) continue;
 
+					const indexStr = td.getAttribute('column-id');
+					if (indexStr == null) continue;
+
+					const indexNum = parseInt(indexStr, 10);
+					if (isNaN(indexNum)) continue;
+
+					// Skip if we've already processed this column in this row
+					if (processedColumns.has(indexNum)) continue;
+					processedColumns.add(indexNum);
+
 					let value;
 					if (isBarGauge && gauge) {
 						value = parseFloat(gauge.getAttribute('value'));
@@ -2334,14 +2347,8 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 
 					// Get or create cached column definition
-					let cachedDef = columnDefCache.get(i);
+					let cachedDef = columnDefCache.get(indexNum);
 					if (!cachedDef) {
-						const indexStr = td.getAttribute('column-id');
-						if (indexStr == null) continue;
-
-						const indexNum = parseInt(indexStr, 10);
-						if (isNaN(indexNum)) continue;
-
 						const columnDef = columns?.[indexNum];
 						if (!columnDef) continue;
 
@@ -2351,10 +2358,10 @@ class CWidgetTableModuleRME extends CWidget {
 						const staticMax = hasStaticMax ? parseFloat(columnDef.max) : null;
 
 						cachedDef = { indexNum, hasStaticMin, hasStaticMax, staticMin, staticMax };
-						columnDefCache.set(i, cachedDef);
+						columnDefCache.set(indexNum, cachedDef);
 					}
 
-					const { indexNum, hasStaticMin, hasStaticMax, staticMin, staticMax } = cachedDef;
+					const { hasStaticMin, hasStaticMax, staticMin, staticMax } = cachedDef;
 
 					// Accumulate stats
 					if (!columnStats[indexNum]) {
@@ -2401,10 +2408,16 @@ class CWidgetTableModuleRME extends CWidget {
 					const gauge = td.querySelector('z-bar-gauge');
 					if (!gauge) continue;
 
-					const cachedDef = columnDefCache.get(i);
+					const indexStr = td.getAttribute('column-id');
+					if (indexStr == null) continue;
+
+					const indexNum = parseInt(indexStr, 10);
+					if (isNaN(indexNum)) continue;
+
+					const cachedDef = columnDefCache.get(indexNum);
 					if (!cachedDef) continue;
 
-					const { indexNum, staticMin, staticMax } = cachedDef;
+					const { staticMin, staticMax } = cachedDef;
 					const stats = columnStats[indexNum];
 					if (!stats) continue;
 
