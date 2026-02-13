@@ -663,10 +663,10 @@ else {
 						$dmt_items = (new CSpan($display_name))
 							->addClass(ZBX_STYLE_CURSOR_POINTER)
 							->setAttribute('data-menu', json_encode($dmt));
-						$table_row[] = (new CCol($dmt_items))->addStyle('word-break: break-word; width: 0; max-width: 35ch; min-width: 20ch; color: #1187ff; text-decoration: underline');
+						$table_row[] = (new CCol($dmt_items))->addStyle('word-break: break-word; max-width: 20ch; color: #1187ff; text-decoration: underline');
 					}
 					else {
-						$table_row[] = (new CCol($display_name))->addStyle('word-break: break-word; width: 0; max-width: 35ch; min-width: 20ch');
+						$table_row[] = (new CCol($display_name))->addStyle('word-break: break-word; max-width: 20ch');
 					}
 				}
 			}
@@ -695,7 +695,7 @@ else {
 							->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
 
 						$table_row[] = (new CCol([$host_cell_values, $host_context_button]))
-							->addStyle('width: 0; max-width: 35ch; min-width: 20ch;');
+							->addStyle('max-width: 35ch; min-width: 20ch;');
 					}
 					else {
 						$table_row[] = new CCol('');
@@ -713,7 +713,7 @@ else {
 							->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
 
 						$table_row[] = (new CCol([$host_cell_values, $host_context_button]))
-							->addStyle('width: 0; max-width: 35ch; min-width: 20ch;');
+							->addStyle('max-width: 35ch; min-width: 20ch;');
 					}
 					else {
 						$table_row[] = new CCol('');
@@ -764,12 +764,14 @@ else {
 					$table_row = [...$table_row, ...makeTableCellViews($cell, $data)];
 				}
 				else {
+					$style = 'padding-left: 10px; padding-right: 10px; white-space: nowrap; ';
 					if (array_key_exists($column_index, $is_view_value) && $is_view_value[$column_index]) {
-						$table_row[] = new CCol();
-						$table_row[] = new CCol();
+						$table_row[] = (new CCol())->addStyle($style);
+						$table_row[] = (new CCol())->addStyle($style);
 					}
 					else {
-						$table_row[] = new CCol();
+						$style .= ' width: 0px;';
+						$table_row[] = (new CCol())->addStyle($style);
 					}
 				}
 			}
@@ -1281,10 +1283,11 @@ function makeTableCellViews(array $cell, array $data): array {
 	}
 
 	if ($itemid === null || $value === null) {
-		$style = 'width: 0; padding-left: 10px; padding-right: 10px; white-space: nowrap; ';
+		$style = 'padding-left: 10px; padding-right: 10px; white-space: nowrap; ';
 		if ($is_view_value) {
 			return [(new CCol())->addStyle($style), (new CCol())->addStyle($style)];
 		}
+		$style .= ' width: 0px;';
 		return [(new CCol())->addStyle($style)];
 	}
 
@@ -1306,10 +1309,12 @@ function makeTableCellViews(array $cell, array $data): array {
 		return makeTableCellViewsUrl($cell, $data, $formatted_value, $is_view_value, $final_unit);
 	}
 
+	$style = 'padding-left: 10px; padding-right: 10px; white-space: nowrap; ';
 	if ($is_view_value) {
-		return [(new CCol()), (new CCol())];
+		return [(new CCol())->addStyle($style), (new CCol())->addStyle($style)];
 	}
-	return [(new CCol())];
+	$style .= ' width: 0px;';
+	return [(new CCol())->addStyle($style)];
 }
 
 function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
