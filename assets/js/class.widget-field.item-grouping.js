@@ -1,38 +1,29 @@
 
-
-class CWidgetFieldTableModuleItemGrouping {
+class RMETable_CWidgetFieldItemGrouping extends CWidgetField {
 
 	static GROUP_BY_ITEM_TAG_VALUE = 0;
 
 	/**
-	 * @type {HTMLTableElement};
+	 * @type {HTMLTableElement}
 	 */
 	#table;
 
 	/**
-	 * @type {string};
+	 * @type {Array}
 	 */
-	#field_name;
+	#value;
 
 	/**
-	 * @type {Array};
-	 */
-	#field_value;
-
-	/**
-	 * type {number};
+	 * type {number}
 	 */
 	#max_rows;
 
-	constructor({
-		field_name,
-		field_value,
-		max_rows
-	}) {
-		this.#field_name = field_name;
-		this.#field_value = field_value;
+	constructor({name, form_name, value, max_rows}) {
+		super({name, form_name});
+
+		this.#value = value;
 		this.#max_rows = max_rows;
-		this.#table = document.getElementById(`${field_name}-table`);
+		this.#table = document.getElementById(`${name}-table`);
 
 		this.#initField();
 		this.#update();
@@ -41,9 +32,9 @@ class CWidgetFieldTableModuleItemGrouping {
 	#initField() {
 		jQuery(this.#table)
 			.dynamicRows({
-				template: `#${this.#field_name}-row-tmpl`,
+				template: `#${this.getName()}-row-tmpl`,
 				allow_empty: true,
-				rows: this.#field_value,
+				rows: this.#value,
 				sortable: true,
 				sortable_options: {
 					target: 'tbody',
@@ -51,22 +42,27 @@ class CWidgetFieldTableModuleItemGrouping {
 					freeze_end: 1
 				}
 			})
-			.on('afteradd.dynamicRows, tableupdate.dynamicRows', () => this.#update());
+			.on('afteradd.dynamicRows, tableupdate.dynamicRows', () => this.#update())
+			.on('tableupdate.dynamicRows', () => this.dispatchUpdateEvent());
 
-		this.#table.addEventListener('change', () => this.#update());
+		this.#table.addEventListener('input', () => this.dispatchUpdateEvent());
+		this.#table.addEventListener('change', () => {
+			this.#update();
+			this.dispatchUpdateEvent();
+		});
 	}
 
 	#update() {
 		const rows = this.#table.querySelectorAll('.form_row');
 
 		rows.forEach((row, index) => {
-			for (const field of row.querySelectorAll(`[name^="${this.#field_name}["]`)) {
+			for (const field of row.querySelectorAll(`[name^="${this.getName()}["]`)) {
 				field.name = field.name.replace(/\[\d+]/g, `[${index}]`);
 			}
 
 			const attribute_value = row.querySelector('[name$="[attribute]"]').value;
 
-			const is_tag_value = attribute_value == CWidgetFieldTableModuleItemGrouping.GROUP_BY_ITEM_TAG_VALUE;
+			const is_tag_value = attribute_value == RMETable_CWidgetFieldItemGrouping.GROUP_BY_ITEM_TAG_VALUE;
 			const tag_name_input = row.querySelector('input[name$="[tag_name]"]');
 
 			tag_name_input.style.display = is_tag_value ? '' : 'none';
