@@ -287,7 +287,8 @@ class WidgetForm extends CWidgetForm {
 
 		if (!$this->isTemplateDashboard()) {
 			$aggregate_hosts = $this->getField('aggregate_all_hosts')->getValue();
-			if ($aggregate_hosts) {
+			$groupings_only = $this->getField('show_grouping_only')->getValue();
+			if ($aggregate_hosts && !$groupings_only) {
 				$columns = $this->getField('columns')->getValue();
 				foreach ($columns as $column) {
 					if ($column['column_agg_method'] === AGGREGATE_NONE) {
