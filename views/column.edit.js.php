@@ -60,6 +60,7 @@ window.tablemodulerme_column_edit_form = new class {
 		const parentForm = document.getElementsByClassName('modal-widget-configuration').item(0);
 		this.tgt = this.#findRecurse(parentForm, 'field_item_group_by');
 		this.all_hosts_aggregated = this.#findRecurse(parentForm, 'field_aggregate_all_hosts');
+		this.show_grouping_only = this.#findRecurse(parentForm, 'field_show_grouping_only');
 
 		// Initialize thresholds table.
 		$(this.#thresholds_table)
@@ -324,6 +325,7 @@ window.tablemodulerme_column_edit_form = new class {
 
 	submit() {
 		if (this.all_hosts_aggregated?.nextElementSibling.querySelector('[id="aggregate_all_hosts"]').checked &&
+				!this.show_grouping_only?.nextElementSibling.querySelector('[id="show_grouping_only"]').checked &&
 				$('#column_agg_method input[type="hidden"]').val() === '0') {
 			if (!this.aggregation_error) {
 				const title = 'Form configuration error';
