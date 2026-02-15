@@ -1100,6 +1100,92 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 	
 	private function perColumnAggregation(array &$columns, array &$table, bool $groupby_host): array {
 		$final_table = [];
+
+		// If we're going to aggregate all hosts anyway, skip per-host aggregation
+		$skip_per_host_agg = !$this->isTemplateDashboard() && $this->fields_values['aggregate_all_hosts'];
+
+		if ($skip_per_host_agg) {
+			// Go straight to cross-host aggregation using raw $table data
+			$aggregatedArray = [];
+
+			foreach ($table as $hostId => $hostData) {
+				foreach ($hostData as $data) {
+					$groupingName = $data[Widget::CELL_METADATA]['grouping_name'];
+					$columnIndex = $data[Widget::CELL_METADATA]['column_index'];
+					$key = $groupingName.chr(31).$columnIndex;
+
+					if (!isset($aggregatedArray[$key])) {
+						$aggregatedArray[$key] = [
+							Widget::CELL_HOSTID => $hostId,
+							Widget::CELL_ITEMID => (string)$data[Widget::CELL_ITEMID],
+							Widget::CELL_VALUE => $data[Widget::CELL_VALUE],
+							Widget::CELL_METADATA => $data[Widget::CELL_METADATA],
+							'_all_values' => [],
+							'_is_numeric' => null, // Track if values are numeric
+						];
+
+						if (!$this->fields_values['show_grouping_only']) {
+							// Parse initial value(s) - only add non-empty values
+							if ($data[Widget::CELL_VALUE] !== null && $data[Widget::CELL_VALUE] !== '') {
+								// Check if the value is numeric
+								$isNumeric = is_numeric($data[Widget::CELL_VALUE]);
+								$aggregatedArray[$key]['_is_numeric'] = $isNumeric;
+
+								if ($isNumeric && is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
+									// Only split on comma if it's a numeric csv string
+									$aggregatedArray[$key]['_all_values'] = explode(',', $data[Widget::CELL_VALUE]);
+								}
+								else {
+									$aggregatedArray[$key]['_all_values'] = [$data[Widget::CELL_VALUE]];
+								}
+							}
+						}
+					}
+					else {
+						$aggregatedArray[$key][Widget::CELL_HOSTID] .= ','.$hostId;
+						$aggregatedArray[$key][Widget::CELL_ITEMID] .= ','.$data[Widget::CELL_ITEMID];
+
+						if ($this->fields_values['show_grouping_only']) {
+							continue;
+						}
+
+						// Add new value(s) to the collection - only add non-empty values
+						if ($data[Widget::CELL_VALUE] !== null && $data[Widget::CELL_VALUE] !== '') {
+							// Only process if we're dealing with numeric values
+							if ($aggregatedArray[$key]['_is_numeric']) {
+								if (is_numeric($data[Widget::CELL_VALUE]) && is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
+									// Only split on comma if it's a numeric CSV string
+									$newValues = explode(',', $data[Widget::CELL_VALUE]);
+									$aggregatedArray[$key]['_all_values'] = array_merge($aggregatedArray[$key]['_all_values'], $newValues);
+								}
+								else if (is_numeric($data[Widget::CELL_VALUE])) {
+									$aggregatedArray[$key]['_all_values'][] = $data[Widget::CELL_VALUE];
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Apply aggregation once with all collected value
+			foreach ($aggregatedArray as &$agg) {
+				$columnIndex = $agg[Widget::CELL_METADATA]['column_index'];
+				$method = $columns[$columnIndex]['column_agg_method'];
+
+				if (!$this->fields_values['show_grouping_only']) {
+					// Apply aggregation to all collect CELL_VALUE values - only if we have numeric values
+					if (!empty($agg['_all_values']) && $agg['_is_numeric']) {
+						$agg[Widget::CELL_VALUE] = $this->applyAggregation($method, $agg['_all_values']);
+					}
+				}
+
+				unset($agg['_all_values']);
+				unset($agg['_is_numeric']);
+			}
+
+			return $aggregatedArray;
+		}
+
 		foreach ($columns as $column_index => $column_configs) {
 			if ($column_configs['column_agg_method'] !== AGGREGATE_NONE) {
 				foreach ($table as $hostid => $items) {
@@ -1146,8 +1232,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 								}
 							}
 						}
-						
-						
+
 						foreach ($values as $group => &$value) {
 							$value[Widget::CELL_VALUE] = $this->applyAggregation($column_configs['column_agg_method'], $value['values']);
 							unset($value['values']);
@@ -1172,44 +1257,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 		}
 
-		if (!$this->isTemplateDashboard() && $this->fields_values['aggregate_all_hosts']) {
-			$aggregatedArray = [];
-
-			foreach ($final_table as $hostId => $hostData) {
-				foreach ($hostData as $data) {
-					$groupingName = $data[Widget::CELL_METADATA]['grouping_name'];
-					$columnIndex = $data[Widget::CELL_METADATA]['column_index'];
-					$key = $groupingName.chr(31).$columnIndex;
-
-					if (!isset($aggregatedArray[$key])) {
-						$aggregatedArray[$key] = [
-							Widget::CELL_HOSTID => $hostId,
-							Widget::CELL_ITEMID => (string)$data[Widget::CELL_ITEMID],
-							Widget::CELL_VALUE => $data[Widget::CELL_VALUE],
-							Widget::CELL_METADATA => $data[Widget::CELL_METADATA],
-						];
-					}
-					else {
-						$aggregatedArray[$key][Widget::CELL_HOSTID] .= ','.$hostId;
-						$aggregatedArray[$key][Widget::CELL_ITEMID] .= ','.$data[Widget::CELL_ITEMID];
-
-						$method = $columns[$columnIndex]['column_agg_method'];
-						if ($aggregatedArray[$key][Widget::CELL_VALUE]) {
-							$currentValues = explode(',', $aggregatedArray[$key][Widget::CELL_VALUE]);
-						}
-						else {
-							$currentValues = [];
-						}
-
-						$currentValues[] = $data[Widget::CELL_VALUE];
-						$aggregatedArray[$key][Widget::CELL_VALUE] = $this->applyAggregation($method, $currentValues);
-
-					}
-				}
-			}
-
-			$final_table = $aggregatedArray;
-		}
 		return $final_table;
 	}
 
