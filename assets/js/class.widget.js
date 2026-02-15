@@ -3784,10 +3784,17 @@ class CWidgetTableModuleRME extends CWidget {
 		const footerRow = footerRowObj.row;
 		const footerCells = Array.from(footerRow.querySelectorAll('td'));
 
-		const defaultLabel = footerCells[0].textContent.trim();
+		const hasActionColumn = footerCells[0]?.classList.contains('action-column');
+		const labelCellIndex = hasActionColumn ? 1 : 0;
+
+		const defaultLabel = footerCells[labelCellIndex]?.textContent.trim() || '';
 		const defaultMode = defaultLabel === 'Total' ? 'sum' : 'average';
 
 		footerCells.forEach((cell, colIndex) => {
+			if (hasActionColumn && colIndex === 0) {
+				return;
+			}
+
 			const label = cell.innerText.trim();
 
 			let overrideIcon = cell.querySelector('.override-icon');
