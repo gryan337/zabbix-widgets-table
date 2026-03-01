@@ -1110,6 +1110,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 			foreach ($table as $hostId => $hostData) {
 				foreach ($hostData as $data) {
+					// skip if no itemid
+					if ($data[Widget::CELL_ITEMID] === null || $data[Widget::CELL_ITEMID] === '') {
+						continue;
+					}
+
 					$groupingName = $data[Widget::CELL_METADATA]['grouping_name'];
 					$columnIndex = $data[Widget::CELL_METADATA]['column_index'];
 					$key = $groupingName.chr(31).$columnIndex;
@@ -1121,7 +1126,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 							Widget::CELL_VALUE => $data[Widget::CELL_VALUE],
 							Widget::CELL_METADATA => $data[Widget::CELL_METADATA],
 							'_all_values' => [],
-							'_is_numeric' => null, // Track if values are numeric
+							'_is_numeric' => null,
 						];
 
 						if (!$this->fields_values['show_grouping_only']) {
@@ -1151,14 +1156,21 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 						// Add new value(s) to the collection - only add non-empty values
 						if ($data[Widget::CELL_VALUE] !== null && $data[Widget::CELL_VALUE] !== '') {
+							if ($aggregatedArray[$key]['_is_numeric'] === null) {
+								$aggregatedArray[$key]['_is_numeric'] = is_numeric($data[Widget::CELL_VALUE]);
+							}
+
 							// Only process if we're dealing with numeric values
-							if ($aggregatedArray[$key]['_is_numeric']) {
-								if (is_numeric($data[Widget::CELL_VALUE]) && is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
+							if ($aggregatedArray[$key]['_is_numeric'] && is_numeric($data[Widget::CELL_VALUE])) {
+								if (is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
 									// Only split on comma if it's a numeric CSV string
 									$newValues = explode(',', $data[Widget::CELL_VALUE]);
-									$aggregatedArray[$key]['_all_values'] = array_merge($aggregatedArray[$key]['_all_values'], $newValues);
+									$aggregatedArray[$key]['_all_values'] = array_merge(
+										$aggregatedArray[$key]['_all_values'],
+										$newValues
+									);
 								}
-								else if (is_numeric($data[Widget::CELL_VALUE])) {
+								else {
 									$aggregatedArray[$key]['_all_values'][] = $data[Widget::CELL_VALUE];
 								}
 							}
@@ -1177,6 +1189,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 					if (!empty($agg['_all_values']) && $agg['_is_numeric']) {
 						$agg[Widget::CELL_VALUE] = $this->applyAggregation($method, $agg['_all_values']);
 					}
+					else if (empty($agg['_all_values'])) {
+						// No values collected, keep original (likely null or empty)
+						// Don't change CELL_VALUE
+					}
+
 				}
 
 				unset($agg['_all_values']);
