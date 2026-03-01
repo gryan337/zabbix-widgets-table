@@ -1155,67 +1155,11 @@ class CWidgetTableModuleRME extends CWidget {
 
 			const popup = document.getElementById(`${this.#values_table.id}-${this._widgetid}-popup-${columnId}`);
 
-			// Restore original state from popup's dataset
-			if (popup && popup.dataset.initialState) {
-				const initialState = JSON.parse(popup.dataset.initialState);
-				const filterState = this.#getFilterState(columnId);
-
-				filterState.search = initialState.search;
-				filterState.checked = [...initialState.checked];
-				filterState.type = initialState.type;
-
-				// Update UI to match restore state
-				const searchInput = popup.querySelector('input[type="text"]');
-				const filterTypeSelect = popup.querySelector('.custom-select input[type="hidden"]');
-				const filterTypeButton = popup.querySelector('.custom-select > button');
-
-				if (searchInput) {
-					searchInput.value = initialState.search;
-					searchInput._handleInputFunction();
-				}
-
-				if (filterTypeSelect) {
-					filterTypeSelect.value = initialState.type;
-				}
-
-				if (filterTypeButton) {
-					const filterTypeList = filterTypeButton.nextElementSibling;
-					if (filterTypeList) {
-						const matchingOption = Array.from(filterTypeList.querySelectorAll('li'))
-							.find(li => li.dataset.value === initialState.type);
-
-						if (matchingOption) {
-							filterTypeButton.textContent = matchingOption.dataset.label;
-						}
-					}
-				}
-
-				if (popup._cancelCallbacks) {
-					const {
-						updateSummary,
-						updateWarningIcon,
-						updateClearFiltersButton,
-						renderVisibleCheckboxes,
-						toggleButton,
-						getCurrentFilteredValues
-					} = popup._cancelCallbacks;
-
-					// Update isAllSelected based on restored state
-					const currentFilteredValues = getCurrentFilteredValues();
-					const isAllSelected = filterState.checked.length > 0 &&
-						filterState.checked.length === currentFilteredValues.length;
-
-					toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
-
-					// Re-render UI
-					updateSummary();
-					updateWarningIcon();
-					updateClearFiltersButton();
-					renderVisibleCheckboxes();
-				}
+			if (popup) {
+				this.#resetPopupToInitialState(popup);
+				popup.style.display = 'none';
 			}
 
-			if (popup) popup.style.display = 'none';
 			this._resumeUpdating();
 		});
 
@@ -1596,34 +1540,43 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#setupCheckboxKeyboardNavigation(checkboxContainer, scrollContainer) {
 		let isKeyboardMode = false;
-		let mouseWheelTimeout = null;
 
 		// Detect mouse wheel usage to exit keyboard mode
 		const handleWheel = (e) => {
-			// Clear any pending timeout
-			if (mouseWheelTimeout) {
-				clearTimeout(mouseWheelTimeout);
-			}
+			// Exit keyboard mode immediately
+			isKeyboardMode = false;
 
-			// Immediately blur if we're in keyboard mode
-			if (isKeyboardMode) {
-				isKeyboardMode = false;
+			// If a checkbox has focus, blur it and focus the scroll
+			if (document.activeElement &&
+				document.activeElement.type === 'checkbox' &&
+				checkboxContainer.contains(document.activeElement)) {
 
-				// Blur the current focused checkbox synchronously
-				if (document.activeElement &&
-						document.activeElement.type === 'checkbox' &&
-						checkboxContainer.contains(document.activeElement)) {
-					document.activeElement.blur();
-					scrollContainer.focus();
-				}
+				document.activeElement.blur();
+
+				// Don't preventDefault - let the scroll happen naturally
+				// Just ensure scroll container can receive the scroll
+				scrollContainer.focus();
 			}
 		};
 
-		// Attach wheel listener to scroll container
+		// Attach wheel listener to multiple elements to catch it everywhere
 		scrollContainer.addEventListener('wheel', handleWheel, { passive: true });
+		checkboxContainer.addEventListener('wheel', handleWheel, { passive: true });
 
-		// Store reference for cleanup
+		// Also listen on document for any wheel event in this area
+		const documentWheelHandler = (e) => {
+			// Check if the wheel event happened inside our scroll container
+			if (scrollContainer.contains(e.target) || checkboxContainer.contains(e.target)) {
+				handleWheel(e);
+			}
+		};
+
+		document.addEventListener('wheel', documentWheelHandler, { passive: true });
+
+		// Store references for cleanup
 		scrollContainer._wheelHandler = handleWheel;
+		checkboxContainer._wheelHandler = handleWheel;
+		scrollContainer._documentWheelHandler = documentWheelHandler;
 
 		checkboxContainer.addEventListener('keydown', (e) => {
 			const target = e.target;
@@ -2305,9 +2258,12 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#toggleFilterPopup(popup, filterIcon, columnId) {
-		// Close all other popups
+		// Close all other popups and reset their state
 		document.querySelectorAll('.filter-popup').forEach(p => {
-			if (p !== popup) p.style.display = 'none';
+			if (p !== popup && p.style.display === 'flex') {
+				this.#resetPopupToInitialState(p);
+				p.style.display = 'none';
+			}
 		});
 
 		if (popup.style.display === 'flex') {
@@ -2805,6 +2761,22 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 				});
 
+				// Clean up wheel event listeners
+				const scrollContainer = popup.querySelector('.filter-popup-scroll-container');
+				if (scrollContainer) {
+					if (scrollContainer._wheelHandler) {
+						scrollContainer.removeEventListener('wheel', scrollContainer._wheelHandler);
+					}
+					if (scrollContainer._documentWheelHandler) {
+						document.removeEventListener('wheel', scrollContainer._documentWheelHandler);
+					}
+
+					const checkboxContainer = popup.querySelector('.filter-popup-checkboxes');
+					if (checkboxContainer && checkboxContainer._wheelHandler) {
+						checkboxContainer.removeEventListener('wheel', checkboxContainer._wheelHancdler);
+					}
+				}
+
 				popup.remove();
 			}
 			this.#draggableStates.delete(popupId);
@@ -2821,6 +2793,72 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#filterTooltipIds.clear();
 	}
 
+	#resetPopupToInitialState(popup) {
+		const columnId = popup.dataset.columnId;
+		const filterState = this.#getFilterState(columnId);
+
+		if (!popup.dataset.initialState || !filterState) {
+			return;
+		}
+
+		const initialState = JSON.parse(popup.dataset.initialState);
+
+		filterState.search = initialState.search;
+		filterState.checked = [...initialState.checked];
+		filterState.type = initialState.type;
+
+		// Update UI to match restore state
+		const searchInput = popup.querySelector('input[type="text"]');
+		const filterTypeSelect = popup.querySelector('.custom-select input[type="hidden"]');
+		const filterTypeButton = popup.querySelector('.custom-select > button');
+
+		if (searchInput) {
+			searchInput.value = initialState.search;
+			if (searchInput._handleInputFunction) {
+				searchInput._handleInputFunction();
+			}
+		}
+
+		if (filterTypeSelect) {
+			filterTypeSelect.value = initialState.type;
+		}
+
+		if (filterTypeButton) {
+			const filterTypeList = filterTypeButton.nextElementSibling;
+			if (filterTypeList) {
+				const matchingOption = Array.from(filterTypeList.querySelectorAll('li'))
+					.find(li => li.dataset.value === initialState.type);
+
+				if (matchingOption) {
+					filterTypeButton.textContent = matchingOption.dataset.label;
+				}
+			}
+		}
+
+		if (popup._cancelCallbacks) {
+			const {
+				updateSummary,
+				updateWarningIcon,
+				updateClearFiltersButton,
+				renderVisibleCheckboxes,
+				toggleButton,
+				getCurrentFilteredValues
+			} = popup._cancelCallbacks;
+
+			const currentFilteredValues = getCurrentFilteredValues();
+			const isAllSelected = filterState.checked.length > 0 &&
+				filterState.checked.length === currentFilteredValues.length;
+
+			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
+
+			// Re-render UI
+			updateSummary();
+			updateWarningIcon();
+			updateClearFiltersButton();
+			renderVisibleCheckboxes();
+		}
+	}
+
 	closeFilterPopup(e) {
 		const clickedPopup = e.target.closest('.filter-popup');
 		const clickedFilterIcon = e.target.closest('.filter-icon');
@@ -2832,33 +2870,12 @@ class CWidgetTableModuleRME extends CWidget {
 				if (!popup) return;
 
 				if (popup.style.display === 'flex') {
-					const columnId = popup.dataset.columnId;
-					const filterState = this.#getFilterState(columnId);
-
-					// Only process if filterState exists
-					if (filterState) {
-						// Get initial state from popup's data attribute if it exists
-						if (popup.dataset.initialState) {
-							try {
-								const initialState = JSON.parse(popup.dataset.initialState);
-								filterState.search = initialState.search;
-								filterState.checked = [...initialState.checked];
-								filterState.type = initialState.type;
-
-								// Update UI
-								const searchInput = popup.querySelector('input[type="text"]');
-								if (searchInput) {
-									searchInput.value = initialState.search;
-								}
-							}
-							catch (e) {
-								console.error('Failed to parse initial state:', e);
-							}
-						}
-					}
+					this.#resetPopupToInitialState(popup);
 				}
+
 				popup.style.display = 'none';
 			});
+
 			this._resumeUpdating();
 		}
 	}
