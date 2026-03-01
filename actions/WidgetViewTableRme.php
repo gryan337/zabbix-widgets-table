@@ -1176,6 +1176,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 			foreach ($table as $hostId => $hostData) {
 				foreach ($hostData as $data) {
+					// skip if no itemid
+					if ($data[Widget::CELL_ITEMID] === null || $data[Widget::CELL_ITEMID] === '') {
+						continue;
+					}
+
 					$groupingName = $data[Widget::CELL_METADATA]['grouping_name'];
 					$columnIndex = $data[Widget::CELL_METADATA]['column_index'];
 					$key = $groupingName.chr(31).$columnIndex;
@@ -1189,7 +1194,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 							Widget::CELL_METADATA => $data[Widget::CELL_METADATA],
 							'_all_values' => [],
 							'_sparkline_values' => [],
-							'_is_numeric' => null, // Track if values are numeric
+							'_is_numeric' => null,
 						];
 
 						if (!$this->fields_values['show_grouping_only']) {
@@ -1233,14 +1238,21 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 						// Add new value(s) to the collection - only add non-empty values
 						if ($data[Widget::CELL_VALUE] !== null && $data[Widget::CELL_VALUE] !== '') {
+							if ($aggregatedArray[$key]['_is_numeric'] === null) {
+								$aggregatedArray[$key]['_is_numeric'] = is_numeric($data[Widget::CELL_VALUE]);
+							}
+
 							// Only process if we're dealing with numeric values
-							if ($aggregatedArray[$key]['_is_numeric']) {
-								if (is_numeric($data[Widget::CELL_VALUE]) && is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
+							if ($aggregatedArray[$key]['_is_numeric'] && is_numeric($data[Widget::CELL_VALUE])) {
+								if (is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
 									// Only split on comma if it's a numeric CSV string
 									$newValues = explode(',', $data[Widget::CELL_VALUE]);
-									$aggregatedArray[$key]['_all_values'] = array_merge($aggregatedArray[$key]['_all_values'], $newValues);
+									$aggregatedArray[$key]['_all_values'] = array_merge(
+										$aggregatedArray[$key]['_all_values'],
+										$newValues
+									);
 								}
-								else if (is_numeric($data[Widget::CELL_VALUE])) {
+								else {
 									$aggregatedArray[$key]['_all_values'][] = $data[Widget::CELL_VALUE];
 								}
 							}
@@ -1273,15 +1285,56 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 					if (!empty($agg['_all_values']) && $agg['_is_numeric']) {
 						$agg[Widget::CELL_VALUE] = $this->applyAggregation($method, $agg['_all_values']);
 					}
+					else if (empty($agg['_all_values'])) {
+						// No values collected, keep original (likely null or empty)
+						// Don't change CELL_VALUE
+					}
 
 					// Apply aggregation to all collected sparkline values per timestamp
 					if (!empty($agg['_sparkline_values'])) {
 						$agg[Widget::CELL_SPARKLINE_VALUE] = [];
-						foreach ($agg['_sparkline_values'] as $timestamp => $values) {
-							$agg[Widget::CELL_SPARKLINE_VALUE][] = [
-								Widget::CELL_HOSTID => $timestamp,
-								1 => $this->applyAggregation($method, $values)
-							];
+
+						$time_from = $columns[$columnIndex]['sparkline']['time_period']['from_ts'];
+						$time_to = $columns[$columnIndex]['sparkline']['time_period']['to_ts'];
+						$width = $this->sparkline_max_samples;
+
+						if ($width !== null) {
+							$period = $time_to - $time_from;
+							$buckets = [];
+
+							// Group values into buckets
+							foreach ($agg['_sparkline_values'] as $timestamp => $values) {
+								$bucketIndex = round($width * ($timestamp - $time_from) / $period, 0);
+
+								if (!isset($buckets[$bucketIndex])) {
+									$buckets[$bucketIndex] = [
+										'values' => [],
+										'max_clock' => $timestamp
+									];
+								}
+
+								$buckets[$bucketIndex]['values'] = array_merge($buckets[$bucketIndex]['values'], $values);
+
+								if ($timestamp > $buckets[$bucketIndex]['max_clock']) {
+									$buckets[$bucketIndex]['max_clock'] = $timestamp;
+								}
+							}
+
+							foreach ($buckets as $bucketIndex => $bucket) {
+								$agg[Widget::CELL_SPARKLINE_VALUE][] = [
+									Widget::CELL_HOSTID => $bucket['max_clock'],
+									1 => $this->applyAggregation($method, $bucket['values'])
+								];
+							}
+						}
+						else {
+							// Width is null, process each timestamp individually
+							foreach ($agg['_sparkline_values'] as $timestamp => $values) {
+								$agg[Widget::CELL_SPARKLINE_VALUE][] = [
+									Widget::CELL_HOSTID => $timestamp,
+									1 => $this->applyAggregation($method, $values)
+								];
+							}
 						}
 
 						// Sort sparkline by timestamp
