@@ -863,7 +863,6 @@ tbody tr {
 /* Sortable text styling */
 .dashboard-widget-tablemodulerme .sortable-header-text {
   cursor: pointer;
-  transition: all 0.2s ease;
   padding: 4px 1px;
   border-radius: 4px;
   display: inline-block;
@@ -887,6 +886,11 @@ tbody tr {
 .dashboard-widget-tablemodulerme .sortable-header-text:focus-visible {
   outline: 2px solid var(--focus-outline-color);
   outline-offset: 2px;
+}
+
+div.dashboard-widget-tablemodulerme td.rme-cell:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: -2px;
 }
 
 /* ========== Theme Variables ========== */

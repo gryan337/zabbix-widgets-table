@@ -74,6 +74,7 @@ class CWidgetTableModuleRME extends CWidget {
 	#lastSortState = null;
 	#highlightedCells = new Set();
 	#highlightedHostCells = new Set();
+	#focusStateToRestore = null;
 
 	static #hasManualSelection = false;
 	static #sessionStorageInitialized = false;
@@ -1146,6 +1147,12 @@ class CWidgetTableModuleRME extends CWidget {
 			if (popup) {
 				this.#resetPopupToInitialState(popup);
 				popup.style.display = 'none';
+
+				// Return focus to the filter icon that opened this popup
+				if (popup._triggerElement) {
+					popup._triggerElement.setAttribute('aria-expanded', 'false');
+					popup._triggerElement.focus();
+				}
 			}
 
 			this._resumeUpdating();
@@ -1956,6 +1963,11 @@ class CWidgetTableModuleRME extends CWidget {
 			this.invalidRegex = false;
 			popup.style.display = 'none';
 
+			if (popup._triggerElement) {
+				popup._triggerElement.setAttribute('aria-expanded', 'false');
+				popup._triggerElement.focus();
+			}
+
 			this.#isUserInitiatedFilterChange =true;
 
 			setTimeout(() => {
@@ -2066,11 +2078,18 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#createFilterPopup(columnId, sortedValues, columnType) {
+		// Create header with title and controls
+		const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
+		const columnName = th ? this.#extractColumnName(th) : '';
+
 		const popup = document.createElement('div');
 		popup.style.display = 'none';
 		popup.className = 'filter-popup';
 		popup.id = `${this.#values_table.id}-${this._widgetid}-popup-${columnId}`;
 		popup.dataset.columnId = columnId;
+		popup.setAttribute('role', 'dialog');
+		popup.setAttribute('aria-modal', 'true');
+		popup.setAttribute('aria-label', `Filter column values${columnName ? ' - ' + columnName : ''}`);
 
 		// Clean up old popup for this column if it exists
 		const oldPopup = document.getElementById(popup.id);
@@ -2085,10 +2104,6 @@ class CWidgetTableModuleRME extends CWidget {
 		const filterState = this.#getFilterState(columnId);
 		let filteredValues = sortedValues;
 		let isAllSelected = filterState.allSelected;
-
-		// Create header with title and controls
-		const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
-		const columnName = th ? this.#extractColumnName(th) : '';
 
 		const { header, searchInput, filterTypeSelect, filterTypeButton, clearBtn } =
 			this.#createPopupHeader(columnId, filterState, columnType, columnName);
@@ -2148,10 +2163,15 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#createFilterUI(th, columnId) {
+		const columnName = this.#extractColumnName(th);
 		const filterIcon = document.createElement('span');
 		filterIcon.className = 'filter-icon';
-		filterIcon.title = 'Click to filter this column';
 		filterIcon.dataset.columnId = columnId;
+		filterIcon.setAttribute('aria-label', `Filter ${columnName} column`);
+		filterIcon.setAttribute('tabindex', '0');
+		filterIcon.setAttribute('role', 'button');
+		filterIcon.setAttribute('aria-haspopup', 'dialog');
+		filterIcon.setAttribute('aria-expanded', 'false');
 
 		filterIcon.innerHTML = `
 			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2159,27 +2179,39 @@ class CWidgetTableModuleRME extends CWidget {
 			</svg>
 		`;
 
-		// DON'T create popup here - lazy load on first click
-		filterIcon.addEventListener('click', (e) => {
-			e.stopPropagation();
-
+		const openPopup = () => {
 			let popup = document.getElementById(`${this.#values_table.id}-${this._widgetid}-popup-${columnId}`);
 
 			// Lazy create popup on first click
 			if (!popup) {
 				const columnInfo = this.#getColumnData(columnId);
-
 				// Lazy cache: only calculate sorted values on first popup open
 				if (!columnInfo.cachedSortedValues) {
 					columnInfo.cachedSortedValues = this.#getPossibleValuesForColumn(columnId);
 				}
 				const sortedValues = columnInfo.cachedSortedValues;
-
 				popup = this.#createFilterPopup(columnId, sortedValues, columnInfo.columnType);
 				document.body.appendChild(popup);
 			}
 
+			popup._triggerElement = filterIcon;
+			filterIcon.setAttribute('aria-expanded', popup.style.display === 'flex' ? 'false' : 'true');
+
 			this.#toggleFilterPopup(popup, filterIcon, columnId);
+		};
+
+		filterIcon.addEventListener('click', (e) => {
+			e.stopPropagation();
+			openPopup();
+		});
+
+		// Keyboard activation
+		filterIcon.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				e.stopPropagation();
+				openPopup();
+			}
 		});
 
 		const arrowSpan = th.querySelector('span#arrow');
@@ -2256,6 +2288,10 @@ class CWidgetTableModuleRME extends CWidget {
 
 		if (popup.style.display === 'flex') {
 			popup.style.display = 'none';
+			if (popup._triggerElement) {
+				popup._triggerElement.setAttribute('aria-expanded', 'false');
+			}
+
 			this._resumeUpdating();
 			return;
 		}
@@ -2704,6 +2740,8 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#displayPaginationControls();
 		}
 
+		this.#values_table.setAttribute('aria-rowcount', this.#totalRows);
+
 		if (this._fields.display_on_click && this.#displayButtonClicked) {
 			this.#addHideButton();
 		}
@@ -2724,6 +2762,17 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 
 		this.#refreshAllFilterPopups();
+
+		const totalVisible = this.#visibleRows.length;
+		const totalAll = this.#rowsArray.filter(r => !this.#isResetRow(r.row) && !this.#isFooterRow(r.row)).length;
+		const activeFilterCount = this.#activeFilters.size;
+
+		if (activeFilterCount > 0) {
+			this.#announceLiveRegion(`Filters applied. Showing ${totalVisible} of ${totalAll} rows.`);
+		}
+		else {
+			this.#announceLiveRegion(`Filters cleared. Showing all ${totalAll} rows.`);
+		}
 
 		this.checkAndRemarkSelected();
 
@@ -2859,6 +2908,16 @@ class CWidgetTableModuleRME extends CWidget {
 
 				if (popup.style.display === 'flex') {
 					this.#resetPopupToInitialState(popup);
+
+					// Restore focus to the triggering icon
+					if (popup._triggerElement) {
+						popup._triggerElement.setAttribute('aria-expanded', 'false');
+						// Only restore focus if the click wasn't on a focusable element
+						// (so we don't steal focus unexpectedly)
+						if (!e.target.matches('input, button, select, textarea, [tabindex]')) {
+							popup._triggerElement.focus();
+						}
+					}
 				}
 
 				popup.style.display = 'none';
@@ -3292,10 +3351,12 @@ class CWidgetTableModuleRME extends CWidget {
 	// Helper method to apply styles
 	#applyCellStyles(cellInfo, bgColor, fontColor) {
 		const { td, isNumericCellOfDoubleSpan, barGaugeTd } = cellInfo;
+		td.setAttribute('aria-selected', 'true');
 
 		if (isNumericCellOfDoubleSpan && barGaugeTd) {
 			td.style.background = barGaugeTd.style.backgroundColor = bgColor;
 			td.style.color = barGaugeTd.style.color = fontColor;
+			barGaugeTd.setAttribute('aria-selected', 'true');
 		}
 		else {
 			td.style.background = bgColor;
@@ -3306,6 +3367,7 @@ class CWidgetTableModuleRME extends CWidget {
 	// Help method to clear styles
 	#clearCellStyles(cellInfo) {
 		const { td, dataset, isNumericCellOfDoubleSpan, barGaugeTd } = cellInfo;
+		td.setAttribute('aria-selected', 'false');
 
 		// Use the correct ID based on cell type
 		const id = dataset.type === this.#dataset_host ? dataset.hostid : dataset.itemid;
@@ -3317,6 +3379,7 @@ class CWidgetTableModuleRME extends CWidget {
 				if (this._isBarGauge(barGaugeTd)) {
 					td.style.cssText = cachedStyle;
 					barGaugeTd.style.cssText = '';
+					barGaugeTd.setAttribute('aria-selected', 'false');
 				}
 			}
 		}
@@ -3454,6 +3517,14 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#sortTable(th, ascending, span, preserve = false) {
+		this.allThs.forEach(t => {
+			if (t !== th && !t.classList.contains('action-column')) {
+				t.setAttribute('aria-sort', 'none');
+			}
+		});
+
+		th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+
 		// Store the stable column ID instead of just the th reference
 		const stableColumnId = this.#getStableColumnId(th);
 
@@ -3705,6 +3776,8 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#updateDisplay(scrollToTop = false, updateFooter = false, firstRun = false, restoreScrollTop = null) {
+		this.#values_table?.setAttribute('aria-busy', 'true');
+
 		// Don't save on first run from setContents
 		if (!scrollToTop && !firstRun) {
 			this.#saveScrollPosition();
@@ -3739,6 +3812,8 @@ class CWidgetTableModuleRME extends CWidget {
 			displayedRows.forEach(({ row }) => {
 				this.#values_table.tBodies[0].appendChild(row);
 			});
+
+			this.#resetRovingTabindex();
 
 			this.#recalculateCanvasSize();
 
@@ -3788,6 +3863,13 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 				});
 			}
+
+			if (this.#focusStateToRestore) {
+				this.#restoreFocusState(this.#focusStateToRestore);
+				this.#focusStateToRestore = null;
+			}
+
+			this.#values_table?.setAttribute('aria-busy', 'false');
 		}, 0);
 	}
 
@@ -3874,6 +3956,122 @@ class CWidgetTableModuleRME extends CWidget {
 				span.innerHTML += overrideIcon.outerHTML;
 			}
 		});
+	}
+
+	#setupLiveRegion() {
+		// Remove any existing one first
+		const existing = this.#parent_container.querySelector('.filter-live-region');
+		if (existing) existing.remove();
+
+		const liveRegion = document.createElement('div');
+		liveRegion.className = 'filter-live-region';
+		liveRegion.setAttribute('aria-live', 'polite');
+		liveRegion.setAttribute('aria-atomic', 'true');
+
+		// Visually hidden but readable by screen readers
+		liveRegion.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;';
+		this.#parent_container.appendChild(liveRegion);
+	}
+
+	#resetRovingTabindex() {
+		// Remove tabindex="0" from any cell that has it
+		this.#values_table?.querySelectorAll('td.rme-cell[tabindex="0"]').forEach(cell => {
+			cell.setAttribute('tabindex', '-1');
+		});
+
+		// Give it to the first visible cell
+		const firstCell = this.#values_table?.querySelector('td.rme-cell');
+		if (firstCell) {
+			firstCell.setAttribute('tabindex', '0');
+		}
+	}
+
+	#saveFocusState() {
+		const focused = document.activeElement;
+		if (!focused || !this._target.contains(focused)) return null;
+
+		// td cell
+		const td = focused.closest('td.rme-cell');
+		if (td) {
+			const row = td.parentElement;
+			const rowIndex = Array.from(this.#values_table.querySelectorAll('tbody tr')).indexOf(row);
+			const cellIndex = Array.from(row.children).indexOf(td);
+			return { type: 'cell', rowIndex, cellIndex };
+		}
+
+		// sortable header text
+		const headerSpan = focused.closest('.sortable-header-text');
+		if (headerSpan) {
+			const th = headerSpan.closest('th');
+			if (th) return { type: 'header', columnId: this.#getStableColumnId(th) };
+		}
+
+		// filter icon
+		const filterIcon = focused.closest('.filter-icon');
+		if (filterIcon) {
+			return { type: 'filterIcon', columnId: filterIcon.dataset.columnId };
+		}
+
+		// pagination button
+		const paginationButton = focused.closest('.pagination-controls button');
+		if (paginationButton) {
+			return { type: 'paginationButton', label: paginationButton.textContent.trim() };
+		}
+
+		return null;
+	}
+
+	#restoreFocusState(savedState) {
+		if (!savedState) return;
+
+		switch (savedState.type) {
+			case 'cell': {
+				const rows = this.#values_table.querySelectorAll('tbody tr');
+				// Try exact row first, fall back to last row if it no longer exists
+				const row = rows[savedState.rowIndex] || rows[rows.length - 1];
+				if (row) {
+					const cell = row.children[savedState.cellIndex];
+					if (cell) {
+						cell.setAttribute('tabindex', '0');
+						cell.focus();
+					}
+				}
+				break;
+			}
+			case 'header': {
+				const th = this.allThs.find(t => this.#getStableColumnId(t) === savedState.columnId);
+				if (th) {
+					const span = th.querySelector('.sortable-header-text');
+					if (span) span.focus();
+				}
+				break;
+			}
+			case 'filterIcon': {
+				const th = this.allThs.find(t => this.#getStableColumnId(t) === savedState.columnId);
+				if (th) {
+					const icon = th.querySelector('.filter-icon');
+					if (icon) icon.focus();
+				}
+				break;
+			}
+			case 'paginationButton': {
+				const buttons = this.#parent_container?.querySelectorAll('.pagination-controls button');
+				if (buttons) {
+					const button = Array.from(buttons).find(b => b.textContent.trim() === savedState.label);
+					if (button) button.focus();
+				}
+				break;
+			}
+		}
+	}
+
+	#announceLiveRegion(message) {
+		const liveRegion = this.#parent_container?.querySelector('.filter-live-region');
+		if (liveRegion) {
+			liveRegion.textContent = '';
+			// Small delay ensures screen readers notice the change
+			setTimeout(() => { liveRegion.textContent = message; }, 50);
+		}
 	}
 
 	formatValuesWithUnit(value, unit) {
@@ -4236,6 +4434,9 @@ class CWidgetTableModuleRME extends CWidget {
 		// Save scroll position BEFORE any processing
 		this.#saveScrollPosition();
 
+		// Restore focus to last focused cell
+		this.#focusStateToRestore = this.#saveFocusState();
+
 		this.#cleanupAllPopups();
 
 		if (this.#theme === null) {
@@ -4268,6 +4469,8 @@ class CWidgetTableModuleRME extends CWidget {
 		this.detachListeners();
 
 		this.#values_table = this._target.getElementsByClassName('list-table').item(0);
+		this.#values_table.setAttribute('role', 'grid');
+		this.#values_table.setAttribute('aria-label', 'Data table');
 		this.#parent_container = this.#values_table.closest('.dashboard-grid-widget-container');
 		const allRows = Array.from(this.#values_table.querySelectorAll('tbody tr'));
 
@@ -4283,7 +4486,8 @@ class CWidgetTableModuleRME extends CWidget {
 		let globalTdIndex = 0;
 
 		// Build rowsArray and cache all metadata in a single pass
-		this.#rowsArray = allRows.map(row => {
+		this.#rowsArray = allRows.map((row, index) => {
+			row.setAttribute('aria-rowindex', index + 1);
 			const cells = row.querySelectorAll('td');
 			const cellsByColumn = new Map();
 			const menuCells = [];
@@ -4294,6 +4498,14 @@ class CWidgetTableModuleRME extends CWidget {
 			cells.forEach(cell => {
 				// Set global ID
 				cell.setAttribute('id', globalTdIndex);
+				cell.setAttribute('tabindex', '-1');
+				cell.classList.add('rme-cell');
+				cell.setAttribute('role', 'gridcell');
+
+				if (this._isBarGauge(cell) || this._isSparkLine(cell)) {
+					cell.setAttribute('aria-label', 'Table visualization');
+					cell.setAttribute('aria-hidden', 'true');
+				}
 
 				// Cache by column index
 				cellsByColumn.set(currentColumnId, cell);
@@ -4360,12 +4572,19 @@ class CWidgetTableModuleRME extends CWidget {
 			};
 		});
 
+		const firstFocusableCell = this.#values_table.querySelector('td.rme-cell');
+		if (firstFocusableCell) {
+			firstFocusableCell.setAttribute('tabindex', '0');
+		}
+
 		this.#cssStyleMap = newCssMap;
 
 		this.allThs.forEach((th) => {
 			const colspan = th.hasAttribute('colspan') ? parseFloat(th.getAttribute('colspan')) : 1;
 			th.id = colIndex + colspan - 1;
 			colIndex = parseFloat(th.id) + 1;
+			th.setAttribute('role', 'columnheader');
+			th.setAttribute('scope', 'col');
 
 			// Skip action column
 			if (th.classList.contains('action-column')) {
@@ -4375,7 +4594,8 @@ class CWidgetTableModuleRME extends CWidget {
 			// FIRST: Add the arrow span to the existing HTML
 			th.innerHTML += `<span class="new-arrow" id="arrow"></span>`;
 			th.setAttribute('style', `color: #4796c4; font-weight: bold;`);
-			th.classList.remove('cursor-pointer'); // Remove this we'll add it to span only
+			th.setAttribute('aria-sort', 'none');
+			th.classList.remove('cursor-pointer');
 		});
 
 		// Wrap the text content before filter icons are added
@@ -4411,6 +4631,8 @@ class CWidgetTableModuleRME extends CWidget {
 			// Create wrapper span
 			const textSpan = document.createElement('span');
 			textSpan.className = 'sortable-header-text';
+			textSpan.setAttribute('tabindex', '0');
+			textSpan.setAttribute('role', 'button');
 
 			// Move nodes into the wrapper
 			nodesToWrap.forEach(node => {
@@ -4451,6 +4673,105 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 			else if (target && target.tagName === 'TD') {
 				this.#handleCellClick(target, event);
+			}
+		});
+
+		this.#values_table.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+				// Header sort
+				const clickedTextSpan = event.target.closest('.sortable-header-text');
+				if (clickedTextSpan) {
+					const th = event.target.closest('th');
+					if (!th || th.classList.contains('action-column')) return;
+
+					event.preventDefault();
+					this.#th = th;
+					const span = this.#getSetSpans(th);
+					const ascending = !('sort' in th.dataset) || th.dataset.sort !== 'asc';
+					this.#sortTable(th, ascending, span);
+					return;
+				}
+
+				// Cell click
+				const td = event.target.closest('td');
+				if (td) {
+					event.preventDefault();
+					event.stopPropagation();
+
+					if (event.ctrlKey || event.metaKey || event.shiftKey) {
+						const syntheticEvent = new MouseEvent('click', {
+							bubbles: true,
+							cancelable: true,
+							ctrlKey: event.ctrlKey || event.metaKey,
+							shiftKey: event.shiftKey
+						});
+						this.#handleCellClick(td, syntheticEvent);
+					}
+					else {
+						td.click();
+					}
+				}
+				return;
+			}
+
+			// ── Arrow key grid navigation
+			const currentCell = event.target.closest('td, th');
+			if (!currentCell) return;
+
+			let targetCell = null;
+			const currentRow = currentCell.parentElement;
+
+			switch (event.key) {
+				case 'ArrowRight': {
+					targetCell = currentCell.nextElementSibling;
+					break;
+				}
+				case 'ArrowLeft': {
+					targetCell = currentCell.previousElementSibling;
+					break;
+				}
+				case 'ArrowDown': {
+					const nextRow = currentRow.nextElementSibling;
+					if (nextRow) {
+						const cellIndex = Array.from(currentRow.children).indexOf(currentCell);
+						targetCell = nextRow.children[cellIndex];
+					}
+					break;
+				}
+				case 'ArrowUp': {
+					const prevRow = currentRow.previousElementSibling;
+					if (prevRow) {
+						const cellIndex = Array.from(currentRow.children).indexOf(currentCell);
+						targetCell = prevRow.children[cellIndex];
+					}
+					break;
+				}
+				case 'Home': {
+					if (event.ctrlKey) {
+						targetCell = this.#values_table.querySelector('td.rme-cell, span.sortable-header-text');
+					}
+					else {
+						targetCell = currentRow.firstElementChild;
+					}
+					break;
+				}
+				case 'End': {
+					if (event.ctrlKey) {
+						const allCells = this.#values_table.querySelectorAll('td.rme-cell');
+						targetCell = allCells[allCells.length - 1];
+					}
+					else {
+						targetCell = currentRow.lastElementChild;
+					}
+					break;
+				}
+			}
+
+			if (targetCell) {
+				event.preventDefault();
+				currentCell.setAttribute('tabindex', '-1');
+				targetCell.setAttribute('tabindex', '0');
+				targetCell.focus();
 			}
 		});
 
@@ -4614,6 +4935,9 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#displayPaginationControls();
 		}
 
+		this.#values_table.setAttribute('aria-rowcount', this.#totalRows);
+		this.#values_table.setAttribute('aria-colcount', this.allThs.length);
+
 		this.closeFilterPopupHandler = this.closeFilterPopup.bind(this);
 		this.attachListeners();
 
@@ -4626,6 +4950,8 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 			}
 		}
+
+		this.#setupLiveRegion();
 
 		this.checkAndRemarkSelected();
 
