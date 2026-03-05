@@ -543,13 +543,7 @@ else {
 					->setAttribute('data-menu', json_encode($host_attributes));
 			}
 
-			$host_context_button = (new CButton('', ''))
-				->addClass('menu-btn')
-				->setHint(
-					(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
-				)
-				->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
-
+			$host_context_button = makeHostContextButton($host_context_msg, $host_attributes);
 			$table_row[] = new CCol([$host_cell_values, $host_context_button]);
 			$table_row = [...$table_row, ...makeTableCellViews($data_row, $data)];
 		}
@@ -691,12 +685,7 @@ else {
 							->addStyle('text-decoration: underline;')
 							->setAttribute('data-menu', json_encode($host_attributes));
 
-						$host_context_button = (new CButton('', ''))
-							->addClass('menu-btn')
-							->setHint(
-								(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
-							)
-							->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
+						$host_context_button = makeHostContextButton($host_context_msg, $host_attributes);
 
 						$table_row[] = (new CCol([$host_cell_values, $host_context_button]))
 							->addStyle('max-width: 35ch; min-width: 20ch;');
@@ -709,12 +698,7 @@ else {
 					if ($host_attributes['hostid']) {
 						$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']));
 
-						$host_context_button = (new CButton('', ''))
-							->addClass('menu-btn')
-							->setHint(
-								(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
-							)
-							->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
+						$host_context_button = makeHostContextButton($host_context_msg, $host_attributes);
 
 						$table_row[] = (new CCol([$host_cell_values, $host_context_button]))
 							->addStyle('max-width: 35ch; min-width: 20ch;');
@@ -744,12 +728,7 @@ else {
 					->setAttribute('data-menu', json_encode($host_attributes));
 			}
 
-			$host_context_button = (new CButton('', ''))
-				->addClass('menu-btn')
-				->setHint(
-					(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
-				)
-				->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
+			$host_context_button = makeHostContextButton($host_context_msg, $host_attributes);
 
 			$table_row[] = new CCol([$host_cell_values, $host_context_button]);
 
@@ -867,11 +846,26 @@ function makeUrl($cell, $column) {
 			100
 		)
 		->setTarget('_blank')
-		->setAttribute('rel', 'noopener noreferrer');
+		->setAttribute('aria-label', 'Show raw values')
+		->setAttribute('rel', 'noopener noreferrer')
+		->setAttribute('onkeydown', 'if(event.key === "Enter" || event.key === " " || event.key === "Spacebar") { event.preventDefault(); event.stopPropagation(); this.click(); }');
 
 	return $link;
 }
 
+function makeHostContextButton($host_context_msg, $host_attributes) {
+	$button = (new CButton('', ''))
+		->addClass('menu-btn')
+		->setHint(
+			(new CDiv($host_context_msg))->addClass(ZBX_STYLE_HINTBOX_WRAP), '', false, '', 100
+		)
+		->setAttribute('aria-label', 'Show raw values')
+		->setAttribute('rel', 'noopener noreferrer')
+		->setAttribute('onkeydown', 'if(event.key === "Enter" || event.key === " " || event.key === "Spacebar") { event.preventDefault(); event.stopPropagation(); this.click(); }')
+		->setMenuPopup(CMenuPopupHelper::getHost($host_attributes['hostid']));
+
+	return $button;
+}
 
 function topBottomNColPerPattern($data) {
 	$allRows = [];
