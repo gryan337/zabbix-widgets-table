@@ -154,6 +154,10 @@ class CWidgetTableModuleRME extends CWidget {
 		return td.querySelector('z-bar-gauge');
 	}
 
+	_isSparkLine(td) {
+		return td.querySelector('z-sparkline');
+	}
+
 	runwhenSpinnerIsGone (callback) {
 		const checkInterval = setInterval(() => {
 			if (document.querySelector('.is-loading') === null) {
