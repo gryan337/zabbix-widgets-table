@@ -870,7 +870,8 @@ tbody tr {
 }
 
 /* Enhanced hover state */
-.dashboard-widget-tablemodulerme .sortable-header-text:hover {
+.dashboard-widget-tablemodulerme .sortable-header-text:hover,
+.dashboard-widget-tablemodulerme .sortable-header-text:focus-visible {
   color: var(--header-text-hover);
   background-color: var(--header-bg-hover);
   text-decoration: underline;
