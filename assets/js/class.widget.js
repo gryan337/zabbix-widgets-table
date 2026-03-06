@@ -1738,6 +1738,53 @@ class CWidgetTableModuleRME extends CWidget {
 			checkboxContainer, spacer, sortedValues, summary, toggleButton
 		} = config;
 
+		const getFocusable = () => Array.from(popup.querySelectorAll(
+			'button:not(:disabled), input:not(:disabled), [tabindex="0"], [tabindex]:not([tabindex="-1"])'
+		)).filter(el => {
+			if (!popup.contains(el)) return false;
+			const style = getComputedStyle(el);
+			return style.display !== 'none'
+				&& style.visibility !== 'hidden'
+				&& style.opacity !== '0';
+		});
+
+		const trapFocus = (e) => {
+			if (popup.style.display !== 'flex') return;
+			if (e.key !== 'Tab') return;
+
+			const focusable = getFocusable();
+			if (focusable.length === 0) return;
+
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			const active = document.activeElement;
+
+			if (!popup.contains(active)) {
+				e.preventDefault();
+				e.stopPropagation();
+				first.focus();
+				return;
+			}
+
+			if (e.shiftKey) {
+				if (active === first) {
+					e.preventDefault();
+					e.stopPropagation();
+					last.focus();
+				}
+			}
+			else {
+				if (active === last) {
+					e.preventDefault();
+					e.stopPropagation();
+					first.focus();
+				}
+			}
+		};
+
+		document.addEventListener('keydown', trapFocus, true);
+		popup._trapFocus = trapFocus;
+
 		let filteredValues = [...sortedValues];
 		let isAllSelected = this.#getFilterState(columnId).allSelected;
 		let lastCheckedCheckbox = null;
@@ -2186,7 +2233,7 @@ class CWidgetTableModuleRME extends CWidget {
 		filterIcon.setAttribute('aria-expanded', 'false');
 
 		filterIcon.innerHTML = `
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/>
 			</svg>
 		`;
@@ -2826,6 +2873,11 @@ class CWidgetTableModuleRME extends CWidget {
 					}
 				}
 
+				if (popup._trapFocus) {
+					document.removeEventListener('keydown', popup._trapFocus, true);
+					delete popup._trapFocus;
+				}
+
 				popup.remove();
 			}
 			this.#draggableStates.delete(popupId);
@@ -3386,12 +3438,12 @@ class CWidgetTableModuleRME extends CWidget {
 		const cell_key = `${id}_${td.getAttribute('id')}`;
 
 		if (isNumericCellOfDoubleSpan && barGaugeTd) {
+			barGaugeTd.setAttribute('aria-selected', 'false');
 			const cachedStyle = this.#cssStyleMap.get(cell_key);
 			if (cachedStyle !== undefined) {
 				if (this._isBarGauge(barGaugeTd) || this._isSparkLine(barGaugeTd)) {
 					td.style.cssText = cachedStyle;
 					barGaugeTd.style.cssText = '';
-					barGaugeTd.setAttribute('aria-selected', 'false');
 				}
 			}
 		}
@@ -3821,8 +3873,10 @@ class CWidgetTableModuleRME extends CWidget {
 				});
 			}
 
-			displayedRows.forEach(({ row }) => {
+			displayedRows.forEach(({ row }, index) => {
 				this.#values_table.tBodies[0].appendChild(row);
+				const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
+				row.setAttribute('aria-rowindex', startIndex + index + 1);
 			});
 
 			this.#resetRovingTabindex();
@@ -4000,6 +4054,7 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	#saveFocusState() {
+		if (!this._target || !this.#values_table) return null;
 		const focused = document.activeElement;
 		if (!focused || !this._target.contains(focused)) return null;
 
