@@ -208,6 +208,15 @@ a.ext-btn:focus-visible {
   flex: 1;
 }
 
+.filter-popup-controls input:focus {
+  outline: none;
+}
+
+.filter-popup-controls input:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
+}
+
 .filter-popup-controls .clear-btn {
   cursor: pointer;
   font-size: 11px;
@@ -236,6 +245,15 @@ a.ext-btn:focus-visible {
   position: relative;
   padding-right: 6px;
   box-sizing: border-box;
+}
+
+.filter-popup-scroll-container:focus {
+  outline: none;
+}
+
+.filter-popup-scroll-container:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
 }
 
 .filter-popup-checkboxes {
@@ -435,6 +453,15 @@ a.ext-btn:focus-visible {
   margin-left: 12px;
   position: relative;
   user-select: none;
+}
+
+.filter-warning-icon:focus {
+  outline: none;
+}
+
+.filter-warning-icon:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
 }
 
 .filter-warning-icon svg {

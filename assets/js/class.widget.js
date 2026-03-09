@@ -1032,6 +1032,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		const warningIcon = document.createElement('span');
 		warningIcon.className = 'filter-warning-icon';
+		warningIcon.setAttribute('tabindex', '0');
 		warningIcon.innerHTML = warningSvg;
 
 		// Warning tooltip with widget-specific ID
