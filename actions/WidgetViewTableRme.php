@@ -474,6 +474,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'highlights' => [],
 			'thresholds' => [],
 			'decimal_places' => CWidgetFieldColumnsList::DEFAULT_DECIMAL_PLACES,
+			'max_chars' => CWidgetFieldColumnsList::DEFAULT_CHARACTER_LENGTH,
 			'go_to_history_values' => 0,
 			'valuemap_override' => CWidgetFieldColumnsList::VALUEMAP_AS_IS,
 			'aggregate_function' => AGGREGATE_NONE,
