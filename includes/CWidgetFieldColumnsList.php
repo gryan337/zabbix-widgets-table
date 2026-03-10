@@ -34,6 +34,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 	public const HISTORY_DATA_TRENDS = 2;
 
 	public const DEFAULT_DECIMAL_PLACES = 2;
+	public const DEFAULT_CHARACTER_LENGTH = 20;
 
 	public const URL_DISPLAY_AS_IS = 1;
 	public const URL_DISPLAY_CUSTOM = 2;
@@ -146,6 +147,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'max' => ZBX_WIDGET_FIELD_TYPE_STR,
 			'background_gradiency' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'decimal_places' => ZBX_WIDGET_FIELD_TYPE_INT32,
+			'max_chars' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'go_to_history_values' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'valuemap_override' => ZBX_WIDGET_FIELD_TYPE_INT32,
 			'aggregate_function' => ZBX_WIDGET_FIELD_TYPE_INT32,
@@ -175,6 +177,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'thresholds' => [],
 			'background_gradiency' => 0,
 			'decimal_places' => CWidgetFieldColumnsList::DEFAULT_DECIMAL_PLACES,
+			'max_chars' => CWidgetFieldColumnsList::DEFAULT_CHARACTER_LENGTH,
 			'go_to_history_values' => 0,
 			'valuemap_override' => CWidgetFieldColumnsList::VALUEMAP_AS_IS,
 			'aggregate_function' => AGGREGATE_NONE,
@@ -312,6 +315,7 @@ class CWidgetFieldColumnsList extends CWidgetField {
 			'max'					=> ['type' => API_NUMERIC, 'default' => ''],
 			'background_gradiency'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'decimal_places'		=> ['type' => API_INT32, 'in' => '0:10', 'default' => self::DEFAULT_DECIMAL_PLACES],
+			'max_chars'			=> ['type' => API_INT32, 'in' => '1:65535', 'default' => self::DEFAULT_CHARACTER_LENGTH],
 			'go_to_history_values'		=> ['type' => API_INT32, 'default' => 0, 'in' => implode(',', [0, 1])],
 			'highlights'			=> ['type' =>  API_OBJECTS, 'uniq' => [['pattern']], 'fields' => [
 				'color'					=> ['type' => API_COLOR, 'flags' => API_REQUIRED | API_NOT_EMPTY],

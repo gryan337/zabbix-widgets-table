@@ -921,6 +921,11 @@ div.dashboard-widget-tablemodulerme td.rme-cell:focus-visible {
   outline-offset: -2px;
 }
 
+.zbx-wrap-rme {
+  white-space: normal;
+  word-break: break-word;
+}
+
 /* ========== Theme Variables ========== */
 
 [theme="blue-theme"],
