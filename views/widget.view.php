@@ -1649,11 +1649,19 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 		);
 	}
 
+	if ($column['max_chars'] !== CWidgetFieldColumnsList::DEFAULT_CHARACTER_LENGTH) {
+		switch ($item['value_type']) {
+			case ITEM_VALUE_TYPE_STR:
+			case ITEM_VALUE_TYPE_TEXT:
+			case ITEM_VALUE_TYPE_LOG:
+				$formatted_value = mb_strlen($value) > $column['max_chars'] ? mb_substr($value, 0, $column['max_chars']).'...' : $value;
+		}
+	}
+
 	if (array_key_exists('mappings', $item['valuemap']) &&
 			!empty($item['valuemap']['mappings'])) {
 		$formatted_value = handleValueMapOverrideConfig($formatted_value, $column['valuemap_override']);
 	}
-
 
 	$is_multiple_itemids = false;
 	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
@@ -1740,8 +1748,17 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 
 	$value_cell
 		->addStyle($style)
-		->setAttribute('units', $units)
-		->addClass(ZBX_STYLE_NOWRAP);
+		->setAttribute('units', $units);
+
+	switch ($item['value_type']) {
+		case ITEM_VALUE_TYPE_STR:
+		case ITEM_VALUE_TYPE_TEXT:
+		case ITEM_VALUE_TYPE_LOG:
+			$value_cell->addClass('zbx-wrap-rme');
+			break;
+		default:
+			$value_cell->addClass(ZBX_STYLE_NOWRAP);
+	}
 
 	if ($value !== '') {
 		$result = DateConverter::convert($value);
@@ -1851,6 +1868,8 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value, bool $is_view_value, string $units, array $data): array {
 	$value = $cell[Widget::CELL_VALUE];
 	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
+	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
+	$item = $data['db_items'][$itemid];
 
 	if ($trigger['problem']['acknowledged'] == EVENT_ACKNOWLEDGED) {
 		$formatted_value = [$formatted_value, (new CSpan())->addClass(ZBX_ICON_CHECK)];
@@ -1873,8 +1892,17 @@ function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value
 	$value_cell
 		->addClass($class)
 		->setAttribute('units', $units)
-		->addClass(ZBX_STYLE_CURSOR_POINTER)
-		->addClass(ZBX_STYLE_NOWRAP);
+		->addClass(ZBX_STYLE_CURSOR_POINTER);
+
+	switch ($item['value_type']) {
+		case ITEM_VALUE_TYPE_STR:
+		case ITEM_VALUE_TYPE_TEXT:
+		case ITEM_VALUE_TYPE_LOG:
+			$value_cell->addClass('zbx-wrap-rme');
+			break;
+		default:
+			$value_cell->addClass(ZBX_STYLE_NOWRAP);
+	}
 
 	if ($value !== '') {
 		$result = DateConverter::convert($value);
