@@ -224,6 +224,20 @@ $form_grid->addItem([
 	))->addClass('js-decimals-row')
 ]);
 
+// Max text characters to display.
+$form_grid->addItem([
+	(new CLabel([
+		_('Max characters'),
+		makeHelpIcon([
+			_('This allows for setting how many characters will be displayed for text, character and log metric values.'), BR(),
+			_('Range allowed: 1 - 65535')
+		])
+	]))->addClass('js-max-chars'),
+	(new CFormField(
+		(new CNumericBox('max_chars', $data['max_chars'], CWidgetFieldColumnsList::DEFAULT_CHARACTER_LENGTH))->setWidth(ZBX_TEXTAREA_NUMERIC_STANDARD_WIDTH)
+	))->addClass('js-max-chars')
+]);
+
 // Set if you want to add a link to take you to history values
 $form_grid->addItem([
 	(new CLabel([
