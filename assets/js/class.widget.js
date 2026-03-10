@@ -1039,8 +1039,11 @@ class CWidgetTableModuleRME extends CWidget {
 		`;
 
 		const warningIcon = document.createElement('span');
+		const warningIconText = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
 		warningIcon.className = 'filter-warning-icon';
 		warningIcon.setAttribute('tabindex', '0');
+		warningIcon.setAttribute('aria-label', warningIconText);
+		warningIcon.setAttribute('role', 'button');
 		warningIcon.innerHTML = warningSvg;
 
 		// Warning tooltip with widget-specific ID
@@ -1048,7 +1051,7 @@ class CWidgetTableModuleRME extends CWidget {
 		const tooltipId = `${this._widgetid}-warning-tooltip-${Math.random().toString(36).substr(2, 9)}`;
 		tooltip.id = tooltipId;
 		tooltip.className = 'warning-tooltip';
-		tooltip.textContent = 'Checkbox selections will take precedence over text entered in the search box after clicking "Apply" button';
+		tooltip.textContent = warningIconText;
 		document.body.appendChild(tooltip);
 
 		this.#filterTooltipIds.add(tooltipId);
@@ -1819,8 +1822,8 @@ class CWidgetTableModuleRME extends CWidget {
 		};
 
 		const updateWarningIcon = () => {
-			const checkboxes = popup.querySelectorAll('.filter-popup-checkboxes input[type="checkbox"]');
-			const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
+			const filterState = this.#getFilterState(columnId);
+			const anyChecked = filterState.checked.length > 0;
 			const hasSearchText = searchInput.value.trim() !== '';
 			warningIcon.style.display = (anyChecked && hasSearchText) ? 'flex' : 'none';
 		};
