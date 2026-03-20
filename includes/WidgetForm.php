@@ -65,6 +65,8 @@ class WidgetForm extends CWidgetForm {
 
 	public const DEFAULT_DELIMITER = ' / ';
 
+	public const RME_TABLE_MAX_ROWS = 20000;
+
 	public function addFields(): self {
 		return $this
 			->addField($this->isTemplateDashboard()
@@ -212,7 +214,7 @@ class WidgetForm extends CWidgetForm {
 			)
 			->addField(
 				(new CWidgetFieldIntegerBox('host_ordering_limit', _('Limit'), ZBX_MIN_WIDGET_LINES,
-					ZBX_MAX_WIDGET_LINES
+					RME_TABLE_MAX_ROWS
 				))
 					->prefixLabel(_('Host ordering'))
 					->setDefault(10)
@@ -241,7 +243,7 @@ class WidgetForm extends CWidgetForm {
 			)
 			->addField(
 				(new CWidgetFieldIntegerBox('item_ordering_limit', _('Limit'), ZBX_MIN_WIDGET_LINES,
-					ZBX_MAX_WIDGET_LINES
+					RME_TABLE_MAX_ROWS
 				))
 					->prefixLabel(_('Item ordering'))
 					->setDefault(10)
