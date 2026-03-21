@@ -136,14 +136,18 @@ High-level milestones and upcoming goals.
 
 ## 📍 Q1 2026
 
-- [ ] Draggable columns in configuration UI.  
-- [ ] Style improvements.  
-- [ ] Performance improvements allowing to scale the table to 10's of thousands of rows with 100s of thousands of table cells with minimal lag.  
-- [ ] Performance improvements: migrate client-side code to PHP backend.
+- [X] Draggable columns in configuration UI.  
+- [X] Style improvements.  
+- [X] Performance improvements allowing to scale the table to 10's of thousands of rows with 100s of thousands of table cells with minimal lag.  
+- [X] Performance improvements: migrate client-side code to PHP backend.
+
+## 📍 Q2 2026
+
+- [ ] Be able to broadcast time period to listening widgets
 
 ---
 
-## 🛠️ Upcoming (Q1 2026)
+## 🛠️ Upcoming (Q3 2026)
 
 | Milestone | Status | Target |
 |-----------|--------|--------|
