@@ -4,7 +4,6 @@ use Modules\TableModuleRME\Includes\WidgetForm;
 
 ?>
 
-
 window.widget_tablemodulerme_form = new class {
 
 	/**
@@ -15,8 +14,6 @@ window.widget_tablemodulerme_form = new class {
 	#form;
 
 	/**
-	 * Template id.
-	 *
 	 * @type {string}
 	 */
 	#templateid;
@@ -41,7 +38,6 @@ window.widget_tablemodulerme_form = new class {
 		this.#list_column_tmpl = new Template(this.#list_columns.querySelector('template').innerHTML);
 		this.#templateid = templateid;
 
-		// Initialize form elements accessibility.
 		this.#updateForm();
 
 		this.#list_columns.addEventListener('click', (e) => this.#processColumnsAction(e));
@@ -54,10 +50,66 @@ window.widget_tablemodulerme_form = new class {
 		jQuery(document.getElementById('hostids_')).on('change', () => this.#updateForm());
 		jQuery('[id^=layout_]').on('change', () => this.#updateForm());
 		this.#form.addEventListener('form_fields.changed', () => this.#updateForm());
+
+		this.#initSortable();
 	}
 
 	/**
-	 * Updates widget column configuration form field visibility, enable/disable state and available options.
+	 * Wires up Zabbix's native CSortable on the columns tbody.
+	 * freeze_end: 1 keeps the "Add" button row stationary
+	 */
+	#initSortable() {
+		new CSortable(this.#list_columns.querySelector('tbody'), {
+			selector_handle: 'div.<?= ZBX_STYLE_DRAG_ICON ?>',
+			freeze_end: 1
+		})
+		.on(CSortable.EVENT_SORT, () => {
+			this.#reindexColumns();
+			this.#triggerUpdate();
+		});
+	}
+
+	/**
+	 * After a drag-drop reorder, renumbers every data-indexed row and
+	 * all its embedded hidden-input names to match the new DOM order.
+	 *
+	 * Two-pass strategy prevents collisions when indices cross
+	 * (e.g. dragging row 0 past row 2 would briefly create two columns[0]
+	 * prefixes if we renamed in a single pass):
+	 *
+	 *   Pass 1 — columns[N][…]        → _rme_tmp_[N][…]
+	 *   Pass 2 — _rme_tmp_[N][…]      → columns[newN][…]
+	 */
+	#reindexColumns() {
+		const rows = [...this.#list_columns.querySelectorAll('tbody > tr[data-index]')];
+
+		// Pass 1: rename to a collision-safe temporary prefix.
+		rows.forEach(row => {
+			const oldIndex = row.dataset.index;
+			row.querySelectorAll('input[type="hidden"]').forEach(input => {
+				input.name = input.name.replace(
+					new RegExp(`^columns\\[${oldIndex}\\]`),
+					`_rme_tmp_[${oldIndex}]`
+				);
+			});
+		});
+
+		// Pass 2: rename each temporary prefix to the correct final index.
+		rows.forEach((row, newIndex) => {
+			const oldIndex = row.dataset.index;
+			row.dataset.index = newIndex;
+			row.querySelectorAll('input[type="hidden"]').forEach(input => {
+				input.name = input.name.replace(
+					new RegExp(`^_rme_tmp_\\[${oldIndex}\\]`),
+					`columns[${newIndex}]`
+				);
+			});
+		});
+	}
+
+	/**
+	 * Updates widget column configuration form field visibility,
+	 * enable/disable state and available options.
 	 */
 	#updateForm() {
 		const column_per_pattern = this.#form.querySelector('#layout_3').checked;
@@ -94,7 +146,7 @@ window.widget_tablemodulerme_form = new class {
 				input.disabled = !column_per_pattern;
 			}
 		}
-		
+
 		for (const show_grouping_only_field of this.#form.querySelectorAll('.field_show_grouping_only')) {
 			show_grouping_only_field.style.display = !column_per_pattern ? 'none' : '';
 			for (const input of show_grouping_only_field.querySelectorAll('input')) {
@@ -115,7 +167,7 @@ window.widget_tablemodulerme_form = new class {
 				input.disabled = vertical_layout;
 			}
 		}
-		
+
 		for (const use_host_storage_field of this.#form.querySelectorAll('.field_use_host_storage')) {
 			use_host_storage_field.style.display = vertical_layout ? 'none' : '';
 			for (const input of use_host_storage_field.querySelectorAll('input')) {
@@ -171,7 +223,6 @@ window.widget_tablemodulerme_form = new class {
 			jQuery(host_select).multiSelect('disable');
 		}
 
-		// Limit multi select suggestions to selected hosts and groups.
 		const url_host = new Curl(jQuery(host_select).multiSelect('getOption', 'url'));
 		const url_item = new Curl(jQuery(item_select).multiSelect('getOption', 'url'));
 		const form_fields = getFormFields(this.#form);
@@ -297,7 +348,6 @@ window.widget_tablemodulerme_form = new class {
 							value.threshold
 						));
 					}
-
 					break;
 
 				case 'highlights':
@@ -308,21 +358,18 @@ window.widget_tablemodulerme_form = new class {
 							value.pattern
 						));
 					}
-
 					break;
 
 				case 'items':
 					for (const [key, value] of Object.entries(data.items)) {
 						column_data.append(this.#makeVar(`columns[${index}][items][${key}]`, value));
 					}
-
 					break;
 
 				case 'time_period':
 					for (const [key, value] of Object.entries(data.time_period)) {
 						column_data.append(this.#makeVar(`columns[${index}][time_period][${key}]`, value));
 					}
-
 					break;
 
 				case 'sparkline':
@@ -344,12 +391,10 @@ window.widget_tablemodulerme_form = new class {
 						column_data.append(this.#makeVar(`columns[${index}][item_tags][${key}][tag]`, tag));
 						column_data.append(this.#makeVar(`columns[${index}][item_tags][${key}][value]`, value));
 					}
-
 					break;
 
 				default:
 					column_data.append(this.#makeVar(`columns[${index}][${data_key}]`, data_value));
-
 					break;
 			}
 		}
@@ -359,12 +404,10 @@ window.widget_tablemodulerme_form = new class {
 
 	#makeVar(name, value) {
 		const input = document.createElement('input');
-
 		input.setAttribute('type', 'hidden');
 		input.setAttribute('name', name);
 		input.setAttribute('value', value);
-
-		return input
+		return input;
 	}
 
 	// Need to remove function after sub-popups auto close.

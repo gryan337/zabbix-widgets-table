@@ -1,7 +1,7 @@
 <?php declare(strict_types = 0);
 
 /**
- * Top items widget form view.
+ * Form view
  *
  * @var CView $this
  * @var array $data
