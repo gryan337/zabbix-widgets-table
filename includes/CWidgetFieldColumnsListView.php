@@ -34,12 +34,14 @@ class CWidgetFieldColumnsListView extends CWidgetFieldView {
 		];
 
 		$row_template = new CTemplateTag($this->field->getName().'-row-tmpl', new CRow([
+			(new CCol((new CDiv())->addClass(ZBX_STYLE_DRAG_ICON)))->addClass(ZBX_STYLE_TD_DRAG_ICON),
 			(new CDiv('#{items}'))->addClass('text'),
 			(new CList(array_merge($row_actions, [(new CSpan())->addClass('js-column-data')])))
 				->addClass(ZBX_STYLE_HOR_LIST)
 		]));
 
 		$header = [
+			(new CColHeader())->addClass(ZBX_STYLE_TD_DRAG_ICON),
 			(new CColHeader(_('Patterns')))->addStyle('width: 100%')->addItem($row_template),
 			_('Actions')
 		];
@@ -50,7 +52,6 @@ class CWidgetFieldColumnsListView extends CWidgetFieldView {
 
 		foreach ($columns as $column_index => $column) {
 			$column_data = [];
-
 			foreach ($column as $key => $value) {
 				$column_data[] = new CVar($this->field->getName().'['.$column_index.']['.$key.']', $value);
 			}
@@ -61,6 +62,7 @@ class CWidgetFieldColumnsListView extends CWidgetFieldView {
 			}
 
 			$view->addRow((new CRow([
+				(new CCol((new CDiv())->addClass(ZBX_STYLE_DRAG_ICON)))->addClass(ZBX_STYLE_TD_DRAG_ICON),
 				(new CDiv($items))->addClass('text'),
 				(new CList(array_merge($row_actions, [(new CSpan($column_data))->addClass('js-column-data')])))
 					->addClass(ZBX_STYLE_HOR_LIST)

@@ -23,9 +23,6 @@ use Zabbix\Widgets\Fields\{
 	CWidgetFieldTextBox
 };
 
-/**
- * Top items data widget form.
- */
 class WidgetForm extends CWidgetForm {
 	
 	public const LAYOUT_HORIZONTAL = 0;
