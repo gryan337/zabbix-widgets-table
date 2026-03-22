@@ -893,7 +893,7 @@ tbody tr {
 /* Sortable text styling */
 .dashboard-widget-tablemodulerme .sortable-header-text {
   cursor: pointer;
-  padding: 4px 1px;
+  padding: 2px 1px;
   border-radius: 4px;
   display: inline-block;
   position: relative;
@@ -928,6 +928,93 @@ div.dashboard-widget-tablemodulerme td.rme-cell:focus-visible {
   white-space: normal;
   word-break: break-word;
 }
+
+/* ========== Frozen Columns ========== */
+
+/* Frozen th: sticky left — z-index 6 sits above everything below */
+div.dashboard-widget-tablemodulerme .list-table th.col-frozen {
+  position: sticky;
+  z-index: 6;
+  background: var(--frozen-th-bg) !important;
+}
+
+/* Frozen tbody td: sticky left with opaque background */
+div.dashboard-widget-tablemodulerme .list-table tbody td.col-frozen {
+  position: sticky;
+  z-index: 2;
+  background-color: var(--frozen-td-bg);
+}
+
+/* Frozen tfoot td: sticky left, keeps footer's own background colour,
+   sits above the tfoot row (z-index 4) */
+div.dashboard-widget-tablemodulerme .list-table tfoot td.col-frozen {
+  position: sticky;
+  z-index: 5;
+}
+
+/* Raise sticky header above frozen body cells.
+   Zabbix sets thead { z-index: 1 } by default — frozen body cells are
+   z-index: 2, so without this they paint over the header on vertical scroll. */
+div.dashboard-widget-tablemodulerme .list-table.sticky-header thead {
+  z-index: 5;
+}
+
+/* Raise sticky footer (tfoot) above frozen body cells.
+   Zabbix sets tfoot { z-index: 1 } by default for sticky-footer tables.
+   We move the widget footer row into a real <tfoot> in JS so this fires. */
+div.dashboard-widget-tablemodulerme .list-table.sticky-footer tfoot {
+  z-index: 4;
+}
+
+/* Visual separator on the rightmost frozen column */
+div.dashboard-widget-tablemodulerme .list-table th.col-frozen-last {
+  border-right: 2px solid var(--frozen-border-color) !important;
+  box-shadow: 3px 0 6px var(--frozen-shadow);
+}
+div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
+  border-right: 2px solid var(--frozen-border-color) !important;
+  box-shadow: 3px 0 6px var(--frozen-shadow);
+}
+
+/* ========== Column Context Menu ========== */
+
+.col-ctx-menu {
+  position: fixed;
+  z-index: 10001;
+  background: var(--checkbox-bg);
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  min-width: 190px;
+  padding: 4px 0;
+  font-family: Arial, Tahoma, Verdana, sans-serif;
+  font-size: 13px;
+}
+
+.col-ctx-menu-item {
+  padding: 7px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--filter-type-text, inherit);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.col-ctx-menu-item:hover {
+  background: var(--header-bg-hover);
+}
+
+.col-ctx-menu-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  fill: currentColor;
+  opacity: 0.85;
+}
+
+/* ========== Frozen column theme variables are merged into Theme Variables below ========== */
 
 /* ========== Theme Variables ========== */
 
@@ -974,6 +1061,11 @@ div.dashboard-widget-tablemodulerme td.rme-cell:focus-visible {
   --focus-ring-color: rgba(37, 99, 235, 0.2);
   --focus-bg-color: #2563eb;
   --focus-text-color: #ffffff;
+  /* Frozen column colors */
+  --frozen-th-bg: #d6ecf7;
+  --frozen-td-bg: #f4fafd;
+  --frozen-border-color: rgba(71, 150, 196, 0.55);
+  --frozen-shadow: rgba(71, 150, 196, 0.2);
 }
 
 [theme="dark-theme"],
@@ -1022,6 +1114,11 @@ div.dashboard-widget-tablemodulerme td.rme-cell:focus-visible {
   --focus-ring-color: rgba(96, 165, 250, 0.3);
   --focus-bg-color: #3b82f6;
   --focus-text-color: #ffffff;
+  /* Frozen column colors */
+  --frozen-th-bg: #0d1520;
+  --frozen-td-bg: #000000;
+  --frozen-border-color: rgba(71, 150, 196, 0.55);
+  --frozen-shadow: rgba(0, 0, 0, 0.85);
 }
 
 [theme="dark-theme"] {
@@ -1058,4 +1155,9 @@ div.dashboard-widget-tablemodulerme td.rme-cell:focus-visible {
   --focus-ring-color: rgba(59, 130, 246, 0.25);
   --focus-bg-color: #2563eb;
   --focus-text-color: #ffffff;
+  /* Frozen column colors */
+  --frozen-th-bg: #252e3a;
+  --frozen-td-bg: #2b2b2b;
+  --frozen-border-color: rgba(71, 150, 196, 0.45);
+  --frozen-shadow: rgba(0, 0, 0, 0.55);
 }
