@@ -1133,10 +1133,12 @@ function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false
 			if ($i === 0) {
 				$last_row[] = (new CCol($footer_title))
 					->setAttribute('footer-row', '')
+					->addClass(ZBX_STYLE_NOWRAP)
 					->addStyle($style);
 			}
 			else {
 				$last_row[] = (new CCol())
+					->addClass(ZBX_STYLE_NOWRAP)
 					->addStyle($style);
 			}
 		}
@@ -1144,6 +1146,7 @@ function addBottomRow(array $data, array $bottom_row, bool $groupby_host = false
 	else {
 		$last_row[] = (new CCol($footer_title))
 			->setAttribute('footer-row', '')
+			->addClass(ZBX_STYLE_NOWRAP)
 			->addStyle($style);
 	}
 
