@@ -69,6 +69,9 @@ class CWidgetTableModuleRME extends CWidget {
 	#scrollPosition = { top: 0, left: 0 };
 	#isUpdatingDisplay = false;
 
+	#frozenColumns = new Set();
+	#colCtxMenu = null;
+
 	#isUserInitiatedFilterChange = false;
 
 	#lastSortState = null;
@@ -3071,6 +3074,207 @@ class CWidgetTableModuleRME extends CWidget {
 		document.removeEventListener('mouseup', mouseUpHandler);
 	}
 
+	// ========== Column Freeze & Resize Methods ========== //
+
+	/**
+	 * Called once per setContents() cycle to wire up column right-click
+	 * context menus and restore any persisted freeze state.
+	 */
+	#setupHeaderEnhancements() {
+		this.allThs.forEach(th => {
+			if (th.classList.contains('action-column')) return;
+
+			th.addEventListener('contextmenu', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.#showColContextMenu(th, e.clientX, e.clientY);
+			});
+		});
+
+		// Restore frozen styles — deferred one frame so offsetWidth is accurate
+		requestAnimationFrame(() => {
+			this.#applyFrozenStyles();
+		});
+	}
+
+	/** Toggle the frozen state of a column identified by its stableColumnId. */
+	#toggleFreezeColumn(colId) {
+		if (this.#frozenColumns.has(colId)) {
+			this.#frozenColumns.delete(colId);
+		}
+		else {
+			this.#frozenColumns.add(colId);
+		}
+		this.#applyFrozenStyles();
+	}
+
+	/**
+	 * Apply or remove `position: sticky` and `left` offsets on all frozen
+	 * <th> and <td> elements.  Safe to call multiple times; always starts
+	 * by clearing previous state.
+	 */
+	#applyFrozenStyles() {
+		if (!this.#values_table || !this.allThs?.length) return;
+
+		// Build th → first-td-index mapping (colspan aware)
+		const thTdStart = [];
+		let tdCursor = 0;
+		this.allThs.forEach(th => {
+			thTdStart.push(tdCursor);
+			tdCursor += parseInt(th.getAttribute('colspan') || '1', 10);
+		});
+
+		this.allThs.forEach(th => {
+			th.classList.remove('col-frozen', 'col-frozen-last');
+			th.style.removeProperty('left');
+		});
+
+		this.#values_table.querySelectorAll('td.col-frozen').forEach(td => {
+			td.classList.remove('col-frozen', 'col-frozen-last');
+			td.style.removeProperty('left');
+		});
+
+		if (this.#frozenColumns.size === 0) return;
+
+		// Identify which th indices are frozen
+		const frozenSet = new Set();
+		this.allThs.forEach((th, i) => {
+			if (this.#frozenColumns.has(this.#getStableColumnId(th))) {
+				frozenSet.add(i);
+			}
+		});
+		if (frozenSet.size === 0) return;
+
+		// Batch-read all th widths to avoid repeated forced reflows
+		const thWidths = this.allThs.map(th => th.offsetWidth);
+
+		// Compute cumulative left offsets for sticky positioning
+		// Each frozen column's left = sum of widths of all frozen columns to its left.
+		const thLeft = new Map();
+		let cumLeft = 0;
+		this.allThs.forEach((th, i) => {
+			if (frozenSet.has(i)) {
+				thLeft.set(i, cumLeft);
+				cumLeft += thWidths[i];
+			}
+		});
+
+		const lastFrozenIdx = Math.max(...frozenSet);
+
+		frozenSet.forEach(i => {
+			const th = this.allThs[i];
+			th.classList.add('col-frozen');
+			th.style.left = `${thLeft.get(i)}px`;
+			if (i === lastFrozenIdx) th.classList.add('col-frozen-last');
+		});
+
+		this.#values_table.querySelectorAll('tbody tr, tfoot tr').forEach(row => {
+			const cells = Array.from(row.querySelectorAll('td'));
+			if (!cells.length) return;
+
+			frozenSet.forEach(thI => {
+				const th = this.allThs[thI];
+				const colspan = parseInt(th.getAttribute('colspan') || '1', 10);
+				const tdStart = thTdStart[thI];
+				const left = thLeft.get(thI);
+				const isLastFrozen = (thI === lastFrozenIdx);
+
+				for (let c = 0; c < colspan; c++) {
+					const td = cells[tdStart + c];
+					if (!td) continue;
+
+					td.classList.add('col-frozen');
+
+					if (c === 0) {
+						td.style.left = `${left}px`;
+					}
+					else {
+						// Second td of a colspan pair (e.g. bar-gauge value cell):
+						// sits immediately right of the first td
+						const firstTd = cells[tdStart];
+						td.style.left = `${left + (firstTd ? firstTd.offsetWidth : 0)}px`;
+					}
+
+					if (isLastFrozen && c === colspan - 1) {
+						td.classList.add('col-frozen-last');
+					}
+				}
+			});
+		});
+	}
+
+	#showColContextMenu(th, clientX, clientY) {
+		this.#hideColContextMenu();
+
+		const colId    = this.#getStableColumnId(th);
+		const isFrozen = this.#frozenColumns.has(colId);
+
+		const pinSvg  = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>`;
+		const unpinSvg = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2 5.27 3.28 4 20 20.72 18.73 22l-7-7H5v-2l2-2V8.27L2 5.27zM16 12V4h1V2H7v2h1v3.73l8 8z"/></svg>`;
+
+		const menu = document.createElement('div');
+		menu.className = 'col-ctx-menu';
+		this.#colCtxMenu = menu;
+
+		const makeItem = (svgHtml, label, onClick) => {
+			const item = document.createElement('div');
+			item.className = 'col-ctx-menu-item';
+			item.innerHTML = svgHtml + `<span>${label}</span>`;
+			item.addEventListener('mousedown', e => e.stopPropagation());
+			item.addEventListener('click', (e) => {
+				e.stopPropagation();
+				this.#hideColContextMenu();
+				onClick();
+			});
+			return item;
+		};
+
+		menu.appendChild(makeItem(
+			isFrozen ? unpinSvg : pinSvg,
+			isFrozen ? 'Unfreeze column' : 'Freeze column',
+			() => this.#toggleFreezeColumn(colId)
+		));
+
+		menu.style.left = '-9999px';
+		menu.style.top = '-9999px';
+		document.body.appendChild(menu);
+
+		const { width: mw, height: mh } = menu.getBoundingClientRect();
+		const left = Math.max(0, Math.min(clientX, window.innerWidth  - mw - 8));
+		const top  = Math.max(0, Math.min(clientY, window.innerHeight - mh - 8));
+		menu.style.left = `${left}px`;
+		menu.style.top  = `${top}px`;
+
+		const dismiss = (e) => {
+			if (this.#colCtxMenu && !this.#colCtxMenu.contains(e.target)) {
+				this.#hideColContextMenu();
+				cleanup();
+			}
+		};
+		const onKey = (e) => {
+			if (e.key === 'Escape') {
+				this.#hideColContextMenu();
+				cleanup();
+			}
+		};
+		const cleanup = () => {
+			document.removeEventListener('mousedown', dismiss, true);
+			document.removeEventListener('keydown', onKey);
+		};
+
+		setTimeout(() => {
+			document.addEventListener('mousedown', dismiss, true);
+			document.addEventListener('keydown', onKey);
+		}, 0);
+	}
+
+	#hideColContextMenu() {
+		if (this.#colCtxMenu) {
+			this.#colCtxMenu.remove();
+			this.#colCtxMenu = null;
+		}
+	}
+
 	// ========== Cell Click and Selection Methods ========== //
 
 	#handleCellClick(td, event=false) {
@@ -3878,6 +4082,8 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 
 			displayedRows.forEach(({ row }, index) => {
+				// Footer rows live permanently in <tfoot> — never re-add to tbody
+				if (this.#isFooterRow(row)) return;
 				this.#values_table.tBodies[0].appendChild(row);
 				const startIndex = (this.#currentPage - 1) * this.#rowsPerPage;
 				row.setAttribute('aria-rowindex', startIndex + index + 1);
@@ -3940,6 +4146,9 @@ class CWidgetTableModuleRME extends CWidget {
 				this.#focusStateToRestore = null;
 			}
 
+			// Re-apply frozen column sticky styles after tbody has been rebuilt
+			this.#applyFrozenStyles();
+
 			this.#values_table?.setAttribute('aria-busy', 'false');
 		}, 0);
 	}
@@ -3958,7 +4167,17 @@ class CWidgetTableModuleRME extends CWidget {
 		const labelCellIndex = hasActionColumn ? 1 : 0;
 
 		const defaultLabel = footerCells[labelCellIndex]?.textContent.trim() || '';
-		const defaultMode = defaultLabel === 'Total' ? 'sum' : 'average';
+		const defaultMode = defaultLabel.startsWith('Total') ? 'sum' : 'average';
+
+		// When the table is paginated the footer always reflects all visible
+		// rows (not just the current page).  Append a suffix so users on
+		// page 1 of N aren't misled into thinking it only covers the current page.
+		const isPaginated = this.#visibleRows.length > this.#rowsPerPage;
+		const labelCell = footerCells[labelCellIndex];
+		if (labelCell) {
+			const baseLabel = defaultMode === 'sum' ? 'Total' : 'Average';
+			labelCell.textContent = isPaginated ? `${baseLabel} (all pages)` : baseLabel;
+		}
 
 		footerCells.forEach((cell, colIndex) => {
 			if (hasActionColumn && colIndex === 0) {
@@ -4719,6 +4938,10 @@ class CWidgetTableModuleRME extends CWidget {
 		// Clear column metadata cache when data changes
 		this.#invalidateColumnMetadata();
 
+		// Set up resize handles and column right-click menus; restore
+		// any frozen / width state that survived this setContents cycle.
+		this.#setupHeaderEnhancements();
+
 		this.#values_table.addEventListener('click', (event) => {
 			if (event.target.closest('.filter-icon')) {
 				return;
@@ -4999,6 +5222,23 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		// NOW set up display AFTER filters AND sort are applied
+
+		// Move footer rows to <tfoot> for reliable sticky-bottom behaviour.
+		// tBodies[0].innerHTML = '' in #updateDisplay clears tbody but never
+		// touches tfoot, so footer rows survive every pagination/filter/sort
+		// cycle automatically.  updateTableFooter() uses DOM element references
+		// from #rowsArray and doesn't care whether the element is in tbody or tfoot.
+		const footerRowObjs = this.#rowsArray.filter(rowObj => this.#isFooterRow(rowObj.row));
+		if (footerRowObjs.length > 0) {
+			let tfoot = this.#values_table.querySelector('tfoot');
+			if (!tfoot) {
+				tfoot = document.createElement('tfoot');
+				this.#values_table.appendChild(tfoot);
+			}
+			footerRowObjs.forEach(rowObj => tfoot.appendChild(rowObj.row));
+			this.#values_table.classList.add('sticky-footer');
+		}
+
 		this.#totalRows = this.#visibleRows.length;
 		this.#updateDisplay(false, true, true, this.#scrollPosition.top);
 
@@ -5045,6 +5285,9 @@ class CWidgetTableModuleRME extends CWidget {
 	onDestroy() {
 		// Clean up scroll tracking
 		this.#cleanupScrollTracking();
+
+		// Clean up column context menu if open
+		this.#hideColContextMenu();
 
 		// Clean up all popups and tooltips for this widget instance
 		this.#cleanupAllPopups();
