@@ -72,6 +72,9 @@ class CWidgetTableModuleRME extends CWidget {
 	#frozenColumns = new Set();
 	#colCtxMenu = null;
 
+	#hiddenColumns = new Set();
+	#colVisibilityPanel = null;
+
 	#isUserInitiatedFilterChange = false;
 
 	#lastSortState = null;
@@ -2560,6 +2563,10 @@ class CWidgetTableModuleRME extends CWidget {
 			const hasSearch = filterState.search && filterState.search.trim() !== '';
 
 			if (hasChecked || hasSearch) {
+				// Don't activate filters for hidden columns — their filter state
+				// is preserved for restore but must not affect visible row counts
+				if (this.#hiddenColumns.has(columnId)) return;
+
 				this.#activeFilters.add(columnId);
 
 				const th = this.allThs.find(t => this.#getStableColumnId(t) === columnId);
@@ -3083,6 +3090,13 @@ class CWidgetTableModuleRME extends CWidget {
 			});
 		});
 
+		// Apply hidden column visibility synchronously — display:none does not
+		// need offsetWidth so there is no reason to defer it.  Deferring causes
+		// hidden column headers to flash visible for one paint frame on refresh.
+		if (this.#hiddenColumns.size > 0) {
+			this.#applyColumnVisibility();
+		}
+
 		// Restore frozen styles — deferred one frame so offsetWidth is accurate
 		requestAnimationFrame(() => {
 			this.#applyFrozenStyles();
@@ -3126,9 +3140,16 @@ class CWidgetTableModuleRME extends CWidget {
 			td.style.removeProperty('left');
 		});
 
-		if (this.#frozenColumns.size === 0) return;
+		if (this.#frozenColumns.size === 0) {
+			// No frozen columns — remove the class so the loading spinner
+			// is not obscured by our elevated thead/tfoot z-index rules
+			this.#values_table.classList.remove('has-frozen-cols');
+			return;
+		}
 
-		// Identify which th indices are frozen
+		this.#values_table.classList.add('has-frozen-cols');
+
+		// Identify which th indices are frozen (in DOM order)
 		const frozenSet = new Set();
 		this.allThs.forEach((th, i) => {
 			if (this.#frozenColumns.has(this.#getStableColumnId(th))) {
@@ -3137,7 +3158,6 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 		if (frozenSet.size === 0) return;
 
-		// Batch-read all th widths to avoid repeated forced reflows
 		const thWidths = this.allThs.map(th => th.offsetWidth);
 
 		// Compute cumulative left offsets for sticky positioning
@@ -4163,6 +4183,8 @@ class CWidgetTableModuleRME extends CWidget {
 		// When the table is paginated the footer always reflects all visible
 		// rows (not just the current page).  Append a suffix so users on
 		// page 1 of N aren't misled into thinking it only covers the current page.
+		// Use #visibleRows.length directly — #totalRows can lag behind filter
+		// updates and would cause a stale label after filtering reduces the count.
 		const isPaginated = this.#visibleRows.length > this.#rowsPerPage;
 		const labelCell = footerCells[labelCellIndex];
 		if (labelCell) {
@@ -4720,6 +4742,7 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#focusStateToRestore = this.#saveFocusState();
 
 		this.#cleanupAllPopups();
+		this.#hideColumnVisibilityPanel();
 
 		if (this.#theme === null) {
 			this.getTheme();
@@ -5279,6 +5302,9 @@ class CWidgetTableModuleRME extends CWidget {
 		// Clean up column context menu if open
 		this.#hideColContextMenu();
 
+		// Clean up column visibility panel if open
+		this.#hideColumnVisibilityPanel();
+
 		// Clean up all popups and tooltips for this widget instance
 		this.#cleanupAllPopups();
 
@@ -5321,8 +5347,291 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		});
 
+		menu_actions.items.push({
+			label: t('Column visibility'),
+			disabled: !this.allThs?.length,
+			clickCallback: () => {
+				// Small delay so the actions menu closes before the panel opens
+				setTimeout(() => this.#showColumnVisibilityPanel(), 50);
+			}
+		});
+
 		return menu;
         }
+
+	// ========== Column Visibility Methods ========== //
+
+	/**
+	 * Show the column visibility panel anchored inside the widget container.
+	 * Columns are listed with checkboxes — checked = visible, unchecked = hidden.
+	 * A search input appears when there are more than 8 columns so users can
+	 * quickly filter the list.
+	 */
+	#showColumnVisibilityPanel() {
+		this.#hideColumnVisibilityPanel();
+
+		const panel = document.createElement('div');
+		panel.className = 'col-visibility-panel';
+		panel.id = `col-visibility-panel-${this._widgetid}`;
+		this.#colVisibilityPanel = panel;
+
+		const header = document.createElement('div');
+		header.className = 'col-visibility-header';
+
+		const title = document.createElement('span');
+		title.className = 'col-visibility-title';
+		title.textContent = 'Column visibility';
+		header.appendChild(title);
+
+		const closeBtn = document.createElement('button');
+		closeBtn.className = 'col-visibility-close';
+		closeBtn.setAttribute('aria-label', 'Close column visibility panel');
+		closeBtn.textContent = '✕';
+		closeBtn.addEventListener('click', () => this.#hideColumnVisibilityPanel());
+		header.appendChild(closeBtn);
+		panel.appendChild(header);
+
+		// ---- Search input (only when > 8 columns) ----
+		const visibleThs = this.allThs.filter(th => !th.classList.contains('action-column'));
+
+		if (visibleThs.length > 8) {
+			const searchWrapper = document.createElement('div');
+			searchWrapper.className = 'col-visibility-search-wrapper';
+
+			const searchInput = document.createElement('input');
+			searchInput.type = 'text';
+			searchInput.placeholder = 'Search columns…';
+			searchInput.className = 'col-visibility-search';
+			searchInput.setAttribute('aria-label', 'Search columns');
+
+			searchInput.addEventListener('input', () => {
+				const term = searchInput.value.toLowerCase();
+				panel.querySelectorAll('.col-visibility-row').forEach(row => {
+					const label = row.querySelector('label').textContent.toLowerCase();
+					row.style.display = label.includes(term) ? '' : 'none';
+				});
+			});
+
+			searchWrapper.appendChild(searchInput);
+			panel.appendChild(searchWrapper);
+		}
+
+		const list = document.createElement('div');
+		list.className = 'col-visibility-list';
+
+		visibleThs.forEach(th => {
+			const colId = this.#getStableColumnId(th);
+			const isHidden = this.#hiddenColumns.has(colId);
+
+			const row = document.createElement('div');
+			row.className = 'col-visibility-row';
+
+			const checkbox = document.createElement('input');
+			checkbox.type = 'checkbox';
+			checkbox.checked = !isHidden;
+			checkbox.id = `col-vis-${colId}`;
+			checkbox.setAttribute('aria-label', `Toggle visibility of ${this.#extractColumnName(th)}`);
+
+			const label = document.createElement('label');
+			label.htmlFor = `col-vis-${colId}`;
+			label.textContent = this.#extractColumnName(th) || `Column ${th.id}`;
+
+			// Suspended-filter indicator — shown when column is hidden and has
+			// a filter with content.  Updated live as the checkbox is toggled.
+			const indicator = document.createElement('span');
+			indicator.className = 'col-visibility-filter-indicator';
+			indicator.title = 'This column has a suspended filter that will be restored when unhidden';
+			indicator.textContent = '⏸';
+
+			const hasSuspendedFilter = () => {
+				const fs = this.#getFilterState(colId);
+				return fs && ((fs.search && fs.search.trim() !== '') || (fs.checked && fs.checked.length > 0));
+			};
+
+			indicator.style.display = (isHidden && hasSuspendedFilter()) ? '' : 'none';
+			label.appendChild(indicator);
+
+			checkbox.addEventListener('change', () => {
+				if (checkbox.checked) {
+					this.#showColumn(colId);
+					indicator.style.display = 'none';
+				}
+				else {
+					this.#hideColumn(colId);
+					indicator.style.display = hasSuspendedFilter() ? '' : 'none';
+				}
+			});
+
+			row.appendChild(checkbox);
+			row.appendChild(label);
+			list.appendChild(row);
+		});
+
+		panel.appendChild(list);
+
+		// Anchored to top-right of widget container
+		// Append to document.body (not the container) so we don't disturb
+		// the container's layout or overflow behaviour.
+		panel.style.visibility = 'hidden';
+		document.body.appendChild(panel);
+
+		const containerRect = this.#parent_container.getBoundingClientRect();
+		const panelRect = panel.getBoundingClientRect();
+		const padding = 8;
+
+		let top  = containerRect.top + padding;
+		let left = containerRect.right - panelRect.width - padding;
+
+		// Keep within viewport
+		top  = Math.max(padding, Math.min(top,  window.innerHeight - panelRect.height - padding));
+		left = Math.max(padding, Math.min(left, window.innerWidth  - panelRect.width  - padding));
+
+		panel.style.top  = `${top}px`;
+		panel.style.left = `${left}px`;
+		panel.style.visibility = 'visible';
+
+		// Move focus into the panel so keyboard users can navigate immediately.
+		// Focus the close button first — Tab then moves through the checkboxes.
+		requestAnimationFrame(() => closeBtn.focus());
+
+		const dismiss = (e) => {
+			if (this.#colVisibilityPanel && !this.#colVisibilityPanel.contains(e.target)) {
+				this.#hideColumnVisibilityPanel();
+				cleanup();
+			}
+		};
+		const onKey = (e) => {
+			if (e.key === 'Escape') {
+				this.#hideColumnVisibilityPanel();
+				cleanup();
+			}
+		};
+		const cleanup = () => {
+			document.removeEventListener('mousedown', dismiss, true);
+			document.removeEventListener('keydown', onKey);
+		};
+
+		setTimeout(() => {
+			document.addEventListener('mousedown', dismiss, true);
+			document.addEventListener('keydown', onKey);
+		}, 0);
+	}
+
+	#hideColumnVisibilityPanel() {
+		if (this.#colVisibilityPanel) {
+			this.#colVisibilityPanel.remove();
+			this.#colVisibilityPanel = null;
+		}
+	}
+
+	/**
+	 * Hide a column: add to #hiddenColumns and suspend any active filter
+	 * (remove from #activeFilters so it stops affecting row counts) but
+	 * preserve the full filter state — search text, checkboxes, filter type —
+	 * so it is restored exactly when the column is unhidden.
+	 */
+	#hideColumn(colId) {
+		this.#hiddenColumns.add(colId);
+
+		// Re-run filters — #applyAllFilters will now skip this column since
+		// it is in #hiddenColumns, effectively suspending its filter.
+		// filterState is left intact so it is restored on unhide.
+		const filterState = this.#getFilterState(colId);
+		const hadActiveFilter = filterState &&
+			((filterState.search && filterState.search.trim() !== '') ||
+			 (filterState.checked && filterState.checked.length > 0));
+
+		if (hadActiveFilter) {
+			this.#applyAllFilters(true);
+		}
+
+		this.#applyColumnVisibility();
+	}
+
+	/**
+	 * Show a column: remove from #hiddenColumns and restore any previously
+	 * suspended filter by re-adding it to #activeFilters if the filter state
+	 * has any active criteria.
+	 */
+	#showColumn(colId) {
+		this.#hiddenColumns.delete(colId);
+
+		// Restore the filter if the column had one when it was hidden
+		const filterState = this.#getFilterState(colId);
+		if (filterState) {
+			const hasSearch  = filterState.search && filterState.search.trim() !== '';
+			const hasChecked = filterState.checked && filterState.checked.length > 0;
+			if (hasSearch || hasChecked) {
+				this.#activeFilters.add(colId);
+				this.#applyAllFilters(true);
+			}
+		}
+
+		this.#applyColumnVisibility();
+	}
+
+	/**
+	 * Apply hidden/visible state to ALL rows in #rowsArray (not just DOM-visible
+	 * ones).  This is critical for pagination — off-page rows are detached from
+	 * the DOM but still live in #rowsArray.  By stamping their cells before they
+	 * are ever appended, we avoid stale display:none surviving a hide→unhide cycle.
+	 */
+	#applyColumnVisibility() {
+		if (!this.#values_table || !this.allThs?.length) return;
+
+		// Build th → first-td-index mapping (colspan aware)
+		const thTdStart = [];
+		let tdCursor = 0;
+		this.allThs.forEach(th => {
+			thTdStart.push(tdCursor);
+			tdCursor += parseInt(th.getAttribute('colspan') || '1', 10);
+		});
+
+		// Apply to headers first (these are always in the DOM)
+		this.allThs.forEach((th, i) => {
+			if (th.classList.contains('action-column')) return;
+			const colId = this.#getStableColumnId(th);
+			th.style.display = this.#hiddenColumns.has(colId) ? 'none' : '';
+		});
+
+		// Apply to every row in #rowsArray — including off-page detached rows
+		this.#rowsArray.forEach(rowObj => {
+			const cells = Array.from(rowObj.row.querySelectorAll('td'));
+			this.allThs.forEach((th, i) => {
+				if (th.classList.contains('action-column')) return;
+				const colId  = this.#getStableColumnId(th);
+				const hide   = this.#hiddenColumns.has(colId);
+				const colspan = parseInt(th.getAttribute('colspan') || '1', 10);
+				const tdStart = thTdStart[i];
+				for (let c = 0; c < colspan; c++) {
+					const td = cells[tdStart + c];
+					if (td) td.style.display = hide ? 'none' : '';
+				}
+			});
+		});
+
+		// Apply to tfoot rows (footer lives in tfoot, not rowsArray)
+		this.#values_table.querySelectorAll('tfoot tr').forEach(row => {
+			const cells = Array.from(row.querySelectorAll('td'));
+			this.allThs.forEach((th, i) => {
+				if (th.classList.contains('action-column')) return;
+				const colId  = this.#getStableColumnId(th);
+				const hide   = this.#hiddenColumns.has(colId);
+				const colspan = parseInt(th.getAttribute('colspan') || '1', 10);
+				const tdStart = thTdStart[i];
+				for (let c = 0; c < colspan; c++) {
+					const td = cells[tdStart + c];
+					if (td) td.style.display = hide ? 'none' : '';
+				}
+			});
+		});
+
+		// Recalculate frozen styles — hidden columns affect left offsets
+		this.#applyFrozenStyles();
+
+		// Sparklines must be told their new width after column visibility changes
+		this.#recalculateSvgSparklines();
+	}
 
 	// ========== CSV Export Methods ========== //
 
@@ -5359,6 +5668,9 @@ class CWidgetTableModuleRME extends CWidget {
 		const headers = [];
 
 		this.allThs.forEach(th => {
+			// Skip hidden columns in CSV export
+			if (this.#hiddenColumns.has(this.#getStableColumnId(th))) return;
+
 			let headerText = '';
 
 			const clonedTh = th.cloneNode(true);
@@ -5389,13 +5701,15 @@ class CWidgetTableModuleRME extends CWidget {
 		// Analyze the header row to find columns with colspan > 1
 		this.allThs.forEach((th) => {
 			const colspan = parseInt(th.getAttribute('colspan') || '1', 10);
+			const isHidden = this.#hiddenColumns.has(this.#getStableColumnId(th));
 
 			// If colspan is 2, the first td cell is the visualization (skip it)
 			if (colspan === 2) {
-				vizIndices.add(tdIndex);
+				if (!isHidden) vizIndices.add(tdIndex);
 				tdIndex += 2;
 			}
 			else {
+				if (isHidden) vizIndices.add(tdIndex); // treat as skip
 				tdIndex += 1;
 			}
 		});

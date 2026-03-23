@@ -935,7 +935,8 @@ div.dashboard-widget-tablemodulerme .list-table th.col-frozen {
   background: var(--frozen-th-bg) !important;
 }
 
-/* Frozen tbody td: sticky left with opaque background */
+/* Frozen tbody td: sticky left with opaque background.
+   No !important — inline style.background set by cell selection must win. */
 div.dashboard-widget-tablemodulerme .list-table tbody td.col-frozen {
   position: sticky;
   z-index: 2;
@@ -949,17 +950,23 @@ div.dashboard-widget-tablemodulerme .list-table tfoot td.col-frozen {
   z-index: 5;
 }
 
-/* Raise sticky header above frozen body cells.
-   Zabbix sets thead { z-index: 1 } by default — frozen body cells are
-   z-index: 2, so without this they paint over the header on vertical scroll. */
-div.dashboard-widget-tablemodulerme .list-table.sticky-header thead {
+/* Raise sticky header above frozen body cells — only when frozen columns
+   are active. Scoped to .has-frozen-cols so the Zabbix loading spinner
+   (which paints via ::before/::after on the container) is not obscured
+   during refresh when no columns are frozen. */
+div.dashboard-widget-tablemodulerme .list-table.has-frozen-cols.sticky-header thead {
   z-index: 5;
 }
 
-/* Raise sticky footer (tfoot) above frozen body cells.
-   Zabbix sets tfoot { z-index: 1 } by default for sticky-footer tables.
-   We move the widget footer row into a real <tfoot> in JS so this fires. */
-div.dashboard-widget-tablemodulerme .list-table.sticky-footer tfoot {
+/* During widget refresh .is-loading is added to .dashboard-grid-widget-container.
+   Drop thead back to Zabbix's default z-index:1 so the loading overlay
+   covers it correctly even when frozen columns are active. */
+.dashboard-grid-widget-container.is-loading .list-table.has-frozen-cols.sticky-header thead {
+  z-index: 1;
+}
+
+/* Same scoping for sticky footer */
+div.dashboard-widget-tablemodulerme .list-table.has-frozen-cols.sticky-footer tfoot {
   z-index: 4;
 }
 
@@ -1012,6 +1019,168 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
 }
 
 /* ========== Frozen column theme variables are merged into Theme Variables below ========== */
+
+/* ========== Column Visibility Panel ========== */
+
+.col-visibility-panel {
+  position: fixed;
+  z-index: 10002;
+  background: var(--checkbox-bg);
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  min-width: 220px;
+  max-width: 320px;
+  font-family: Arial, Tahoma, Verdana, sans-serif;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  max-height: 400px;
+}
+
+.col-visibility-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #444;
+  background: var(--main-bg);
+  border-radius: 6px 6px 0 0;
+  flex-shrink: 0;
+}
+
+.col-visibility-title {
+  font-weight: bold;
+  font-size: 13px;
+  color: var(--filter-type-text, inherit);
+}
+
+.col-visibility-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--button-color);
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.col-visibility-close:hover {
+  color: var(--button-hover-color);
+}
+
+.col-visibility-close:focus {
+  outline: none;
+}
+
+.col-visibility-close:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
+}
+
+.col-visibility-search-wrapper {
+  padding: 8px 12px 4px;
+  flex-shrink: 0;
+}
+
+.col-visibility-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--input-bg);
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--filter-type-text, inherit);
+}
+
+.col-visibility-search:focus {
+  outline: none;
+}
+
+.col-visibility-search:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
+}
+
+.col-visibility-list {
+  overflow-y: auto;
+  padding: 6px 0;
+  flex: 1;
+}
+
+.col-visibility-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.col-visibility-row:hover {
+  background: var(--header-bg-hover);
+}
+
+.col-visibility-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--checkbox-border);
+  border-radius: 3px;
+  background-color: var(--input-bg);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.15s ease-in-out;
+}
+
+.col-visibility-row input[type="checkbox"]:checked {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.col-visibility-row input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 0px;
+  left: 3px;
+  width: 4px;
+  height: 7px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.col-visibility-row input[type="checkbox"]:focus {
+  outline: none;
+}
+
+.col-visibility-row input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
+}
+
+.col-visibility-row label {
+  cursor: pointer;
+  color: var(--filter-type-text, inherit);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.col-visibility-filter-indicator {
+  font-size: 11px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
 
 /* ========== Theme Variables ========== */
 
