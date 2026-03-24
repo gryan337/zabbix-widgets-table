@@ -1047,6 +1047,11 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   background: var(--main-bg);
   border-radius: 6px 6px 0 0;
   flex-shrink: 0;
+  cursor: grab;
+}
+
+.col-visibility-header:active {
+  cursor: grabbing;
 }
 
 .col-visibility-title {
