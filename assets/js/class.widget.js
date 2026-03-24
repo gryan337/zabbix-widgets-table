@@ -3079,6 +3079,10 @@ class CWidgetTableModuleRME extends CWidget {
 	 * Called once per setContents() cycle to wire up column right-click
 	 * context menus and restore any persisted freeze state.
 	 */
+	/**
+	 * Called once per setContents() cycle to wire up column right-click
+	 * context menus and restore any persisted freeze state.
+	 */
 	#setupHeaderEnhancements() {
 		this.allThs.forEach(th => {
 			if (th.classList.contains('action-column')) return;
@@ -3134,7 +3138,6 @@ class CWidgetTableModuleRME extends CWidget {
 			th.classList.remove('col-frozen', 'col-frozen-last');
 			th.style.removeProperty('left');
 		});
-
 		this.#values_table.querySelectorAll('td.col-frozen').forEach(td => {
 			td.classList.remove('col-frozen', 'col-frozen-last');
 			td.style.removeProperty('left');
@@ -5237,7 +5240,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		// NOW set up display AFTER filters AND sort are applied
 
-		// Move footer rows to <tfoot> for reliable sticky-bottom behaviour.
+		// Move footer rows to <tfoot> for reliable sticky-bottom behavior.
 		// tBodies[0].innerHTML = '' in #updateDisplay clears tbody but never
 		// touches tfoot, so footer rows survive every pagination/filter/sort
 		// cycle automatically.  updateTableFooter() uses DOM element references
@@ -5391,7 +5394,7 @@ class CWidgetTableModuleRME extends CWidget {
 		header.appendChild(closeBtn);
 		panel.appendChild(header);
 
-		// ---- Search input (only when > 8 columns) ----
+		// Search input (only when > 8 columns)
 		const visibleThs = this.allThs.filter(th => !th.classList.contains('action-column'));
 
 		if (visibleThs.length > 8) {
@@ -5416,8 +5419,59 @@ class CWidgetTableModuleRME extends CWidget {
 			panel.appendChild(searchWrapper);
 		}
 
+		// Select All / Unselect All control
+		// Sits below the search input (when present) and above the column list.
+		// When a search term is active it only operates on visible rows.
+		// Uses the native indeterminate checkbox state for mixed selections.
+		const selectAllRow = document.createElement('div');
+		selectAllRow.className = 'col-visibility-selectall-row';
+		selectAllRow.setAttribute('role', 'group');
+
+		const selectAllCheckbox = document.createElement('input');
+		selectAllCheckbox.type = 'checkbox';
+		selectAllCheckbox.id = `col-vis-selectall-${this._widgetid}`;
+		selectAllCheckbox.setAttribute('aria-label', 'Show or hide all visible columns');
+
+		const selectAllLabel = document.createElement('label');
+		selectAllLabel.htmlFor = `col-vis-selectall-${this._widgetid}`;
+		selectAllLabel.textContent = 'All columns';
+		selectAllLabel.className = 'col-visibility-selectall-label';
+
+		selectAllRow.appendChild(selectAllCheckbox);
+		selectAllRow.appendChild(selectAllLabel);
+		panel.appendChild(selectAllRow);
+
 		const list = document.createElement('div');
 		list.className = 'col-visibility-list';
+
+		// Helper: get column rows currently visible in the list
+		const getVisibleRows = () =>
+			Array.from(list.querySelectorAll('.col-visibility-row'))
+				.filter(r => r.style.display !== 'none');
+
+		// Update the master checkbox state from individual checkboxes
+		const updateSelectAll = () => {
+			const visibleRows = getVisibleRows();
+			const checkedCount = visibleRows.filter(
+				r => r.querySelector('input[type="checkbox"]').checked
+			).length;
+
+			if (checkedCount === 0) {
+				selectAllCheckbox.checked = false;
+				selectAllCheckbox.indeterminate = false;
+				selectAllLabel.textContent = 'All columns';
+			}
+			else if (checkedCount === visibleRows.length) {
+				selectAllCheckbox.checked = true;
+				selectAllCheckbox.indeterminate = false;
+				selectAllLabel.textContent = 'All columns';
+			}
+			else {
+				selectAllCheckbox.checked = false;
+				selectAllCheckbox.indeterminate = true;
+				selectAllLabel.textContent = `${checkedCount} of ${visibleRows.length} visible`;
+			}
+		};
 
 		visibleThs.forEach(th => {
 			const colId = this.#getStableColumnId(th);
@@ -5436,12 +5490,11 @@ class CWidgetTableModuleRME extends CWidget {
 			label.htmlFor = `col-vis-${colId}`;
 			label.textContent = this.#extractColumnName(th) || `Column ${th.id}`;
 
-			// Suspended-filter indicator — shown when column is hidden and has
-			// a filter with content.  Updated live as the checkbox is toggled.
+			// Suspended-filter indicator — CSS-drawn two-bar icon, no glyph
 			const indicator = document.createElement('span');
 			indicator.className = 'col-visibility-filter-indicator';
-			indicator.title = 'This column has a suspended filter that will be restored when unhidden';
-			indicator.textContent = '⏸';
+			indicator.setAttribute('aria-label', 'This column has a suspended filter');
+			indicator.title = 'Suspended filter — will be restored when column is unhidden';
 
 			const hasSuspendedFilter = () => {
 				const fs = this.#getFilterState(colId);
@@ -5460,6 +5513,7 @@ class CWidgetTableModuleRME extends CWidget {
 					this.#hideColumn(colId);
 					indicator.style.display = hasSuspendedFilter() ? '' : 'none';
 				}
+				updateSelectAll();
 			});
 
 			row.appendChild(checkbox);
@@ -5469,9 +5523,51 @@ class CWidgetTableModuleRME extends CWidget {
 
 		panel.appendChild(list);
 
-		// Anchored to top-right of widget container
+		// Wire up search to also refresh the master checkbox state
+		if (visibleThs.length > 8) {
+			const searchInput = panel.querySelector('.col-visibility-search');
+			if (searchInput) {
+				const existingHandler = searchInput.oninput;
+				searchInput.addEventListener('input', () => updateSelectAll());
+			}
+		}
+
+		// Wire up the master checkbox
+		selectAllCheckbox.addEventListener('change', () => {
+			const visibleRows = getVisibleRows();
+			const shouldShow = selectAllCheckbox.checked;
+
+			visibleRows.forEach(row => {
+				const cb = row.querySelector('input[type="checkbox"]');
+				const colId = cb.id.replace('col-vis-', '');
+				const indicator = row.querySelector('.col-visibility-filter-indicator');
+
+				if (shouldShow && !cb.checked) {
+					cb.checked = true;
+					this.#showColumn(colId);
+					if (indicator) indicator.style.display = 'none';
+				}
+				else if (!shouldShow && cb.checked) {
+					cb.checked = false;
+					this.#hideColumn(colId);
+					if (indicator) indicator.style.display =
+						this.#getFilterState(colId) &&
+						((this.#getFilterState(colId).search?.trim() !== '') ||
+						 (this.#getFilterState(colId).checked?.length > 0)) ? '' : 'none';
+				}
+			});
+
+			// Snap to clean checked/unchecked — never leave indeterminate after explicit click
+			selectAllCheckbox.indeterminate = false;
+			selectAllLabel.textContent = 'All columns';
+		});
+
+		// Initialise the master checkbox state from current column states
+		updateSelectAll();
+
+		// Position: fixed, anchored to top-right of widget container
 		// Append to document.body (not the container) so we don't disturb
-		// the container's layout or overflow behaviour.
+		// the container's layout or overflow behavior.
 		panel.style.visibility = 'hidden';
 		document.body.appendChild(panel);
 

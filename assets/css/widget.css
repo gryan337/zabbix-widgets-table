@@ -1177,9 +1177,103 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
 }
 
 .col-visibility-filter-indicator {
-  font-size: 11px;
-  opacity: 0.7;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.75;
+  margin-left: 2px;
+}
+
+/* Two CSS-drawn vertical bars — cross-platform, no glyph required */
+.col-visibility-filter-indicator::before,
+.col-visibility-filter-indicator::after {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 10px;
+  border-radius: 1px;
+  background: #f59e0b; /* amber — matches the warning theme */
+}
+
+.col-visibility-selectall-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #444;
+  background: var(--main-bg);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.col-visibility-selectall-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--checkbox-border);
+  border-radius: 3px;
+  background-color: var(--input-bg);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.15s ease-in-out;
+}
+
+.col-visibility-selectall-row input[type="checkbox"]:checked {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.col-visibility-selectall-row input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 0px;
+  left: 3px;
+  width: 4px;
+  height: 7px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* Indeterminate state — horizontal bar */
+.col-visibility-selectall-row input[type="checkbox"]:indeterminate {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.col-visibility-selectall-row input[type="checkbox"]:indeterminate::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 2px;
+  width: 6px;
+  height: 2px;
+  background: white;
+  border: none;
+  border-radius: 1px;
+  transform: none;
+  pointer-events: none;
+}
+
+.col-visibility-selectall-row input[type="checkbox"]:focus {
+  outline: none;
+}
+
+.col-visibility-selectall-row input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--focus-outline-color);
+  outline-offset: 2px;
+}
+
+.col-visibility-selectall-label {
+  cursor: pointer;
+  color: var(--filter-type-text, inherit);
+  font-weight: 600;
+  font-size: 12px;
+  flex: 1;
 }
 
 /* ========== Theme Variables ========== */
