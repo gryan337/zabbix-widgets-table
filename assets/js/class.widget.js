@@ -433,7 +433,8 @@ class CWidgetTableModuleRME extends CWidget {
 		if (matchingColumns.length > 0) {
 			const allMatchingColumns = allThsArray.filter(t => getBaseStableId(t) === baseStableId);
 			const position = allMatchingColumns.indexOf(th);
-			console.warn(`Multiple columns found with name "${columnName}", using position-based ID: ${stableId}`);
+			console.warn(`Multiple columns found with name "${columnName}", using position-based ID: ${stableId}-${position}`);
+			stableId = `${stableId}-${position}`;
 		}
 
 		th.dataset.stableColumnId = stableId;
