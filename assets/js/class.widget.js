@@ -5407,12 +5407,13 @@ class CWidgetTableModuleRME extends CWidget {
 
 		// Search input (only when > 8 columns)
 		const visibleThs = this.allThs.filter(th => !th.classList.contains('action-column'));
+		let searchInput = null;
 
 		if (visibleThs.length > 8) {
 			const searchWrapper = document.createElement('div');
 			searchWrapper.className = 'col-visibility-search-wrapper';
 
-			const searchInput = document.createElement('input');
+			searchInput = document.createElement('input');
 			searchInput.type = 'text';
 			searchInput.placeholder = 'Search columns…';
 			searchInput.className = 'col-visibility-search';
@@ -5543,10 +5544,13 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		}
 
-		// Wire up the master checkbox
+		// Wire up the master checkbox — batched for performance.
+		// All #hiddenColumns mutations happen first, then a single
+		// #applyColumnVisibility() and one conditional #applyAllFilters() call.
 		selectAllCheckbox.addEventListener('change', () => {
 			const visibleRows = getVisibleRows();
 			const shouldShow = selectAllCheckbox.checked;
+			let filtersAffected = false;
 
 			visibleRows.forEach(row => {
 				const cb = row.querySelector('input[type="checkbox"]');
@@ -5555,20 +5559,44 @@ class CWidgetTableModuleRME extends CWidget {
 
 				if (shouldShow && !cb.checked) {
 					cb.checked = true;
-					this.#showColumn(colId);
+					this.#hiddenColumns.delete(colId);
+
+					// If column had a suspended filter, re-activate it
+					const fs = this.#getFilterState(colId);
+					if (fs && (fs.search?.trim() !== '' || fs.checked?.length > 0)) {
+						this.#activeFilters.add(colId);
+						filtersAffected = true;
+					}
+
 					if (indicator) indicator.style.display = 'none';
 				}
 				else if (!shouldShow && cb.checked) {
 					cb.checked = false;
-					this.#hideColumn(colId);
-					if (indicator) indicator.style.display =
-						this.#getFilterState(colId) &&
-						((this.#getFilterState(colId).search?.trim() !== '') ||
-						 (this.#getFilterState(colId).checked?.length > 0)) ? '' : 'none';
+					this.#hiddenColumns.add(colId);
+
+					// Suspend any active filter on this column
+					if (this.#activeFilters.has(colId)) {
+						this.#activeFilters.delete(colId);
+						filtersAffected = true;
+					}
+
+					if (indicator) {
+						const fs = this.#getFilterState(colId);
+						indicator.style.display = (fs && (fs.search?.trim() !== '' || fs.checked?.length > 0))
+							? '' : 'none';
+					}
 				}
 			});
 
-			// Snap to clean checked/unchecked — never leave indeterminate after explicit click
+			// Single DOM pass for all column changes
+			this.#applyColumnVisibility();
+
+			// One filter re-run if any active filters were suspended or restored
+			if (filtersAffected) {
+				this.#applyAllFilters(true);
+			}
+
+			// Snap to clean state — never leave indeterminate after explicit click
 			selectAllCheckbox.indeterminate = false;
 			selectAllLabel.textContent = 'All columns';
 		});
@@ -5586,20 +5614,31 @@ class CWidgetTableModuleRME extends CWidget {
 		const panelRect = panel.getBoundingClientRect();
 		const padding = 8;
 
+		// Open to the right of the widget container so it doesn't overlap it.
+		// Fall back to top-right inside the widget if there isn't room on the right.
 		let top  = containerRect.top + padding;
-		let left = containerRect.right - panelRect.width - padding;
+		let left = containerRect.right + padding;
 
-		// Keep within viewport
-		top  = Math.max(padding, Math.min(top,  window.innerHeight - panelRect.height - padding));
-		left = Math.max(padding, Math.min(left, window.innerWidth  - panelRect.width  - padding));
+		if (left + panelRect.width > window.innerWidth - padding) {
+			// Not enough room to the right — anchor inside top-right instead
+			left = containerRect.right - panelRect.width - padding;
+		}
+
+		// Keep within viewport vertically
+		top = Math.max(padding, Math.min(top, window.innerHeight - panelRect.height - padding));
 
 		panel.style.top  = `${top}px`;
 		panel.style.left = `${left}px`;
 		panel.style.visibility = 'visible';
 
+		// Make the panel draggable using the existing filter-popup drag infrastructure
+		this.makeDraggable(panel, header);
+
 		// Move focus into the panel so keyboard users can navigate immediately.
 		// Focus the close button first — Tab then moves through the checkboxes.
-		requestAnimationFrame(() => closeBtn.focus());
+		requestAnimationFrame(() => (searchInput ?? closeBtn).focus());
+
+		this._pauseUpdating();
 
 		const dismiss = (e) => {
 			if (this.#colVisibilityPanel && !this.#colVisibilityPanel.contains(e.target)) {
@@ -5626,9 +5665,12 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#hideColumnVisibilityPanel() {
 		if (this.#colVisibilityPanel) {
+			// Clean up drag state registered by makeDraggable
+			this.#draggableStates.delete(this.#colVisibilityPanel.id);
 			this.#colVisibilityPanel.remove();
 			this.#colVisibilityPanel = null;
 		}
+		this._resumeUpdating();
 	}
 
 	/**
