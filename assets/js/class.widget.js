@@ -441,8 +441,8 @@ class CWidgetTableModuleRME extends CWidget {
 		if (matchingColumns.length > 0) {
 			const allMatchingColumns = allThsArray.filter(t => getBaseStableId(t) === baseStableId);
 			const position = allMatchingColumns.indexOf(th);
-			console.warn(`Multiple columns found with name "${columnName}", using position-based ID: ${stableId}-${position}`);
-			stableId = `${stableId}-${position}`;
+			stableId = `${baseStableId}_pos${position}`;
+			console.warn(`Multiple columns found with name "${columnName}", using position-based ID: ${stableId}`);
 		}
 
 		th.dataset.stableColumnId = stableId;
@@ -5389,6 +5389,29 @@ class CWidgetTableModuleRME extends CWidget {
 		panel.id = `col-visibility-panel-${this._widgetid}`;
 		this.#colVisibilityPanel = panel;
 
+		// Track if we've already paused for this panel session
+		let isPaused = false;
+
+		const ensurePaused = () => {
+			if (!isPaused) {
+				this._pauseUpdating();
+				isPaused = true;
+			}
+		};
+
+		// Add mousedown handler to the panel itself to prevent event propagation
+		// and re-pause updating if something tries to resume it
+		panel.addEventListener('mousedown', (e) => {
+			e.stopPropagation();
+			ensurePaused();
+		});
+
+		// Also add click handler for extra protection
+		panel.addEventListener('click', (e) => {
+			e.stopPropagation();
+			ensurePaused();
+		});
+
 		const header = document.createElement('div');
 		header.className = 'col-visibility-header';
 
@@ -5400,7 +5423,7 @@ class CWidgetTableModuleRME extends CWidget {
 		const closeBtn = document.createElement('button');
 		closeBtn.className = 'col-visibility-close';
 		closeBtn.setAttribute('aria-label', 'Close column visibility panel');
-		closeBtn.textContent = '✕';
+		closeBtn.textContent = '\u2715';
 		closeBtn.addEventListener('click', () => this.#hideColumnVisibilityPanel());
 		header.appendChild(closeBtn);
 		panel.appendChild(header);
@@ -5425,6 +5448,15 @@ class CWidgetTableModuleRME extends CWidget {
 					const label = row.querySelector('label').textContent.toLowerCase();
 					row.style.display = label.includes(term) ? '' : 'none';
 				});
+			});
+
+			searchInput.addEventListener('mousedown', (e) => {
+				e.stopPropagation();
+				ensurePaused();
+			});
+
+			searchInput.addEventListener('focus', () => {
+				ensurePaused();
 			});
 
 			searchWrapper.appendChild(searchInput);
@@ -5517,6 +5549,8 @@ class CWidgetTableModuleRME extends CWidget {
 			label.appendChild(indicator);
 
 			checkbox.addEventListener('change', () => {
+				ensurePaused();
+				
 				if (checkbox.checked) {
 					this.#showColumn(colId);
 					indicator.style.display = 'none';
@@ -5548,6 +5582,8 @@ class CWidgetTableModuleRME extends CWidget {
 		// All #hiddenColumns mutations happen first, then a single
 		// #applyColumnVisibility() and one conditional #applyAllFilters() call.
 		selectAllCheckbox.addEventListener('change', () => {
+			ensurePaused();
+			
 			const visibleRows = getVisibleRows();
 			const shouldShow = selectAllCheckbox.checked;
 			let filtersAffected = false;
@@ -5634,11 +5670,28 @@ class CWidgetTableModuleRME extends CWidget {
 		// Make the panel draggable using the existing filter-popup drag infrastructure
 		this.makeDraggable(panel, header);
 
+		// Override the drag handlers to ensure pause state is maintained
+		const originalMouseDown = header._dragHandlers?.mouseDown;
+		if (originalMouseDown) {
+			header.removeEventListener('mousedown', originalMouseDown);
+
+			const protectedMouseDown = (e) => {
+				ensurePaused();
+				originalMouseDown(e);
+			};
+
+			header.addEventListener('mousedown', protectedMouseDown);
+			header._dragHandlers.mouseDown = protectedMouseDown;
+		}
+
 		// Move focus into the panel so keyboard users can navigate immediately.
 		// Focus the close button first — Tab then moves through the checkboxes.
-		requestAnimationFrame(() => (searchInput ?? closeBtn).focus());
+		requestAnimationFrame(() => {
+			(searchInput ?? closeBtn).focus();
+			ensurePaused();
+		});
 
-		this._pauseUpdating();
+		ensurePaused();
 
 		const dismiss = (e) => {
 			if (this.#colVisibilityPanel && !this.#colVisibilityPanel.contains(e.target)) {
@@ -5669,6 +5722,19 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#draggableStates.delete(this.#colVisibilityPanel.id);
 			this.#colVisibilityPanel.remove();
 			this.#colVisibilityPanel = null;
+
+			// Return focus to the actions menu button, with fallback
+			const actionsButton =  this.#parent_container?.querySelector('.dashboard-grid-widget-actions .js-widget-action');
+			if (actionsButton) {
+				actionsButton.focus();
+			}
+			else {
+				// Fallback: try to focus the first focusable element in the widget
+				const firstFocusable = this.#parent_container?.querySelector('button, [tabindex="0"]');
+				if (firstFocusable) {
+					firstFocusable.focus();
+				}
+			}
 		}
 		this._resumeUpdating();
 	}
