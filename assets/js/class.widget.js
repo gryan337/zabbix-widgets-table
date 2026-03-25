@@ -871,6 +871,8 @@ class CWidgetTableModuleRME extends CWidget {
 
 			// Check all OTHER active filters (not this column)
 			for (const otherColumnId of otherActiveFilters) {
+				if (this.#hiddenColumns.has(otherColumnId)) return true;
+				
 				const otherFilterState = this.#getFilterState(otherColumnId);
 				const otherColumnType = this.#getColumnType(otherColumnId);
 				if (!otherFilterState) continue;
@@ -2329,8 +2331,6 @@ class CWidgetTableModuleRME extends CWidget {
 
 			// Determine column type
 			columnInfo.columnType = this.#detectColumnType(valuesArray);
-
-			// Don't cache sorted values here: do it lazily when opening popup for first time
 
 			// Set default filter type based on column type (only if not already set)
 			if (!columnInfo.filterState.type || columnInfo.filterState.type === 'contains') {
@@ -5600,7 +5600,6 @@ class CWidgetTableModuleRME extends CWidget {
 					// If column had a suspended filter, re-activate it
 					const fs = this.#getFilterState(colId);
 					if (fs && (fs.search?.trim() !== '' || fs.checked?.length > 0)) {
-						this.#activeFilters.add(colId);
 						filtersAffected = true;
 					}
 
@@ -5612,7 +5611,6 @@ class CWidgetTableModuleRME extends CWidget {
 
 					// Suspend any active filter on this column
 					if (this.#activeFilters.has(colId)) {
-						this.#activeFilters.delete(colId);
 						filtersAffected = true;
 					}
 
@@ -5740,9 +5738,8 @@ class CWidgetTableModuleRME extends CWidget {
 	}
 
 	/**
-	 * Hide a column: add to #hiddenColumns and suspend any active filter
-	 * (remove from #activeFilters so it stops affecting row counts) but
-	 * preserve the full filter state — search text, checkboxes, filter type —
+	 * Hide a column: add to #hiddenColumns and suspend any active filter.
+	 * Preserve the full filter state — search text, checkboxes, filter type —
 	 * so it is restored exactly when the column is unhidden.
 	 */
 	#hideColumn(colId) {
@@ -5765,8 +5762,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 	/**
 	 * Show a column: remove from #hiddenColumns and restore any previously
-	 * suspended filter by re-adding it to #activeFilters if the filter state
-	 * has any active criteria.
+	 * suspended filter if the filter state has any active criteria.
 	 */
 	#showColumn(colId) {
 		this.#hiddenColumns.delete(colId);
