@@ -3259,6 +3259,22 @@ class CWidgetTableModuleRME extends CWidget {
 			() => this.#toggleFreezeColumn(colId)
 		));
 
+		const sep = document.createElement('div');
+		sep.className = 'col-ctx-menu-sep';
+		menu.appendChild(sep);
+
+		const hideSvg = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>`;
+
+		menu.appendChild(makeItem(
+			hideSvg,
+			'Hide column',
+			() => {
+				this.#hideColumn(colId);
+				// Sync the visibility panel checkbox if the panel is currently open
+				this.#syncVisibilityPanelCheckbox(colId, false);
+			}
+		));
+
 		menu.style.left = '-9999px';
 		menu.style.top = '-9999px';
 		document.body.appendChild(menu);
@@ -3297,6 +3313,17 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#colCtxMenu.remove();
 			this.#colCtxMenu = null;
 		}
+	}
+
+	// Sync a single checkbox in the visibility panel (if open) and update
+	// the master Select All state by firing a synthetic change event so the
+	// panel's own handler (which calls updateSelectAll) does the rest.
+	#syncVisibilityPanelCheckbox(colId, checked) {
+		if (!this.#colVisibilityPanel) return;
+		const cb = this.#colVisibilityPanel.querySelector(`#col-vis-${colId}`);
+		if (!cb || cb.checked === checked) return;
+		cb.checked = checked;
+		cb.dispatchEvent(new Event('change', { bubbles: true }));
 	}
 
 	// ========== Cell Click and Selection Methods ========== //
@@ -5550,7 +5577,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 			checkbox.addEventListener('change', () => {
 				ensurePaused();
-				
+
 				if (checkbox.checked) {
 					this.#showColumn(colId);
 					indicator.style.display = 'none';
@@ -5570,12 +5597,8 @@ class CWidgetTableModuleRME extends CWidget {
 		panel.appendChild(list);
 
 		// Wire up search to also refresh the master checkbox state
-		if (visibleThs.length > 8) {
-			const searchInput = panel.querySelector('.col-visibility-search');
-			if (searchInput) {
-				const existingHandler = searchInput.oninput;
-				searchInput.addEventListener('input', () => updateSelectAll());
-			}
+		if (searchInput) {
+			searchInput.addEventListener('input', () => updateSelectAll());
 		}
 
 		// Wire up the master checkbox — batched for performance.
@@ -5583,7 +5606,7 @@ class CWidgetTableModuleRME extends CWidget {
 		// #applyColumnVisibility() and one conditional #applyAllFilters() call.
 		selectAllCheckbox.addEventListener('change', () => {
 			ensurePaused();
-			
+
 			const visibleRows = getVisibleRows();
 			const shouldShow = selectAllCheckbox.checked;
 			let filtersAffected = false;
@@ -5683,7 +5706,7 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		// Move focus into the panel so keyboard users can navigate immediately.
-		// Focus the close button first — Tab then moves through the checkboxes.
+		// Prefer the search input if present, otherwise the close button.
 		requestAnimationFrame(() => {
 			(searchInput ?? closeBtn).focus();
 			ensurePaused();
@@ -5722,7 +5745,7 @@ class CWidgetTableModuleRME extends CWidget {
 			this.#colVisibilityPanel = null;
 
 			// Return focus to the actions menu button, with fallback
-			const actionsButton =  this.#parent_container?.querySelector('.dashboard-grid-widget-actions .js-widget-action');
+			const actionsButton = this.#parent_container?.querySelector('.dashboard-grid-widget-actions .js-widget-action');
 			if (actionsButton) {
 				actionsButton.focus();
 			}
