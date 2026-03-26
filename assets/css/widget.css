@@ -1021,6 +1021,12 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   opacity: 0.85;
 }
 
+.col-ctx-menu-sep {
+  height: 1px;
+  background: #555;
+  margin: 4px 0;
+}
+
 /* ========== Frozen column theme variables are merged into Theme Variables below ========== */
 
 /* ========== Column Visibility Panel ========== */
