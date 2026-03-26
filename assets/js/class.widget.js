@@ -5852,9 +5852,6 @@ class CWidgetTableModuleRME extends CWidget {
 
 		// Recalculate frozen styles — hidden columns affect left offsets
 		this.#applyFrozenStyles();
-
-		// Sparklines must be told their new width after column visibility changes
-		this.#recalculateSvgSparklines();
 	}
 
 	// ========== CSV Export Methods ========== //
