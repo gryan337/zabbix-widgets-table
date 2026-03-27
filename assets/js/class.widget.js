@@ -182,6 +182,16 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 	}
 
+	#clearDataStructures() {
+		this.#rowsArray = [];
+		this.#visibleRows = [];
+		this.#rowMetadata = new WeakMap();
+		this.#cssStyleMap = new Map();
+		this.#columnData.clear();
+		this.#activeFilters.clear();
+		this.#totalRows = 0;
+	}
+
 	#saveScrollPosition() {
 		if (this._contents) {
 			this.#scrollPosition = {
@@ -542,7 +552,8 @@ class CWidgetTableModuleRME extends CWidget {
 						barGaugeTd: isNumericCellOfDoubleSpan ? prevTd: null
 					});
 
-				} catch (error) {
+				}
+				catch (error) {
 					console.error('Failed to parse menu data:', error);
 				}
 			}
@@ -3267,6 +3278,26 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		));
 
+		const columnVisibilitySvg = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+			<line x1="6" y1="4" x2="6" y2="20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
+			<circle cx="6" cy="7" r="4" fill="currentColor" opacity="0.3"/>
+			<circle cx="6" cy="7" r="3" fill="currentColor"/>
+			<line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
+			<circle cx="12" cy="15" r="4" fill="currentColor" opacity="0.3"/>
+			<circle cx="12" cy="15" r="3" fill="currentColor"/>
+			<line x1="18" y1="4" x2="18" y2="20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
+			<circle cx="18" cy="11" r="4" fill="currentColor" opacity="0.3"/>
+			<circle cx="18" cy="11" r="3" fill="currentColor"/>
+		</svg>`;
+
+		menu.appendChild(makeItem(
+			columnVisibilitySvg,
+			'Column visibility menu',
+			() => {
+				setTimeout(() => this.#showColumnVisibilityPanel(th), 50);
+			}
+		));
+
 		menu.style.left = '-9999px';
 		menu.style.top = '-9999px';
 		document.body.appendChild(menu);
@@ -4783,6 +4814,7 @@ class CWidgetTableModuleRME extends CWidget {
 		if (this._fields.display_on_click) {
 			if (!this.#displayButtonClicked) {
 				setTimeout(() => {
+					this.#clearDataStructures();
 					super.setContents(response);
 					this.#displayShowButton();
 				}, 0);
@@ -4792,6 +4824,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		if (response.body.includes('no-data-message')) {
 			setTimeout(() => {
+				this.#clearDataStructures();
 				this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#null_id);
 				this.#broadcast(CWidgetsData.DATA_TYPE_ITEM_ID, CWidgetsData.DATA_TYPE_ITEM_IDS, this.#null_id);
 				super.setContents(response);
@@ -5398,7 +5431,7 @@ class CWidgetTableModuleRME extends CWidget {
 	 * A search input appears when there are more than 8 columns so users can
 	 * quickly filter the list.
 	 */
-	#showColumnVisibilityPanel() {
+	#showColumnVisibilityPanel(anchorElement = null) {
 		this.#hideColumnVisibilityPanel();
 
 		const panel = document.createElement('div');
@@ -5657,22 +5690,54 @@ class CWidgetTableModuleRME extends CWidget {
 		panel.style.visibility = 'hidden';
 		document.body.appendChild(panel);
 
-		const containerRect = this.#parent_container.getBoundingClientRect();
 		const panelRect = panel.getBoundingClientRect();
 		const padding = 8;
 
-		// Open to the right of the widget container so it doesn't overlap it.
-		// Fall back to top-right inside the widget if there isn't room on the right.
-		let top  = containerRect.top + padding;
-		let left = containerRect.right + padding;
+		let top, left;
 
-		if (left + panelRect.width > window.innerWidth - padding) {
-			// Not enough room to the right — anchor inside top-right instead
-			left = containerRect.right - panelRect.width - padding;
+		if (anchorElement) {
+			// Position near the anchor element (e.g., the clicked column header)
+			const anchorRect = anchorElement.getBoundingClientRect();
+
+			// Try to position below and to the right of the anchor
+			top = anchorRect.bottom + padding;
+			left = anchorRect.left;
+
+			// Check horizontal bounds first
+			if (left + panelRect.width > window.innerWidth - padding) {
+				left = anchorRect.right - panelRect.width;
+				// If still off screen, align to window right edge
+				if (left < padding) {
+					left = window.innerWidth - panelRect.width - padding;
+				}
+			}
+
+			// Ensure left never goes negative or too far left
+			left = Math.max(padding, Math.min(left, window.innerWidth - panelRect.width - padding));
+
+			// Check vertical bounds
+			if (top + panelRect.height > window.innerHeight - padding) {
+				top = window.innerHeight - panelRect.height - padding;
+			}
+
+			// Ensure top never goes negative or too far up
+			top = Math.max(padding, top);
 		}
+		else {
+			// Default positioning: top-right of widget container
+			const containerRect = this.#parent_container.getBoundingClientRect();
 
-		// Keep within viewport vertically
-		top = Math.max(padding, Math.min(top, window.innerHeight - panelRect.height - padding));
+			top = containerRect.top + padding;
+			left = containerRect.right + padding;
+
+			if (left + panelRect.width > window.innerWidth - padding) {
+				// Not enough room to the right - anchor inside top-right instead
+				left = containerRect.right - panelRect.width - padding;
+			}
+
+			// Keep within viewport vertically
+			top = Math.max(padding, Math.min(top, window.innerHeight - panelRect.height - padding));
+		}
 
 		panel.style.top  = `${top}px`;
 		panel.style.left = `${left}px`;
@@ -5857,13 +5922,26 @@ class CWidgetTableModuleRME extends CWidget {
 	// ========== CSV Export Methods ========== //
 
 	exportTableRowsToCSV(filename = 'export.csv') {
-		if (!this.#rowsArray || this.#rowsArray.length === 0) {
+		if (!this.#rowsArray || this.#rowsArray.length === 0 ||
+				!this.#visibleRows || this.#visibleRows.length === 0) {
+			this.#showCustomAlert('There is no data to download to CSV', 'CSV Download Status');
+			return;
+		}
+
+		// Check if all columns are hidden
+		const nonActionColumns = this.allThs.filter(th => !th.classList.contains('action-column'));
+		const allColumnsHidden = nonActionColumns.length > 0 &&
+		                         nonActionColumns.every(th => this.#hiddenColumns.has(this.#getStableColumnId(th)));
+
+		if (allColumnsHidden) {
+			this.#showCustomAlert('All columns are hidden. At least one column must be visible.', 'CSV Download Status');
 			return;
 		}
 
 		const displayRows = this.#visibleRows.map(item => item.row);
 
 		if (displayRows.length === 0) {
+			this.#showCustomAlert('No table data is current visible due to active filters', 'CSV Download Status');
 			return;
 		}
 
