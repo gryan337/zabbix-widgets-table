@@ -232,7 +232,7 @@ In the column form, set **`Display as`** to **`URL`**, then configure **`URL dis
 | **Lazy loading** | Configurable toggle to show/hide data on demand. Found in the main configuration form under **`Advanced configuration`** → **`Display on click`** |
 | **Background gradiency** | Improve contrast and visual aesthetics by enabling gradient color backgrounds |
 | **Font color** | Adds ability to choose font color |
-| **Topitems** | Maintains all capabilities from the [Topitems](https://www.zabbix.com/documentation/7.0/en/manual/web_interface/frontend_sections/dashboards/widgets/top_items) widget, including custom sort ordering when the widget first loads, bar gauges, sparkline graphs, dynamic cell shading based on thresholds, automatic cell highlight when a trigger/alert is active
+| **Topitems** | Maintains all capabilities from the [Topitems](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/dashboards/widgets/top_items) widget, including custom sort ordering when the widget first loads, bar gauges, sparkline graphs, dynamic cell shading based on thresholds, automatic cell highlight when a trigger/alert is active
 
 </details>
 
