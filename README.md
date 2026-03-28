@@ -28,7 +28,7 @@ A powerful, feature-rich table widget for Zabbix dashboards — built to fill th
 
 ```bash
 # Clone into Zabbix modules directory
-git clone -b main https://github.com/yourrepo/rme-table-widget \
+git clone -b 7.4 https://github.com/yourrepo/rme-table-widget \
   /usr/share/zabbix/ui/modules/rme-table-widget
 ```
 
@@ -71,7 +71,7 @@ Supports **`Item grouping`** by:
 
 <br>
 
-This widget is fully integrated with the [Zabbix dynamic parameters framework](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/dashboards/widgets#dynamic-parameters).
+This widget is fully integrated with the [Zabbix dynamic parameters framework](https://www.zabbix.com/documentation/7.4/en/manual/web_interface/frontend_sections/dashboards/widgets#dynamic-parameters).
 
 **Receives broadcasts of:**
 - Host groups
