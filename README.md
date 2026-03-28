@@ -141,7 +141,7 @@ Every column supports independent filtering. A **green funnel icon** indicates a
 | Wildcard | `*` and `?` patterns |
 | Regex | Full regular expression |
 | Boolean Expression | Logical combinations |
-| Numeric filters | `=`, `>`, `<`, `>=`, `<=`, range — for fully numeric columns |
+| Numeric filters | `=`, `>`, `<`, `>=`, `<=`, range — for fully numeric columns, regex |
 
 **Column filter popup controls:**
 
