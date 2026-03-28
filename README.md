@@ -28,7 +28,7 @@ A powerful, feature-rich table widget for Zabbix dashboards — built to fill th
 
 ```bash
 # Clone into Zabbix modules directory
-git clone -b main https://github.com/yourrepo/rme-table-widget \
+git clone -b 7.0 https://github.com/yourrepo/rme-table-widget \
   /usr/share/zabbix/ui/modules/rme-table-widget
 ```
 
@@ -71,7 +71,7 @@ Supports **`Item grouping`** by:
 
 <br>
 
-This widget is fully integrated with the [Zabbix dynamic parameters framework](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/dashboards/widgets#dynamic-parameters).
+This widget is fully integrated with the [Zabbix dynamic parameters framework](https://www.zabbix.com/documentation/7.0/en/manual/web_interface/frontend_sections/dashboards/widgets#dynamic-parameters).
 
 **Receives broadcasts of:**
 - Host groups
@@ -232,7 +232,7 @@ In the column form, set **`Display as`** to **`URL`**, then configure **`URL dis
 | **Lazy loading** | Configurable toggle to show/hide data on demand. Found in the main configuration form under **`Advanced configuration`** → **`Display on click`** |
 | **Background gradiency** | Improve contrast and visual aesthetics by enabling gradient color backgrounds |
 | **Font color** | Adds ability to choose font color |
-| **Topitems** | Maintains all capabilities from the [Topitems](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/dashboards/widgets/top_items) widget, including custom sort ordering when the widget first loads, bar gauges, sparkline graphs, dynamic cell shading based on thresholds, automatic cell highlight when a trigger/alert is active
+| **Topitems** | Maintains all capabilities from the [Topitems](https://www.zabbix.com/documentation/7.0/en/manual/web_interface/frontend_sections/dashboards/widgets/top_items) widget, including custom sort ordering when the widget first loads, bar gauges, sparkline graphs, dynamic cell shading based on thresholds, automatic cell highlight when a trigger/alert is active
 
 </details>
 
