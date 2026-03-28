@@ -222,7 +222,7 @@ In the column form, set **`Display as`** to **`URL`**, then configure **`URL dis
 
 | Feature | Details |
 |---------|---------|
-| **Sortable columns** | Correctly handles all custom Zabbix units: `B`, `bps`, `s`, `unixtime`, etc. |
+| **Sortable columns** | Correctly handles all custom Zabbix units: `B`, `bps`, `s`, `unixtime`, etc. Sorting tens of thousands of table rows takes sub-100ms to complete allowing for enterprise level performance |
 | **Pagination** | Automatic after 75 rows |
 | **Customize item names** | Available in all layouts except **`Column per pattern`**. Supports Zabbix built-in macros. Set via the **`Metric label`** field |
 | **Select host from storage** | Allows a host selected on one dashboard tab to be automatically selected on another dashboard tab when cycling through dashboard tabs - MUST be set in each RME Table that you want to participate |
