@@ -225,9 +225,14 @@ In the column form, set **`Display as`** to **`URL`**, then configure **`URL dis
 | **Sortable columns** | Correctly handles all custom Zabbix units: `B`, `bps`, `s`, `unixtime`, etc. |
 | **Pagination** | Automatic after 75 rows |
 | **Customize item names** | Available in all layouts except **`Column per pattern`**. Supports Zabbix built-in macros. Set via the **`Metric label`** field |
+| **Select host from storage** | Allows a host selected on one dashboard tab to be automatically selected on another dashboard tab when cycling through dashboard tabs - MUST be set in each RME Table that you want to participate |
 | **Value map display** | Configure how mapped values are rendered per column/item pattern |
+| **Add link for history** | Allows for one-click navigation to the historical values - this is the same page that `Latest data` takes you to when clicking `History` on the far right |
 | **CSV export** | Download table data from the actions menu |
 | **Lazy loading** | Configurable toggle to show/hide data on demand. Found in the main configuration form under **`Advanced configuration`** → **`Display on click`** |
+| **Background gradiency** | Improve contrast and visual aesthetics by enabling gradient color backgrounds |
+| **Font color** | Adds ability to choose font color |
+| **Topitems** | Maintains all capabilities from the [Topitems](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/dashboards/widgets/top_items) widget, including custom sort ordering when the widget first loads, bar gauges, sparkline graphs, dynamic cell shading based on thresholds, automatic cell highlight when a trigger/alert is active
 
 </details>
 
