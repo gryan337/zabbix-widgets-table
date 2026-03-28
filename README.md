@@ -28,7 +28,7 @@ A powerful, feature-rich table widget for Zabbix dashboards — built to fill th
 
 ```bash
 # Clone into Zabbix modules directory
-git clone -b 7.4 https://github.com/yourrepo/rme-table-widget \
+git clone -b main https://github.com/yourrepo/rme-table-widget \
   /usr/share/zabbix/ui/modules/rme-table-widget
 ```
 
@@ -138,7 +138,7 @@ Every column supports independent filtering. A **green funnel icon** indicates a
 | Contains / Not Contains | Substring match |
 | Equals | Exact match |
 | Starts With / Ends With | Prefix/suffix match |
-| Wildcard | `*` and `?` patterns |
+| Wildcard | `*` patterns |
 | Regex | Full regular expression |
 | Boolean Expression | Logical combinations |
 | Numeric filters | `=`, `>`, `<`, `>=`, `<=`, range — for fully numeric columns, regex |
@@ -148,7 +148,7 @@ Every column supports independent filtering. A **green funnel icon** indicates a
 | Control | Behavior |
 |---------|----------|
 | Filter type dropdown | Sets the filter mode (Contains, Regex, Numeric, etc.) |
-| Search input box | Reduces the value list as you type. No checkbox required — matching values are applied on `Apply` |
+| Search input box | Reduces the value list as you type based on the selected filter type. No checkbox required — matching values are applied on `Apply` |
 | `Clear` (top right) | Clears the search input and unchecks all checkboxes in one click |
 | Checkbox list | Select specific values to filter. **Checkbox selections take precedence over search input text** |
 | Select/Uncheck all | Toggles all currently visible checkboxes at once |
@@ -182,7 +182,7 @@ Every column supports independent filtering. A **green funnel icon** indicates a
 ---
 
 <details>
-<summary><strong>📈 Bar Gauge</strong></summary>
+<summary><strong>📈 Bar Gauge enhancements</strong></summary>
 
 <br>
 
@@ -285,6 +285,8 @@ TODO: Describe column-level options — display type, aggregation, header macros
 - [ ] Broadcast time period to listening widgets
 - [ ] Add ability to group by Host tags
 - [ ] Deprecate `{HOST.HOST}` in favor of an explicit option to group by `Hostname`
+- [ ] Add more aggregation functions for `Column patterns aggregation` and for the `Show footer row`
+- [ ] Crowd-sourced feature requests & community feedback (continuous)
 
 ### 📋 Q3 2026
 - [ ] Crowd-sourced feature requests & community feedback (continuous)
