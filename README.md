@@ -191,7 +191,7 @@ Rows or columns can display inline **bar gauges** showing proportional values. A
 - **`Bar gauge layout`** — proportions can be calculated within each **`Column`** or by **`Row`**.
 - **`Bar gauge tooltip`** — when hovering over a bar gauge, shows the percentage relative to other bar gauges in the same column or row (based on **`Bar gauge layout`**). The percentage can be relative to the maximum value or the sum of values in the **`Column`** or **`Row`**.
 
-<img src="screenshots/Bar-gauge-proportions.png" width="600" />
+<img src="screenshots/Bar-gauge-proportions.png" width="300" />
 
 </details>
 
@@ -278,6 +278,8 @@ TODO: Describe column-level options — display type, aggregation, header macros
 
 ### 🔜 Q2 2026
 - [ ] Broadcast time period to listening widgets
+- [ ] Add ability to group by Host tags
+- [ ] Deprecate `{HOST.HOST}` in favor of an explicit option to group by `Hostname`
 
 ### 📋 Q3 2026
 - [ ] Crowd-sourced feature requests & community feedback (continuous)
