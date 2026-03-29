@@ -590,17 +590,38 @@ a.ext-btn:focus-visible {
   outline-offset: -2px;
 }
 
+/* ========== Slim Scrollbars ========== */
+
+.filter-popup-scroll-container::-webkit-scrollbar,
+.col-visibility-list::-webkit-scrollbar,
 .custom-select .list::-webkit-scrollbar {
-  width: 9px;
+  width: 12px;
 }
 
+.filter-popup-scroll-container::-webkit-scrollbar-track,
+.col-visibility-list::-webkit-scrollbar-track,
+.custom-select .list::-webkit-scrollbar-track {
+  background: var(--main-bg);
+  border-radius: 6px;
+  margin: 4px;
+}
+
+.filter-popup-scroll-container::-webkit-scrollbar-thumb,
+.col-visibility-list::-webkit-scrollbar-thumb,
 .custom-select .list::-webkit-scrollbar-thumb {
-  background-color: #383838;
+  background: var(--scrollbar-thumb);
+  border-radius: 6px;
   border: 1px solid var(--main-bg);
+  background-clip: padding-box;
+  transition: background 0.15s ease;
 }
 
-.custom-select.list::-webkit-scrollbar-track {
-  background-color: #1f1f1f;
+.filter-popup-scroll-container::-webkit-scrollbar-thumb:hover,
+.col-visibility-list::-webkit-scrollbar-thumb:hover,
+.custom-select .list::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  border-color: var(--main-bg);
+  background-clip: padding-box;
 }
 
 .help-icon {
@@ -1337,6 +1358,9 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   --frozen-td-bg: #f4fafd;
   --frozen-border-color: rgba(71, 150, 196, 0.55);
   --frozen-shadow: rgba(71, 150, 196, 0.2);
+  /* Scrollbar */
+  --scrollbar-thumb: #94a3b0;
+  --scrollbar-thumb-hover: #6b7a87;
 }
 
 [theme="dark-theme"],
@@ -1390,6 +1414,9 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   --frozen-td-bg: #000000;
   --frozen-border-color: rgba(71, 150, 196, 0.55);
   --frozen-shadow: rgba(0, 0, 0, 0.85);
+  /* Scrollbar */
+  --scrollbar-thumb: #5a6a7e;
+  --scrollbar-thumb-hover: #7a90a8;
 }
 
 [theme="dark-theme"] {
@@ -1431,4 +1458,7 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   --frozen-td-bg: #2b2b2b;
   --frozen-border-color: rgba(71, 150, 196, 0.45);
   --frozen-shadow: rgba(0, 0, 0, 0.55);
+  /* Scrollbar */
+  --scrollbar-thumb: #5c6b7d;
+  --scrollbar-thumb-hover: #7a8fa3;
 }
