@@ -289,6 +289,7 @@ TODO: Describe column-level options — display type, aggregation, header macros
 - [ ] Crowd-sourced feature requests & community feedback (continuous)
 
 ### 📋 Q3 2026
+- [ ] Add a right-click context menu to metric/item cells (copy to clipboard, item configuration context menu, click to item history (would replace history link), expand value on click for truncated string values)
 - [ ] Crowd-sourced feature requests & community feedback (continuous)
 
 </details>
