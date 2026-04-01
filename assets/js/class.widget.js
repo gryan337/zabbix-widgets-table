@@ -68,6 +68,13 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#scrollPosition = { top: 0, left: 0 };
 	#isUpdatingDisplay = false;
+	#isSelectingText = false;
+	_currentThead = null;
+	_currentTfoot = null;
+	_currentWidgetContents = null;
+	boundMouseDownRMET = null;
+	boundMouseUpRMET = null;
+	boundScrollWhileSelecting = null
 
 	#frozenColumns = new Set();
 	#colCtxMenu = null;
@@ -127,6 +134,104 @@ class CWidgetTableModuleRME extends CWidget {
 			clearTimeout(timeoutId);
 			timeoutId = setTimeout(() => fn(...args), delay);
 		};
+	}
+
+	handleMouseDownRMET(e, element) {
+		// Only activate for text selection on sticky elements
+		if (e.target.closest('th') || e.target.closest('td')) {
+			this.#isSelectingText = true;
+			const widgetContents = this._container?.querySelector('.dashboard-grid-widget-contents');
+			if (widgetContents) {
+				this.#scrollPosition.top = widgetContents.scrollTop;
+				this.#scrollPosition.left = widgetContents.scrollLeft;
+			}
+		}
+	}
+
+	handleMouseUpRMET() {
+		if (this.#isSelectingText) {
+			this.#isSelectingText = false;
+		}
+	}
+
+	handleScrollWhileSelecting(e) {
+		if (this.#isSelectingText) {
+			e.preventDefault();
+			e.stopPropagation();
+			// Restore scroll position
+			if (this._container) {
+				const widgetContents = this._container.querySelector('.dashboard-grid-widget-contents');
+				if (widgetContents) {
+					widgetContents.scrollTop = this. #scrollPosition.top;
+					widgetContents.scrollLeft = this.#scrollPosition.left;
+				}
+			}
+		}
+	}
+
+	#setupStickyHeaderFooterSelection() {
+		const widgetContents = this._container?.querySelector('.dashboard-grid-widget-contents');
+		if (!widgetContents) return;
+
+		// Clean up any existing listeners first (important for refresh cycles)
+		this.#cleanupStickyHeaderFooterSelection();
+
+		// Bind handlers once and store them
+		if (!this.boundMouseDownRMET) {
+			this.boundMouseDownRMET = this.handleMouseDownRMET.bind(this);
+			this.boundMouseUpRMET = this.handleMouseUpRMET.bind(this);
+			this.boundScrollWhileSelecting = this.handleScrollWhileSelecting.bind(this);
+		}
+
+		// Setup for thead (new DOM element each refresh)
+		const thead = this.#values_table?.querySelector('thead');
+		if (thead) {
+			thead.addEventListener('mousedown', this.boundMouseDownRMET);
+			// Store reference for cleanup
+			this._currentThead = thead;
+		}
+
+		// Setup for tfoot (new DOM element each refresh)
+		const tfoot = this.#values_table?.querySelector('tfoot');
+		if (tfoot) {
+			tfoot.addEventListener('mousedown', this.boundMouseDownRMET);
+			// Store reference for cleanup
+			this._currentTfoot = tfoot;
+		}
+
+		// Setup document mouseup (persists across refreshes)
+		document.addEventListener('mouseup', this.boundMouseUpRMET);
+
+		// Setup scroll prevention (widgetContents persists)
+		widgetContents.addEventListener('scroll', this.boundScrollWhileSelecting, { passive: false });
+
+		// Store reference for cleanup
+		this._currentWidgetContents = widgetContents;
+	}
+
+	#cleanupStickyHeaderFooterSelection() {
+		if (!this.boundMouseDownRMET) return;
+
+		// Clean up stored references to old DOM elements
+		if (this._currentThead) {
+			this._currentThead.removeEventListener('mousedown', this.boundMouseDownRMET);
+			this._currentThead = null;
+		}
+
+		if (this._currentTfoot) {
+			this._currentTfoot.removeEventListener('mousedown', this.boundMouseDownRMET);
+			this._currentTfoot = null;
+		}
+
+		if (this._currentWidgetContents) {
+			this._currentWidgetContents.removeEventListener('scroll', this.boundScrollWhileSelecting);
+			this._currentWidgetContents = null;
+		}
+
+		// Document listener always needs cleanup
+		document.removeEventListener('mouseup', this.boundMouseUpRMET);
+
+		this.#isSelectingText = false;
 	}
 
 	getTheme() {
@@ -5316,6 +5421,8 @@ class CWidgetTableModuleRME extends CWidget {
 			footerRowObjs.forEach(rowObj => tfoot.appendChild(rowObj.row));
 			this.#values_table.classList.add('sticky-footer');
 		}
+
+		this.#setupStickyHeaderFooterSelection();
 
 		this.#totalRows = this.#visibleRows.length;
 		this.#updateDisplay(false, true, true, this.#scrollPosition.top);
