@@ -5480,6 +5480,9 @@ class CWidgetTableModuleRME extends CWidget {
 		// Clean up scroll tracking
 		this.#cleanupScrollTracking();
 
+		// Clean up sticky header/footer selection handlers
+		this.#cleanupStickyHeaderFooterSelection();
+
 		// Clean up column context menu if open
 		this.#hideColContextMenu();
 
