@@ -3813,13 +3813,21 @@ class CWidgetTableModuleRME extends CWidget {
 		td.setAttribute('aria-selected', 'true');
 
 		if (isNumericCellOfDoubleSpan && barGaugeTd) {
+			const tdWasHidden = td.style.display === 'none';
+			const barGaugeWasHidden = barGaugeTd.style.display === 'none';
+			
 			td.style.background = barGaugeTd.style.backgroundColor = bgColor;
 			td.style.color = barGaugeTd.style.color = fontColor;
 			barGaugeTd.setAttribute('aria-selected', 'true');
+
+			if (tdWasHidden) td.style.display = 'none';
+			if (barGaugeWasHidden) td.style.display = 'none'
 		}
 		else {
+			const wasHidden = td.style.display === 'none';
 			td.style.background = bgColor;
 			td.style.color = fontColor;
+			if (wasHidden) td.style.display = 'none';
 		}
 	}
 
@@ -3837,15 +3845,23 @@ class CWidgetTableModuleRME extends CWidget {
 			const cachedStyle = this.#cssStyleMap.get(cell_key);
 			if (cachedStyle !== undefined) {
 				if (this._isBarGauge(barGaugeTd) || this._isSparkLine(barGaugeTd)) {
+					const tdWasHidden = td.style.display === 'none';
+					const barGaugeWasHidden = barGaugeTd.style.display === 'none';
+					
 					td.style.cssText = cachedStyle;
 					barGaugeTd.style.cssText = '';
+
+					if (tdWasHidden) td.style.display = 'none';
+					if (barGaugeWasHidden) td.style.display = 'none'
 				}
 			}
 		}
 		else {
 			const cachedStyle = this.#cssStyleMap.get(cell_key);
 			if (cachedStyle !== undefined) {
+				const wasHidden = td.style.display === 'none';
 				td.style.cssText = cachedStyle;
+				if (wasHidden) td.style.display = 'none';
 			}
 		}
 	}
