@@ -3813,7 +3813,7 @@ class CWidgetTableModuleRME extends CWidget {
 			barGaugeTd.setAttribute('aria-selected', 'true');
 
 			if (tdWasHidden) td.style.display = 'none';
-			if (barGaugeWasHidden) td.style.display = 'none'
+			if (barGaugeWasHidden) barGaugeTd.style.display = 'none'
 		}
 		else {
 			const wasHidden = td.style.display === 'none';
@@ -3844,7 +3844,7 @@ class CWidgetTableModuleRME extends CWidget {
 					barGaugeTd.style.cssText = '';
 
 					if (tdWasHidden) td.style.display = 'none';
-					if (barGaugeWasHidden) td.style.display = 'none'
+					if (barGaugeWasHidden) barGaugeTd.style.display = 'none'
 				}
 			}
 		}
