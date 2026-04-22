@@ -57,7 +57,8 @@ class CWidgetFieldTableModuleItemGroupingView extends CWidgetFieldView {
 					(new CSpan(':'))->addClass(ZBX_STYLE_LIST_NUMBERED_ITEM),
 					(new CSelect($this->field->getName().'[#{rowNum}][attribute]'))
 						->addOptions(CSelect::createOptionsFromArray([
-							CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG => _('Item tag value')
+							CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG => _('Item tag value'),
+							CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME => _('Host name')
 						]))
 						->setValue('#{attribute}')
 						->setId($this->field->getName().'_#{rowNum}_attribute')

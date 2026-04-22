@@ -73,8 +73,7 @@ $form
 			->setFieldHint(
 				makeHelpIcon([
 					_('The tags specified will determine how the metrics are grouped in the table rows.'), BR(),
-					_('Alternatively, you can just group the metrics by host, which will omit the first column, '),
-					_('by specifying a grouping of \'{HOST.HOST}\'')
+					_('Alternatively, you can just group the metrics by hostname, which will omit the first column.'),
 				])
 			)
 			->addRowClass('field_item_group_by')

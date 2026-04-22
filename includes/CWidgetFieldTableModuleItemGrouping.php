@@ -11,6 +11,7 @@ class CWidgetFieldTableModuleItemGrouping extends CWidgetField {
 	public const DEFAULT_VALUE = [];
 
 	public const GROUP_BY_ITEM_TAG = 0;
+	public const GROUP_BY_HOST_NAME = 1;
 
 	public const MAX_ROWS = 10;
 
@@ -20,7 +21,7 @@ class CWidgetFieldTableModuleItemGrouping extends CWidgetField {
 		$this
 			->setDefault(self::DEFAULT_VALUE)
 			->setValidationRules(['type' => API_OBJECTS, 'length' => self::MAX_ROWS, 'fields' => [
-				'attribute'	=> ['type' => API_INT32, 'flags' => API_REQUIRED, 'in' => implode(',', [self::GROUP_BY_ITEM_TAG])],
+				'attribute'	=> ['type' => API_INT32, 'flags' => API_REQUIRED, 'in' => implode(',', [self::GROUP_BY_ITEM_TAG, self::GROUP_BY_HOST_NAME])],
 				'tag_name'	=> ['type' => API_STRING_UTF8, 'length' => $this->getMaxLength()]
 			]]);
 	}
