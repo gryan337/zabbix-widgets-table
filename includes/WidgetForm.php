@@ -251,6 +251,23 @@ class WidgetForm extends CWidgetForm {
 			);
 	}
 
+	public function setFieldsValues(): self {
+		parent::setFieldsValues();
+
+		$item_groupings = $this->getField('item_group_by')->getValue();
+
+		foreach ($item_groupings as &$grouping) {
+			if ($grouping['attribute'] == 0 && $grouping['tag_name'] === '{HOST.HOST}') {
+				$grouping['attribute'] = 1;
+			}
+		}
+		unset($grouping);
+
+		$this->getField('item_group_by')->setValue($item_groupings);
+
+		return $this;
+	}
+
 	public function validate(bool $strict = false): array {
 		if ($this->getField('host_ordering_order_by')->getValue() == self::ORDERBY_ITEM_VALUE) {
 			$this->getField('host_ordering_item')->setFlags(CWidgetField::FLAG_NOT_EMPTY);
@@ -261,6 +278,16 @@ class WidgetForm extends CWidgetForm {
 		}
 
 		$item_groupings = $this->getField('item_group_by')->getValue();
+
+		if (count($item_groupings) > 1) {
+			foreach ($item_groupings as $item) {
+				if (($item['attribute'] == 1) ||
+						($item['attribute'] == 0 && $item['tag_name'] === '{HOST.HOST}')) {
+					$errors[] = _s('When grouping by \'Host name\', that is the only grouping permitted');
+					return $errors;
+				}
+			}
+		}
 
 		if ($this->getField('layout')->getValue() == self::LAYOUT_COLUMN_PER && empty($item_groupings)) {
 			$errors[] = _s('At least one Item grouping is required when using \'Column per pattern\'');
