@@ -3,6 +3,7 @@
 
 use Modules\TableModuleRME\Includes\{
 	CWidgetFieldColumnsList,
+	CWidgetFieldTableModuleItemGrouping,
 	WidgetForm
 };
 use Modules\TableModuleRME\Actions\WidgetViewTableRme;
@@ -204,10 +205,12 @@ else {
 		))->setColSpan($is_view_value ? 2 : 1)->addClass($class);
 	}
 	elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
-		$groupby_host = (count($data['item_grouping']) === 1 &&
-				$data['item_grouping'][0]['tag_name'] === '{HOST.HOST}')
-			? true
-			: false;
+		$groupby_host = (
+			count($data['item_grouping']) === 1
+			&& (
+				$data['item_grouping'][0]['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
+			)
+		);
 
 		// Add action column header when split_groupings is enabled
 		if (!$groupby_host && $data['split_groupings'] && $has_broadcast_column) {
@@ -551,16 +554,24 @@ else {
 			$grouping_name = '';
 
 			foreach ($data_row as $index => $cell) {
-				if ($cell && 
-						($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['broadcast_in_group_row'] || $data['show_grouping_only']) &&
-						$cell[Widget::CELL_ITEMID]) {
+				if ($cell
+					&& (
+						$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['broadcast_in_group_row']
+						|| $data['show_grouping_only']
+					)
+					&& $cell[Widget::CELL_ITEMID]
+				) {
 					$grouping_name = $cell[Widget::CELL_METADATA]['grouping_name'];
 					$dmt['name'] = $grouping_name;
 					$tags = [];
+
 					foreach ($data['item_grouping'] as $index => $grouping) {
 						$grouping_name_parts = explode($data['delimiter'], $grouping_name);
 						$tag_value = $grouping_name_parts[$index] ?? '';
-						$tags[] = ['tag' => $grouping['tag_name'], 'value' => $tag_value];
+						$tag_name = $grouping['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
+							? '{HOST.HOST}'
+							: $grouping['tag_name'];
+						$tags[] = ['tag' => $tag_name, 'value' => $tag_value];
 					}
 					$dmt['tags'] = json_encode($tags);
 

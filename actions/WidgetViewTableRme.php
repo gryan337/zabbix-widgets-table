@@ -18,7 +18,8 @@ use API,
 
 use Modules\TableModuleRME\Includes\{
 	WidgetForm,
-	CWidgetFieldColumnsList
+	CWidgetFieldColumnsList,
+	CWidgetFieldTableModuleItemGrouping
 };
 
 use Modules\TableModuleRME\Widget;
@@ -174,11 +175,13 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		}
 		
 		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
-			$groupby_host = (count($this->fields_values['item_group_by']) === 1 &&
-					$this->fields_values['item_group_by'][0]['tag_name'] === '{HOST.HOST}')
-				? true
-				: false;
-				
+			$groupby_host = (
+				count($this->fields_values['item_group_by']) === 1
+				&& (
+					$this->fields_values['item_group_by'][0]['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
+				)
+			);
+
 			if ($groupby_host) {
 				foreach ($column_tables as $column_index => &$host_values) {
 					foreach ($host_values as $hostid => &$metrics) {
@@ -373,9 +376,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 			// Build parts array with one entry per grouping tag
 			foreach ($groupings as $attrs) {
-				$tag_name = $attrs['tag_name'];
+				if ($attrs['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
+					continue;
+				}
 				// Use empty string if tag doesn't exist
-				$parts[] = $tag_map[$tag_name] ?? '';
+				$parts[] = $tag_map[$attrs['tag_name']] ?? '';
 			}
 
 			// Join all parts with delimiter
@@ -385,9 +390,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		$delimiter_length = mb_strlen($delimiter, 'UTF-8');
 		$name = '';
 		foreach ($groupings as $i => $attrs) {
-			$tag = $attrs['tag_name'];
-			foreach ($tags as $tag_index => $values) {
-				if ($values['tag'] == $tag) {
+			if ($attrs['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
+				continue;
+			}
+			foreach ($tags as $values) {
+				if ($values['tag'] == $attrs['tag_name']) {
 					$name .= $values['value'] . $delimiter;
 					break;
 				}

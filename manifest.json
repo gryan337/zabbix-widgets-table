@@ -32,6 +32,9 @@
 			},
 			{
 				"type": "_hostids"
+			},
+			{
+				"type": "_timeperiod"
 			}
 		]
 	},
