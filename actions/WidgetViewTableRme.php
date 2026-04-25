@@ -190,7 +190,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			$groupby_host = (
 				count($this->fields_values['item_group_by']) === 1
 				&& (
-					$this->fields_values['item_group_by'][0]['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
+					$this->fields_values['item_group_by'][0]['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
 				)
 			);
 
@@ -388,7 +388,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 			// Build parts array with one entry per grouping tag
 			foreach ($groupings as $attrs) {
-				if ($attrs['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
+				if ($attrs['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
 					continue;
 				}
 				// Use empty string if tag doesn't exist
@@ -402,7 +402,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		$delimiter_length = mb_strlen($delimiter, 'UTF-8');
 		$name = '';
 		foreach ($groupings as $i => $attrs) {
-			if ($attrs['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
+			if ($attrs['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
 				continue;
 			}
 			foreach ($tags as $values) {

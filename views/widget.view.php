@@ -209,7 +209,7 @@ else {
 		$groupby_host = (
 			count($data['item_grouping']) === 1
 			&& (
-				$data['item_grouping'][0]['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
+				$data['item_grouping'][0]['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
 			)
 		);
 
@@ -570,7 +570,7 @@ else {
 					foreach ($data['item_grouping'] as $index => $grouping) {
 						$grouping_name_parts = explode($data['delimiter'], $grouping_name);
 						$tag_value = $grouping_name_parts[$index] ?? '';
-						$tag_name = $grouping['attribute'] === CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
+						$tag_name = $grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
 							? '{HOST.HOST}'
 							: $grouping['tag_name'];
 						$tags[] = ['tag' => $tag_name, 'value' => $tag_value];
