@@ -257,8 +257,8 @@ class WidgetForm extends CWidgetForm {
 		$item_groupings = $this->getField('item_group_by')->getValue();
 
 		foreach ($item_groupings as &$grouping) {
-			if ($grouping['attribute'] == 0 && $grouping['tag_name'] === '{HOST.HOST}') {
-				$grouping['attribute'] = 1;
+			if ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG && $grouping['tag_name'] === '{HOST.HOST}') {
+				$grouping['attribute'] = CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME;
 			}
 		}
 		unset($grouping);
@@ -281,8 +281,8 @@ class WidgetForm extends CWidgetForm {
 
 		if (count($item_groupings) > 1) {
 			foreach ($item_groupings as $item) {
-				if (($item['attribute'] == 1) ||
-						($item['attribute'] == 0 && $item['tag_name'] === '{HOST.HOST}')) {
+				if (($item['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) ||
+						($item['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG && $item['tag_name'] === '{HOST.HOST}')) {
 					$errors[] = _s('When grouping by \'Host name\', that is the only grouping permitted');
 					return $errors;
 				}
