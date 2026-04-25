@@ -56,7 +56,7 @@ One column per configured item pattern. This is the most flexible layout and the
 
 Supports **`Item grouping`** by:
 - Item tags
-- `{HOST.HOST}` macro — produces a layout similar to a **`Horizontal`** layout table
+- Host name — produces a layout similar to a **`Horizontal`** layout table
 
 > 💡 Heavy use of item tags unlocks the full power of this mode.
 
@@ -284,7 +284,7 @@ TODO: Describe column-level options — display type, aggregation, header macros
 ### 🔜 Q2 2026
 - [ ] Broadcast time period to listening widgets
 - [ ] Add ability to group by Host tags
-- [ ] Deprecate `{HOST.HOST}` in favor of an explicit option to group by `Hostname`
+- [x] Remove `{HOST.HOST}` in favor of an explicit option to group by `Hostname`
 - [ ] Add more aggregation functions for `Column patterns aggregation` and for the `Show footer row`
 - [ ] Crowd-sourced feature requests & community feedback (continuous)
 
