@@ -1368,6 +1368,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 	$value_cell
 		->setAttribute('units', $units)
 		->setAttribute('column-id', $column_pos)
+		->setAttribute('column-index', $column_index)
 		->addClass(ZBX_STYLE_NOWRAP);
 
 	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
@@ -1488,7 +1489,9 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				->setTimePeriodFrom($column['sparkline']['time_period']['from_ts'])
 				->setTimePeriodTo($column['sparkline']['time_period']['to_ts']);
 
-			$sparkline_cell = (new CCol($sparkline))->setAttribute('column-id', $column_pos);
+			$sparkline_cell = (new CCol($sparkline))
+				->setAttribute('column-index', $column_index)
+				->setAttribute('column-id', $column_pos);
 
 			if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
 				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
@@ -1505,6 +1508,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			$style .= $font_color !== '' ? 'color: #'.$font_color : null;
 			$value_cell->addStyle($style);
 
+			$configuration_column_index = $column_index;
 			switch ($data['layout']) {
 				case WidgetForm::LAYOUT_VERTICAL:
 					$column_index = 0;
@@ -1591,6 +1595,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			}
 
 			$bar_gauge_cell = (new CCol($bar_gauge))
+				->setAttribute('column-index', $configuration_column_index)
 				->setAttribute('column-id', $column_pos);
 
 			if ($tooltip_value !== null) {

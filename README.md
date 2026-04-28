@@ -77,11 +77,13 @@ This widget is fully integrated with the [Zabbix dynamic parameters framework](h
 - Host groups
 - Hosts
 - Items
+- Time period
 
 **Broadcasts on cell click:**
 - Host IDs
 - Item IDs
-- Multi-cell selection via `Ctrl+Click` or `Shift+Click` (item cells only) → broadcasts all selected item IDs
+- Time period (see [Time Period Broadcasting](#-time-period-broadcasting) below)
+- Multi-cell selection via `Ctrl+Click` or `Shift+Click` (item cells only) → broadcasts all selected item IDs and a merged time period
 
 > 💡 Broadcasting multiple items is only compatible with other [RME Widgets](https://www.github.com/gryan337).
 
@@ -90,6 +92,57 @@ This widget is fully integrated with the [Zabbix dynamic parameters framework](h
 - **`Reset row`** *(deprecated)* — broadcasts `hostid: 000000` to reset all hosts broadcasted to linked widgets.
   - You can click an already-selected host cell again to achieve the same result.
 - **`Show item grouping only`** — transforms this widget into a pure dashboard filter. Selecting a grouping broadcasts to all connected [RME Widgets](https://www.github.com/gryan337), including other table widgets.
+
+</details>
+
+---
+
+<details>
+<summary><strong>🕐 Time Period Broadcasting</strong></summary>
+
+<br>
+
+Each column can be configured with its own **time period**, enabling powerful cross-widget time range control. When a cell is clicked, the widget broadcasts both the item data and the corresponding column's time period to any listening widgets (e.g. a graph panel).
+
+This is particularly useful for **week-over-week or period comparison layouts** — for example, configuring three columns for "this week", "last week", and "two weeks ago" so that clicking any cell also updates the receiving graph's time axis to match the selected period.
+
+#### Time Period Sources
+
+Each column's time period can come from one of three sources, configured independently per column:
+
+| Source | Description |
+|--------|-------------|
+| **Custom** | An explicit fixed range set directly in the column configuration (e.g. `2026-01-09` to `2026-01-16`, or relative values like `now-3M` to `now`). |
+| **Dashboard time picker** | The column uses `_reference: DASHBOARD._timeperiod`. The broadcasted time period will always reflect the dashboard's current time picker selection. |
+| **Another widget** | The column uses `_reference: <WIDGET_ID>._timeperiod`. The broadcasted time period is sourced from whatever that widget is currently broadcasting. |
+
+#### Multi-Cell Selection & Time Period Merging
+
+When multiple cells are selected using `Ctrl+Click` or `Shift+Click` across columns with different time periods, the widget **automatically merges** the time periods by taking the **earliest `from`** and **latest `to`** across all selected columns. The receiving graph will then display a time axis spanning the full combined range.
+
+- Columns using `_reference`-based time periods are resolved at the time of the click and included in the merge.
+- Columns whose time period has not yet been received (e.g. a foreign widget that hasn't broadcast yet) are excluded from the merge gracefully.
+
+#### Grouped / Action Column Behavior
+
+When **`Broadcast from grouped column`** is enabled for a column, that column's data-menu information is encoded into the grouped/action column at the start of each row. Clicking the grouped column broadcasts the item without overriding the time period — the receiving widget retains its existing or dashboard time period. This is intentional: the grouped column represents the row's identity, not a specific time window.
+
+To broadcast a specific time period, click a **column cell** rather than the grouped column.
+
+#### Dynamic Time Period Updates
+
+If a receiving table widget has one or more columns referencing a foreign widget's time period, and that foreign widget broadcasts a new time period (e.g. because a user clicked a different cell in the source table), the receiving table will automatically re-broadcast its currently selected cell's time period using the updated time period — without requiring the user to re-click.
+
+#### Example: Period Comparison Layout
+
+1. Create a table widget with three columns, all querying the same item pattern (e.g. `net.if.in[*]`).
+2. Set each column's time period to a different week:
+   - Column 0: `2026-01-09 00:00:00` → `2026-01-16 00:00:00`
+   - Column 1: `2026-01-16 00:00:00` → `2026-01-23 00:00:00`
+   - Column 2: `2026-01-23 00:00:00` → `2026-02-06 00:00:00`
+3. Link a graph panel to receive `_timeperiod` and `_itemid` broadcasts from the table.
+4. Clicking any cell broadcasts that row's item IDs and the column's specific time window to the graph.
+5. `Shift+Click` or `Ctrl+Click` across multiple columns broadcasts the merged time range, with each series colored per its column configuration.
 
 </details>
 
@@ -282,7 +335,7 @@ TODO: Describe column-level options — display type, aggregation, header macros
 - [x] Migrated client-side logic to PHP backend
 
 ### 🔜 Q2 2026
-- [ ] Broadcast time period to listening widgets
+- [x] Broadcast time period to listening widgets
 - [ ] Add ability to group by Host tags
 - [x] Remove `{HOST.HOST}` in favor of an explicit option to group by `Hostname`
 - [ ] Add more aggregation functions for `Column patterns aggregation` and for the `Show footer row`
