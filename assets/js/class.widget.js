@@ -22,6 +22,7 @@ class CWidgetTableModuleRME extends CWidget {
 	#sMultiplier = new Map([
 		['y', 86400 * 365],
 		['M', 86400 * 30],
+		['w', 86400 * 7],
 		['d', 86400],
 		['h', 3600],
 		['m', 60],
@@ -88,6 +89,8 @@ class CWidgetTableModuleRME extends CWidget {
 	#highlightedCells = new Set();
 	#highlightedHostCells = new Set();
 	#focusStateToRestore = null;
+
+	#broadcastTimePeriod = false;
 
 	static #hasManualSelection = false;
 	static #sessionStorageInitialized = false;
@@ -281,10 +284,19 @@ class CWidgetTableModuleRME extends CWidget {
 	// ========== Private Helper Methods ========== //
 
 	#broadcast(id_type, id_types, id) {
-		this.broadcast({
-			[id_type]: [id],
-			[id_types]: [id]
-		});
+		if (this.#broadcastTimePeriod) {
+			this.broadcast({
+				[id_type]: [id],
+				[id_types]: [id],
+				[CWidgetsData.DATA_TYPE_TIME_PERIOD]: this.#broadcastTimePeriod
+			});
+		}
+		else {
+			this.broadcast({
+				[id_type]: [id],
+				[id_types]: [id]
+			});
+		}
 	}
 
 	#clearDataStructures() {
@@ -2359,6 +2371,13 @@ class CWidgetTableModuleRME extends CWidget {
 			</svg>
 		`;
 
+		// A different style to consider
+/*		filterIcon.innerHTML = `
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="#9ca3af" stroke="none">
+				<path d="M19,2H5A3,3,0,0,0,2,5V6.17a3,3,0,0,0,.25,1.2l0,.06a2.81,2.81,0,0,0,.59.86L9,14.41V21a1,1,0,0,0,.47.85A1,1,0,0,0,10,22a1,1,0,0,0,.45-.11l4-2A1,1,0,0,0,15,19V14.41l6.12-6.12a2.81,2.81,0,0,0,.59-.86l0-.06A3,3,0,0,0,22,6.17V5A3,3,0,0,0,19,2ZM13.29,13.29A1,1,0,0,0,13,14v4.38l-2,1V14a1,1,0,0,0-.29-.71L5.41,8H18.59ZM20,6H4V5A1,1,0,0,1,5,4H19a1,1,0,0,1,1,1Z"/>
+			</svg>
+		`;*/
+
 		const openPopup = () => {
 			let popup = document.getElementById(`${this.#values_table.id}-${this._widgetid}-popup-${columnId}`);
 
@@ -3196,10 +3215,6 @@ class CWidgetTableModuleRME extends CWidget {
 	 * Called once per setContents() cycle to wire up column right-click
 	 * context menus and restore any persisted freeze state.
 	 */
-	/**
-	 * Called once per setContents() cycle to wire up column right-click
-	 * context menus and restore any persisted freeze state.
-	 */
 	#setupHeaderEnhancements() {
 		this.allThs.forEach(th => {
 			if (th.classList.contains('action-column')) return;
@@ -3505,32 +3520,49 @@ class CWidgetTableModuleRME extends CWidget {
 
 		const dataset = cellInfo.dataset;
 
+		const columnIndex = td.getAttribute('column-index');
+		const columnIdx = Number.isFinite(parseInt(columnIndex)) ? parseInt(columnIndex) : null;
+		const timePeriod = this._fields.columns[parseInt(columnIndex)]?.time_period;
+		if (timePeriod && !('_reference' in timePeriod)) {
+			this.#broadcastTimePeriod = timePeriod;
+		}
+		else if (timePeriod && '_reference' in timePeriod) {
+			const fields_referred_data = this.getFieldsReferredData();
+			const referredData = fields_referred_data?.get(`columns/${columnIndex}/time_period`);
+			this.#broadcastTimePeriod = referredData?.value ?? false;
+		}
+		else {
+			this.#broadcastTimePeriod = false;
+		}
+
 		if (dataset?.type === this.#dataset_item) {
 			const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
 
-			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags };
-
-			const key = `${dataset.itemid}__${dataset.name}`;
+			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags, columnIdx: columnIdx };
+			const key = `${dataset.itemid}__${dataset.name}__${columnIdx ?? 'g'}`;
 			const index = this.#selected_items.findIndex(
-				item => `${item.itemid}__${item.name}` === key
+				item => `${item.itemid}__${item.name}__${item.columnIdx ?? 'g'}` === key
 			);
 
 			if (event && event.ctrlKey) {
 				const before = this.#selected_items.length;
 				this.#selected_items = this.#selected_items.filter(
-					item => `${item.itemid}__${item.name}` !== key
+					item => `${item.itemid}__${item.name}__${item.columnIdx ?? 'g'}` !== key
 				);
 
 				if (this.#selected_items.length === before) {
 					this.#selected_items.push(selectedItem);
 				}
+
+				this.#collectSelectedColumnsTimePeriod();
 			}
 			else if (event && event.shiftKey) {
 				this.#selectRange(tdClicked);
+				this.#collectRangeTimePeriod(tdClicked);
 			}
 			else {
 				const allMatch = this.#selected_items.length > 0 &&
-					this.#selected_items.every(item => `${item.itemid}__${item.name}` === key);
+					this.#selected_items.every(item => `${item.itemid}__${item.name}__${item.columnIdx ?? 'g'}` === key);
 
 				if (index !== -1 && allMatch) {
 					this.#selected_items = [{ itemid: this.#null_id, name: null }];
@@ -3596,10 +3628,141 @@ class CWidgetTableModuleRME extends CWidget {
 
 			const dataset = cellInfo.dataset;
 			const tags = dataset.tags ? JSON.parse(dataset.tags) : [];
-			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags };
+			const colIdx = Number.isFinite(parseInt(cell.getAttribute('column-index')))
+				? parseInt(cell.getAttribute('column-index'))
+				: null;
+			const selectedItem = { itemid: dataset.itemid, name: dataset.name, tags: tags, columnIdx: colIdx };
 
 			this.#selected_items.push(selectedItem);
 		}
+	}
+
+	#mergeTimePeriodFromColumnIds(columnIdxs) {
+		let minFrom   = null;
+		let minFromTs = null;
+		let maxTo     = null;
+		let maxToTs   = null;
+
+		for (const colId of columnIdxs) {
+			const rawTimePeriod = this._fields.columns[colId]?.time_period;
+			if (!rawTimePeriod) continue;
+
+			let colTimePeriod;
+			if (!('_reference' in rawTimePeriod)) {
+				colTimePeriod = rawTimePeriod;
+			}
+			else {
+				const fields_referred_data = this.getFieldsReferredData();
+				const referredData = fields_referred_data?.get(`columns/${colId}/time_period`);
+				colTimePeriod = referredData?.value ?? null;
+			}
+
+			if (!colTimePeriod) continue;
+
+			// Evaluate the epoch ts only
+			if (minFromTs === null || colTimePeriod.from_ts < minFromTs) {
+				minFromTs = colTimePeriod.from_ts;
+				minFrom   = colTimePeriod.from;
+			}
+			if (maxToTs === null || colTimePeriod.to_ts > maxToTs) {
+				maxToTs = colTimePeriod.to_ts;
+				maxTo   = colTimePeriod.to;
+			}
+		}
+
+		this.#broadcastTimePeriod = minFromTs !== null
+			? { from: minFrom, from_ts: minFromTs, to: maxTo, to_ts: maxToTs }
+			: false;
+	}
+
+	#collectRangeTimePeriod(tdClicked) {
+		if (!this.#lastClickedCell) return;
+
+		const startIndex  = Math.min(this.#lastClickedCell.parentNode.rowIndex, tdClicked.parentNode.rowIndex);
+		const endIndex    = Math.max(this.#lastClickedCell.parentNode.rowIndex, tdClicked.parentNode.rowIndex);
+		const columnIndex = this.#lastClickedCell.cellIndex;
+
+		// Start with column IDs already accumulated from prior ctrl+clicks
+		const columnIdxs = new Set(
+			this.#selected_items
+				.filter(item => Number.isFinite(item.columnIdx))
+				.map(item => item.columnIdx)
+		);
+
+		for (let i = startIndex; i <= endIndex; i++) {
+			const row = this.#values_table.rows[i];
+			if (!row?.cells) continue;
+
+			const cell = row.cells[columnIndex];
+			if (!cell) continue;
+
+			const cellColumnIdx = cell.getAttribute('column-index');
+			if (cellColumnIdx === null) continue;
+
+			columnIdxs.add(parseInt(cellColumnIdx));
+		}
+
+		this.#mergeTimePeriodFromColumnIds(columnIdxs);
+	}
+
+	#collectSelectedColumnsTimePeriod() {
+		const columnIdxs = new Set(
+			this.#selected_items
+				.filter(item => Number.isFinite(item.columnIdx))
+				.map(item => item.columnIdx)
+		);
+
+		this.#mergeTimePeriodFromColumnIds(columnIdxs);
+	}
+
+	#recalculateBroadcastTimePeriod() {
+		if (this.#selected_items.length === 0) {
+			this.#broadcastTimePeriod = false;
+			return;
+		}
+
+		// Collect all unique column indices from current selection
+		const columnIds = new Set(
+			this.#selected_items
+				.filter(item => Number.isFinite(item.columnIdx))
+				.map(item => item.columnIdx)
+		);
+
+		if (columnIds.size === 0) {
+			this.#broadcastTimePeriod = false;
+			return;
+		}
+
+		// For each column, resolve the time period the same way #handleCellClick does
+		const resolvedPeriods = [];
+		for (const colId of columnIds) {
+			const timePeriod = this._fields.columns[colId]?.time_period;
+			if (!timePeriod) continue;
+
+			if (!('_reference' in timePeriod)) {
+				resolvedPeriods.push(timePeriod);
+			}
+			else {
+				const fields_referred_data = this.getFieldsReferredData();
+				const referredData = fields_referred_data?.get(`columns/${colId}/time_period`);
+				if (referredData?.value) {
+					resolvedPeriods.push(referredData.value);
+				}
+			}
+		}
+
+		if (resolvedPeriods.length === 0) {
+			this.#broadcastTimePeriod = false;
+			return;
+		}
+
+		// If only one column selected, use directly; otherwise merge min/max
+		if (resolvedPeriods.length === 1) {
+			this.#broadcastTimePeriod = resolvedPeriods[0];
+			return;
+		}
+
+		this.#mergeTimePeriodFromColumnIds(columnIds);
 	}
 
 	_markSelected(type, refresh = false) {
@@ -3624,7 +3787,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 		// Pre-build lookup sets ONCE
 		const selectedItemKeys = type === this.#dataset_item
-			? new Set(this.#selected_items.map(item => `${item.itemid}__${item.name}`))
+			? new Set(this.#selected_items.map(item => `${item.itemid}__${item.name}__${item.columnIdx ?? 'g'}`))
 			: null;
 
 		const selectedNames = type === this.#dataset_item
@@ -3661,7 +3824,8 @@ class CWidgetTableModuleRME extends CWidget {
 					// Skip if we're processing hosts
 					if (type === this.#dataset_host) continue;
 
-					const itemKey = `${dataset.itemid}__${dataset.name}`;
+					const cellColumnIndex = td.getAttribute('column-index') ?? 'g';
+					const itemKey = `${dataset.itemid}__${dataset.name}__${cellColumnIndex}`;
 					const isSelected = selectedItemKeys.has(itemKey);
 
 					if (isSelected) {
@@ -3671,15 +3835,19 @@ class CWidgetTableModuleRME extends CWidget {
 						actualsFound.push({
 							itemid: dataset.itemid,
 							name: dataset.name,
-							tags: tags
+							tags: tags,
+							columnIdx: Number.isFinite(parseInt(td.getAttribute('column-index')))
+								? parseInt(td.getAttribute('column-index'))
+								: null
 						});
 
 						cellsToHighlight.add(td);
 					}
 
-					if (selectedNames.has(dataset.name) && !nameTracking.has(dataset.name)) {
+					const nameColKey = `${dataset.name}__${cellColumnIndex}`;
+					if (selectedNames.has(dataset.name) && !nameTracking.has(nameColKey)) {
 						tdsToMark.push(td);
-						nameTracking.add(dataset.name);
+						nameTracking.add(nameColKey);
 					}
 				}
 			}
@@ -3868,6 +4036,7 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		if (this.#selected_items.length > 0) {
+			this.#recalculateBroadcastTimePeriod();
 			this._markSelected(this.#dataset_item, true);
 		}
 		else if (this.#first_td_value_cell !== null && this._fields.autoselect_first) {
