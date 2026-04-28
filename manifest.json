@@ -17,6 +17,9 @@
 			},
 			"itemid": {
 				"type": "_itemid"
+			},
+			"time_period": {
+				"type": "_timeperiod"
 			}
 		},
 		"js_class": "CWidgetTableModuleRME",
