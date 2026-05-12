@@ -60,7 +60,9 @@ class CWidgetFieldTableModuleItemGroupingView extends CWidgetFieldView {
 					(new CSelect($this->field->getName().'[#{rowNum}][attribute]'))
 						->addOptions(CSelect::createOptionsFromArray([
 							CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG => _('Item tag value'),
-							CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME => _('Host name')
+							CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME => _('Host name'),
+							CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG => _('Host tag value'),
+							CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP => _('Host group')
 						]))
 						->setValue('#{attribute}')
 						->setId($this->field->getName().'_#{rowNum}_attribute')

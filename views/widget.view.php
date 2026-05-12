@@ -212,6 +212,7 @@ else {
 				$data['item_grouping'][0]['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
 			)
 		);
+		$has_hostname_grouping = $data['has_hostname_grouping'];
 
 		// Add action column header when split_groupings is enabled
 		if (!$groupby_host && $data['split_groupings'] && $has_broadcast_column) {
@@ -225,17 +226,61 @@ else {
 		if (!$groupby_host) {
 			if ($data['split_groupings']) {
 				foreach ($data['item_grouping'] as $grouping) {
-					$header[] = (new CColHeader(_(ucwords(strtolower($grouping['tag_name'])))))
-						->setTitle('Item tag: '.$grouping['tag_name']);
+					switch ($grouping['attribute']) {
+						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+							$col_title = ucwords(strtolower($grouping['tag_name']));
+							$col_hint  = 'Item tag: '.$grouping['tag_name'];
+							break;
+						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
+							$col_title = $host_header;
+							$col_hint  = 'Host name';
+							break;
+						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+							$col_title = ucwords(strtolower($grouping['tag_name']));
+							$col_hint  = 'Host tag: '.$grouping['tag_name'];
+							break;
+						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+							$col_title = 'Host Group(s)';
+							$col_hint  = 'Host group';
+							break;
+						default:
+							$col_title = $grouping['tag_name'] ?? '';
+							$col_hint  = '';
+					}
+					$header[] = (new CColHeader(_($col_title)))->setTitle($col_hint);
 				}
 			}
 			else {
-				$header[] = new CColHeader(_($item_header));
+				$first_item_col_rendered = false;
+				$first_host_tag_col_rendered = false;
+
+				foreach ($data['item_grouping'] as $grouping) {
+					switch ($grouping['attribute']) {
+						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
+							if (!$first_item_col_rendered) {
+								$header[] = new CColHeader(_($item_header));
+								$first_item_col_rendered = true;
+							}
+							break;
+
+						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+							if (!$first_host_tag_col_rendered) {
+								$header[] = (new CColHeader(_(ucwords(strtolower($grouping['tag_name'])))))->setTitle('Host tag: '.$grouping['tag_name']);
+								$first_host_tag_col_rendered = true;
+							}
+							break;
+
+						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+							$header[] = (new CColHeader(_('Host Group(s)')))->setTitle('Host group');
+							break;
+					}
+				}
 			}
 		}
 
 		// Add host header after grouping columns
-		if (count($data['num_hosts']) > 1 || $groupby_host) {
+		if ((count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host) {
 			$header[] = new CColHeader(_($host_header));
 		}
 
@@ -292,7 +337,7 @@ else {
 					continue;
 				}
 
-				if (count($data['num_hosts']) > 1 || $groupby_host) {
+				if ((count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host) {
 					$name .= chr(31).$metrics[Widget::CELL_HOSTID];
 				}
 
@@ -463,28 +508,68 @@ else {
 				$reset_row = [...$reset_row, ...[(new CCol())]];
 			}
 		}
-		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER && (count($data['num_hosts']) > 1 || $groupby_host)) {
+		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER
+				&& ((count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host)) {
 			$reset_row = [];
 
 			if (!$groupby_host) {
-				// Add empty action column cell when split_groupings is enabled
 				if ($data['split_groupings'] && $has_broadcast_column) {
 					$reset_row[] = (new CCol())
 						->addClass('action-column')
 						->addStyle('width: 20px;');
 
-					// Span across all grouping columns
 					$num_grouping_cols = count($data['item_grouping']);
 					$reset_row[] = (new CCol($host_cell_values))->setColSpan($num_grouping_cols);
 				}
 				else {
-					// Single grouping column
-					$reset_row[] = (new CCol());
-					$reset_row[] = (new CCol($host_cell_values));
+					// Calculate actual non-split grouping columns — same logic as footer
+					$has_item_col = false;
+					$has_host_tag_col = false;
+					$non_split_cols = [];
+
+					foreach ($data['item_grouping'] as $g) {
+						switch ($g['attribute']) {
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
+								if (!$has_item_col) {
+									$non_split_cols[] = 'item';
+									$has_item_col = true;
+								}
+								break;
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+								if (!$has_host_tag_col) {
+									$non_split_cols[] = 'host_tag';
+									$has_host_tag_col = true;
+								}
+								break;
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+								$non_split_cols[] = 'host_group';
+								break;
+						}
+					}
+
+					// Put reset button in the first column, empty cells for the rest
+					$first = true;
+					foreach ($non_split_cols as $col_type) {
+						if ($first) {
+							$reset_row[] = (new CCol($host_cell_values));
+							$first = false;
+						}
+						else {
+							$reset_row[] = (new CCol());
+						}
+					}
+
+					// If no grouping columns at all, still need one cell
+					if (empty($non_split_cols)) {
+						$reset_row[] = (new CCol($host_cell_values));
+					}
 				}
 
-				// Add host column
-				$reset_row[] = (new CCol());
+				// Add host column if visible
+				if ((count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host) {
+					$reset_row[] = (new CCol());
+				}
 			}
 			else {
 				$reset_row = [(new CCol($host_cell_values))];
@@ -568,6 +653,10 @@ else {
 					$tags = [];
 
 					foreach ($data['item_grouping'] as $index => $grouping) {
+						if ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG
+								|| $grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP) {
+							continue;
+						}
 						$grouping_name_parts = explode($data['delimiter'], $grouping_name);
 						$tag_value = $grouping_name_parts[$index] ?? '';
 						$tag_name = $grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
@@ -591,14 +680,40 @@ else {
 			$dmt['itemid'] = json_encode($dm_itemids);
 
 			if ($data['footer']) {
-				$bottom_row['host_column'] = (count($data['num_hosts']) > 1 || $groupby_host) ? 1 : 0;
-				// Track whether broadcast column exists for footer
+				$bottom_row['host_column'] = (count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host ? 1 : 0;
 				if ($data['split_groupings']) {
 					$bottom_row['grouping_columns'] = count($data['item_grouping']);
 					$bottom_row['action_column'] = 1;
 				}
 				else {
-					$bottom_row['grouping_columns'] = 1;
+					// Count actual rendered columns: one collapsed item/hostname column (if any),
+					// one collapsed host_tag column (if any), one per host_group
+					$has_item_col = false;
+					$has_host_tag_col = false;
+					$non_split_col_count = 0;
+
+					foreach ($data['item_grouping'] as $g) {
+						switch ($g['attribute']) {
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
+								if (!$has_item_col) {
+									$non_split_col_count++;
+									$has_item_col = true;
+								}
+								break;
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+								if (!$has_host_tag_col) {
+									$non_split_col_count++;
+									$has_host_tag_col = true;
+								}
+								break;
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+								$non_split_col_count++;
+								break;
+						}
+					}
+
+					$bottom_row['grouping_columns'] = max(1, $non_split_col_count);
 					$bottom_row['action_column'] = 0;
 				}
 				foreach ($data_row as $i => $r) {
@@ -653,35 +768,241 @@ else {
 					$grouping_parts = explode($data['delimiter'], $grouping_name);
 
 					foreach ($data['item_grouping'] as $grouping_index => $grouping) {
-						$grouping_value = isset($grouping_parts[$grouping_index]) ? trim ($grouping_parts[$grouping_index]) : '';
-						$table_row[] = (new CCol($grouping_value))
-							->addClass(ZBX_STYLE_NOWRAP)
-							->addStyle('word-break; break-word; width: 0;');
+						$grouping_value = isset($grouping_parts[$grouping_index])
+							? trim($grouping_parts[$grouping_index])
+							: '';
+
+						switch ($grouping['attribute']) {
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+								$hostid = null;
+								foreach ($data_row as $cell) {
+									if ($cell && $cell[Widget::CELL_HOSTID]) {
+										$hostid = $cell[Widget::CELL_HOSTID];
+										break;
+									}
+								}
+								// HG_VISIBLE_THRESHOLD = 1 (must match #HG_VISIBLE_THRESHOLD in class_widget.js)
+								$group_spans = [];
+								$span_index = 0;
+								if ($hostid && !empty($data['db_hosts'][$hostid]['hostgroups'])) {
+									foreach ($data['db_hosts'][$hostid]['hostgroups'] as $hg) {
+										$hg_attributes = ['type' => 'hostgroup', 'groupid' => $hg['groupid']];
+										if ($span_index === 0) {
+											// Visible span: truncate long names; JS reads data-fullname for the
+											// custom tooltip and to restore full text on demotion.
+											$display_name = mb_strlen($hg['name']) > WidgetForm::HG_TRUNCATE_CHARS
+												? mb_substr($hg['name'], 0, WidgetForm::HG_TRUNCATE_CHARS) . '...'
+												: $hg['name'];
+											$span = (new CSpan($display_name))
+												->addClass(ZBX_STYLE_CURSOR_POINTER)
+												->addClass('rme-hostgroup-span')
+												->addStyle('text-decoration: underline; margin-right: 4px;')
+												->setAttribute('data-menu', json_encode($hg_attributes))
+												->setAttribute('data-fullname', $hg['name']);
+										}
+										else {
+											// Hidden spans: full text so the popover shows untruncated names
+											$span = (new CSpan($hg['name']))
+												->addClass(ZBX_STYLE_CURSOR_POINTER)
+												->addClass('rme-hostgroup-span')
+												->addClass('rme-hg-hidden')
+												->addStyle('text-decoration: underline; margin-right: 4px;')
+												->setAttribute('data-menu', json_encode($hg_attributes));
+										}
+										$group_spans[] = $span;
+										$span_index++;
+									}
+								}
+								$overflow_count = count($group_spans) - 1;
+								if ($overflow_count > 0) {
+									$overflow_label = 'Show ' . $overflow_count . ' more host group' . ($overflow_count !== 1 ? 's' : '');
+									$badge = (new CTag('button', true, '+' . $overflow_count))
+										->setAttribute('type', 'button')
+										->addClass('rme-hg-badge')
+										->setAttribute('aria-haspopup', 'listbox')
+										->setAttribute('aria-expanded', 'false')
+										->setAttribute('aria-label', $overflow_label);
+									$cell_content = array_merge($group_spans, [$badge]);
+								}
+								else {
+									$cell_content = $group_spans ?: $grouping_value;
+								}
+								$table_row[] = (new CCol($cell_content))
+									->addStyle('white-space: nowrap;');
+								break;
+
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+								$table_row[] = (new CCol($grouping_value))
+									->addClass(ZBX_STYLE_NOWRAP)
+									->addStyle('word-break: break-word; width: 0;');
+								break;
+
+							default:
+								$table_row[] = (new CCol($grouping_value))
+									->addClass(ZBX_STYLE_NOWRAP)
+									->addStyle('word-break; break-word; width: 0;');
+								break;
+						}
 					}
 				}
 				else {
-					// Original behavior: single column combined grouping name
-					if (count($data['num_hosts']) > 1) {
-						$display_name = explode(chr(31), $row_index)[0];
+					// In aggregate_all_hosts path CELL_HOSTID and CELL_ITEMID are comma-separated.
+					// Split and use first valid value for tag lookups; collect all hostids for host group rendering.
+					$hostids = [];
+					$itemid = null;
+					foreach ($data_row as $cell) {
+						if ($cell && $cell[Widget::CELL_HOSTID]) {
+							foreach (explode(',', (string)$cell[Widget::CELL_HOSTID]) as $hid) {
+								$hid = trim($hid);
+								if ($hid !== '' && !in_array($hid, $hostids)) {
+									$hostids[] = $hid;
+								}
+							}
+							if ($cell[Widget::CELL_ITEMID] && $itemid === null) {
+								$parts = explode(',', (string)$cell[Widget::CELL_ITEMID]);
+								$itemid = trim($parts[0]);
+							}
+							break;
+						}
 					}
-					else {
-						$display_name = $row_index;
+					$hostid = $hostids[0] ?? null;
+
+					// Build item tag lookup from first itemid
+					$item_tag_map = [];
+					if ($itemid && isset($data['db_items'][$itemid]['tags'])) {
+						foreach ($data['db_items'][$itemid]['tags'] as $tag) {
+							$item_tag_map[$tag['tag']] = $tag['value'];
+						}
 					}
 
-					if ($dm_itemids) {
-						$dmt_items = (new CSpan($display_name))
-							->addClass(ZBX_STYLE_CURSOR_POINTER)
-							->setAttribute('data-menu', json_encode($dmt));
-						$table_row[] = (new CCol($dmt_items))->addStyle('word-break: break-word; max-width: 20ch; color: #1187ff; text-decoration: underline');
+					// Build host tag lookup from first hostid
+					$host_tag_map = [];
+					if ($hostid && isset($data['db_hosts'][$hostid]['tags'])) {
+						foreach ($data['db_hosts'][$hostid]['tags'] as $tag) {
+							$host_tag_map[$tag['tag']] = $tag['value'];
+						}
 					}
-					else {
-						$table_row[] = (new CCol($display_name))->addStyle('word-break: break-word; max-width: 20ch');
+
+					// Pre-collect item tag and host tag display values
+					$item_tag_parts = [];
+					$host_tag_parts = [];
+					foreach ($data['item_grouping'] as $grouping) {
+						if ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG) {
+							$v = $item_tag_map[$grouping['tag_name']] ?? '';
+							if ($v !== '') {
+								$item_tag_parts[] = $v;
+							}
+						}
+						elseif ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG) {
+							$v = $host_tag_map[$grouping['tag_name']] ?? '';
+							if ($v !== '') {
+								$host_tag_parts[] = $v;
+							}
+						}
+					}
+					$item_tag_display = implode($data['delimiter'], $item_tag_parts);
+					$host_tag_display = implode($data['delimiter'], $host_tag_parts);
+
+					// Render columns in configured order
+					$first_item_tag_rendered = false;
+					$first_host_tag_rendered = false;
+
+					foreach ($data['item_grouping'] as $grouping) {
+						switch ($grouping['attribute']) {
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+								if (!$first_item_tag_rendered) {
+									if ($dm_itemids && $item_tag_display !== '') {
+										$dmt_items = (new CSpan($item_tag_display))
+											->addClass(ZBX_STYLE_CURSOR_POINTER)
+											->setAttribute('data-menu', json_encode($dmt));
+										$table_row[] = (new CCol($dmt_items))
+											->addStyle('word-break: break-word; max-width: 20ch; color: #1187ff; text-decoration: underline');
+									}
+									else {
+										$table_row[] = (new CCol($item_tag_display))
+											->addStyle('word-break: break-word; max-width: 20ch');
+									}
+									$first_item_tag_rendered = true;
+								}
+								break;
+
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
+								$host_name = $hostid ? ($data['db_hosts'][$hostid]['name'] ?? '') : '';
+								$table_row[] = (new CCol($host_name))
+									->addStyle('word-break: break-word; max-width: 20ch');
+								break;
+
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+								if (!$first_host_tag_rendered) {
+									$table_row[] = (new CCol($host_tag_display))
+										->addClass(ZBX_STYLE_NOWRAP)
+										->addStyle('word-break: break-word; width: 0;');
+									$first_host_tag_rendered = true;
+								}
+								break;
+
+							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+								// HG_VISIBLE_THRESHOLD = 1 (must match #HG_VISIBLE_THRESHOLD in class_widget.js)
+								$group_spans = [];
+								$seen_groupids = [];
+								$span_index = 0;
+								foreach ($hostids as $hid) {
+									if (!empty($data['db_hosts'][$hid]['hostgroups'])) {
+										foreach ($data['db_hosts'][$hid]['hostgroups'] as $hg) {
+											if (!in_array($hg['groupid'], $seen_groupids)) {
+												$seen_groupids[] = $hg['groupid'];
+												$hg_attributes = ['type' => 'hostgroup', 'groupid' => $hg['groupid']];
+												if ($span_index === 0) {
+													// Visible span: truncate long names and attach Zabbix hint for full text
+													$display_name = mb_strlen($hg['name']) > WidgetForm::HG_TRUNCATE_CHARS
+														? mb_substr($hg['name'], 0, WidgetForm::HG_TRUNCATE_CHARS) . '...'
+														: $hg['name'];
+													$span = (new CSpan($display_name))
+														->addClass(ZBX_STYLE_CURSOR_POINTER)
+														->addClass('rme-hostgroup-span')
+														->addStyle('text-decoration: underline; margin-right: 4px;')
+														->setAttribute('data-menu', json_encode($hg_attributes))
+														->setAttribute('data-fullname', $hg['name']);
+												}
+												else {
+													// Hidden spans: full text so the popover shows untruncated names
+													$span = (new CSpan($hg['name']))
+														->addClass(ZBX_STYLE_CURSOR_POINTER)
+														->addClass('rme-hostgroup-span')
+														->addClass('rme-hg-hidden')
+														->addStyle('text-decoration: underline; margin-right: 4px;')
+														->setAttribute('data-menu', json_encode($hg_attributes));
+												}
+												$group_spans[] = $span;
+												$span_index++;
+											}
+										}
+									}
+								}
+								$overflow_count = count($group_spans) - 1;
+								if ($overflow_count > 0) {
+									$overflow_label = 'Show ' . $overflow_count . ' more host group' . ($overflow_count !== 1 ? 's' : '');
+									$badge = (new CTag('button', true, '+' . $overflow_count))
+										->setAttribute('type', 'button')
+										->addClass('rme-hg-badge')
+										->setAttribute('aria-haspopup', 'listbox')
+										->setAttribute('aria-expanded', 'false')
+										->setAttribute('aria-label', $overflow_label);
+									$cell_content = array_merge($group_spans, [$badge]);
+								}
+								else {
+									$cell_content = $group_spans ?: '';
+								}
+								$table_row[] = (new CCol($cell_content))
+									->addStyle('white-space: nowrap;');
+								break;
+						}
 					}
 				}
 			}
 
 			// Add host column after grouping columns
-			if (count($data['num_hosts']) > 1 || $groupby_host) {
+			if ((count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host) {
 				foreach ($data_row as $row) {
 					if ($row && $row[Widget::CELL_HOSTID]) {
 						$host_attributes['hostid'] = $row[Widget::CELL_HOSTID];
