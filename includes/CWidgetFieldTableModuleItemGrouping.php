@@ -10,8 +10,10 @@ class CWidgetFieldTableModuleItemGrouping extends CWidgetField {
 	public const DEFAULT_VIEW = CWidgetFieldTableModuleItemGroupingView::class;
 	public const DEFAULT_VALUE = [];
 
-	public const GROUP_BY_ITEM_TAG = 0;
+	public const GROUP_BY_ITEM_TAG  = 0;
 	public const GROUP_BY_HOST_NAME = 1;
+	public const GROUP_BY_HOST_TAG  = 2;
+	public const GROUP_BY_HOST_GROUP = 3;
 
 	public const MAX_ROWS = 10;
 
@@ -21,7 +23,16 @@ class CWidgetFieldTableModuleItemGrouping extends CWidgetField {
 		$this
 			->setDefault(self::DEFAULT_VALUE)
 			->setValidationRules(['type' => API_OBJECTS, 'length' => self::MAX_ROWS, 'fields' => [
-				'attribute'	=> ['type' => API_INT32, 'flags' => API_REQUIRED, 'in' => implode(',', [self::GROUP_BY_ITEM_TAG, self::GROUP_BY_HOST_NAME])],
+				'attribute'	=> [
+					'type' => API_INT32,
+					'flags' => API_REQUIRED,
+					'in' => implode(',', [
+						self::GROUP_BY_ITEM_TAG,
+						self::GROUP_BY_HOST_NAME,
+						self::GROUP_BY_HOST_TAG,
+						self::GROUP_BY_HOST_GROUP
+					])
+				],
 				'tag_name'	=> ['type' => API_STRING_UTF8, 'length' => $this->getMaxLength()]
 			]]);
 	}
@@ -36,7 +47,7 @@ class CWidgetFieldTableModuleItemGrouping extends CWidgetField {
 		$group_by = $this->getValue();
 
 		$result = array_filter($group_by, static function(array $row): bool {
-			return $row['attribute'] != self::GROUP_BY_ITEM_TAG
+			return $row['attribute'] != self::GROUP_BY_HOST_TAG && $row['attribute'] != self::GROUP_BY_ITEM_TAG
 				|| $row['tag_name'] !== '';
 		});
 
@@ -63,7 +74,7 @@ class CWidgetFieldTableModuleItemGrouping extends CWidgetField {
 				'value' => $value['attribute']
 			];
 
-			if ($value['attribute'] == self::GROUP_BY_ITEM_TAG) {
+			if ($value['attribute'] == self::GROUP_BY_ITEM_TAG || $value['attribute'] == self::GROUP_BY_HOST_TAG) {
 				$widget_fields[] = [
 					'type' => $this->save_type,
 					'name' => $this->name.'.'.$index.'.'.'tag_name',

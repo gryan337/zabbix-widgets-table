@@ -182,6 +182,15 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				)
 			);
 
+			// Mixed path
+			$has_hostname_grouping = false;
+			foreach ($this->fields_values['item_group_by'] as $g) {
+				if ($g['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
+					$has_hostname_grouping = true;
+					break;
+				}
+			}
+
 			if ($groupby_host) {
 				foreach ($column_tables as $column_index => &$host_values) {
 					foreach ($host_values as $hostid => &$metrics) {
@@ -203,7 +212,8 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 							if ($cell[Widget::CELL_ITEMID]) {
 								$name = self::computeNameForPerColumn(
 									$db_items[$cell[Widget::CELL_ITEMID]]['tags'],
-									$this->fields_values['item_group_by']
+									$this->fields_values['item_group_by'],
+									$db_hosts[$hostid] ?? []
 								);
 
 								$cell[Widget::CELL_METADATA]['grouping_name'] = $name;
@@ -321,7 +331,8 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'bar_gauge_layout' => $this->fields_values['bar_gauge_layout'],
 			'bar_gauge_tooltip' => $this->fields_values['bar_gauge_tooltip'],
 			'delimiter' => $this->fields_values['grouping_delimiter'],
-			'split_groupings' => $this->fields_values['split_groupings']
+			'split_groupings' => $this->fields_values['split_groupings'],
+			'has_hostname_grouping' => $has_hostname_grouping
 		];
 		
 		if (!$this->isTemplateDashboard() &&
@@ -361,48 +372,90 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		
 		return sha1(serialize($normalized));
 	}
-	
-	private function computeNameForPerColumn(array $tags, array $groupings): string {
+
+	private function computeNameForPerColumn(array $item_tags, array $groupings, array $host_data = []): string {
 		$delimiter = $this->fields_values['grouping_delimiter'];
+
+		// Build lookup maps
+		$item_tag_map = [];
+		foreach ($item_tags as $tag) {
+			$item_tag_map[$tag['tag']] = $tag['value'];
+		}
+
+		$host_tag_map = [];
+		foreach ($host_data['tags'] ?? [] as $tag) {
+			$host_tag_map[$tag['tag']] = $tag['value'];
+		}
 
 		if ($this->fields_values['split_groupings']) {
 			$parts = [];
 
-			// Create a lookup map for faster tag searching
-			$tag_map = [];
-			foreach ($tags as $tag) {
-				$tag_map[$tag['tag']] = $tag['value'];
-			}
-
-			// Build parts array with one entry per grouping tag
 			foreach ($groupings as $attrs) {
-				if ($attrs['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
-					continue;
+				switch ($attrs['attribute']) {
+					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+						$parts[] = $item_tag_map[$attrs['tag_name']] ?? '';
+						break;
+
+					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
+						$parts[] = $host_data['name'] ?? '';
+						break;
+
+					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+						$parts[] = $host_tag_map[$attrs['tag_name']] ?? '';
+						break;
+
+					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+						$group_names = array_column($host_data['hostgroups'] ?? [], 'name');
+						$parts[] = implode(', ', $group_names);
+						break;
 				}
-				// Use empty string if tag doesn't exist
-				$parts[] = $tag_map[$attrs['tag_name']] ?? '';
 			}
 
-			// Join all parts with delimiter
 			return implode($delimiter, $parts);
 		}
 
+		// Non-split: concatenate with delimiter
 		$delimiter_length = mb_strlen($delimiter, 'UTF-8');
 		$name = '';
-		foreach ($groupings as $i => $attrs) {
-			if ($attrs['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
-				continue;
-			}
-			foreach ($tags as $values) {
-				if ($values['tag'] == $attrs['tag_name']) {
-					$name .= $values['value'] . $delimiter;
+
+		foreach ($groupings as $attrs) {
+			switch ($attrs['attribute']) {
+				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+					foreach ($item_tags as $values) {
+						if ($values['tag'] == $attrs['tag_name']) {
+							$name .= $values['value'] . $delimiter;
+							break;
+						}
+					}
 					break;
-				}
+
+				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
+					if (!empty($host_data['name'])) {
+						$name .= $host_data['name'] . $delimiter;
+					}
+					break;
+
+				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+					$tag_value = $host_tag_map[$attrs['tag_name']] ?? '';
+					if ($tag_value !== '') {
+						$name .= $tag_value . $delimiter;
+					}
+					break;
+
+				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+					$group_names = array_column($host_data['hostgroups'] ?? [], 'name');
+					if (!empty($group_names)) {
+						$name .= implode(', ', $group_names) . $delimiter;
+					}
+					break;
 			}
 		}
 
-		$name = substr($name, 0, -$delimiter_length);
-		return $name;
+		if ($name === '') {
+			return '';
+		}
+
+		return substr($name, 0, -$delimiter_length);
 	}
 
 	private function getHosts(): array {
@@ -438,6 +491,8 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'monitored_hosts' => true,
 			'with_monitored_items' => true,
 			'limit' => CSettingsHelper::get(CSettingsHelper::SEARCH_LIMIT),
+			'selectHostGroups' => 'extend',
+			'selectTags' => 'extend',
 			'preservekeys' => true
 		];
 

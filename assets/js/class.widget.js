@@ -35,9 +35,37 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#dataset_item = 'item';
 	#dataset_host = 'host';
+	#dataset_hostgroup = 'hostgroup';
 
 	#selected_hostid = null;
+	#selected_hostgroupid = null;
 	#selected_items = [];
+
+	#highlightedHostGroupSpans = new Set();
+
+	// Host group overflow popover
+	#HG_VISIBLE_THRESHOLD = 1;
+	#HG_TRUNCATE_CHARS = 38; // must match HG_TRUNCATE_CHARS in WidgetForm.php
+	#hostGroupPopover = null;
+	#hostGroupPopoverTd = null;
+	#hostGroupPopoverBadge = null;
+	#hostGroupTooltip = null;
+	#cellHgTooltip = null;
+	#hgPopoverPausing = false;
+	#hgDelegationSetup = false;
+	// Persistent outside-click dismiss. Clicks inside any .filter-popup element
+	// are intentionally ignored — those popups don't stopPropagation internally
+	// so their clicks would otherwise bubble up and close the popover. The column
+	// visibility menu already uses stopPropagation so it never reaches this handler.
+	#hostGroupPopoverDismiss = (e) => {
+		if (
+			this.#hostGroupPopover?.contains(e.target) ||
+			e.target.closest('.filter-popup')
+		) {
+			return;
+		}
+		this.#closeHostGroupPopover();
+	};
 
 	#null_id = '000000';
 
@@ -65,6 +93,7 @@ class CWidgetTableModuleRME extends CWidget {
 	#lastClickedCell = null;
 	#clearFiltersClickedWithSelections = false;
 	#filterTooltipIds = new Set();
+	#filterCheckboxTooltip = null;
 	#displayButtonClicked = false;
 
 	#scrollPosition = { top: 0, left: 0 };
@@ -82,6 +111,7 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#hiddenColumns = new Set();
 	#colVisibilityPanel = null;
+	#colVisTooltip = null;
 
 	#isUserInitiatedFilterChange = false;
 
@@ -307,6 +337,11 @@ class CWidgetTableModuleRME extends CWidget {
 		this.#columnData.clear();
 		this.#activeFilters.clear();
 		this.#totalRows = 0;
+		this.#selected_hostgroupid = null;
+		this.#highlightedHostGroupSpans.clear();
+		this.#closeHostGroupPopover();
+		this.#cellHgTooltip?.remove();
+		this.#cellHgTooltip = null;
 	}
 
 	#saveScrollPosition() {
@@ -992,7 +1027,7 @@ class CWidgetTableModuleRME extends CWidget {
 			// Check all OTHER active filters (not this column)
 			for (const otherColumnId of otherActiveFilters) {
 				if (this.#hiddenColumns.has(otherColumnId)) return true;
-				
+
 				const otherFilterState = this.#getFilterState(otherColumnId);
 				const otherColumnType = this.#getColumnType(otherColumnId);
 				if (!otherFilterState) continue;
@@ -1660,21 +1695,19 @@ class CWidgetTableModuleRME extends CWidget {
 			});
 		}
 
-		// Check for visual truncation after render completes
+		// Attach instant-hover tooltips to truncated checkbox spans.
+		// Uses requestAnimationFrame so scrollWidth measurements are accurate
+		// after the DOM has been painted. The shared tooltip element is created
+		// once and registered in #filterTooltipIds so #cleanupAllPopups handles it.
 		requestAnimationFrame(() => {
-			const TOOLTIP_MAX_LENGTH = 1000;
-
-			for (const span of spansToCheck) {
-				if (span.scrollWidth > span.clientWidth) {
-					const value = span.textContent;
-					const tooltipText = value.length > TOOLTIP_MAX_LENGTH
-						? value.substring(0, TOOLTIP_MAX_LENGTH) + '... (truncated)'
-						: value;
-
-					span.title = tooltipText;
-					span.style.cursor = 'help';
-				}
+			if (!this.#filterCheckboxTooltip) {
+				const tooltip = this.#createTooltip();
+				const tooltipId = `${this._widgetid}-checkbox-trunc-tooltip`;
+				tooltip.id = tooltipId;
+				this.#filterTooltipIds.add(tooltipId);
+				this.#filterCheckboxTooltip = tooltip;
 			}
+			this.#attachTruncationTooltips(spansToCheck, this.#filterCheckboxTooltip);
 		});
 	}
 
@@ -2236,10 +2269,12 @@ class CWidgetTableModuleRME extends CWidget {
 			lastCheckedCheckbox = null;
 
 			if ((this.#selected_items.length > 0 && this.#selected_items[0].itemid !== this.#null_id) ||
-					(this.#selected_hostid !== this.#null_id && this.#selected_hostid !== null)) {
+					(this.#selected_hostid !== this.#null_id && this.#selected_hostid !== null) ||
+					(this.#selected_hostgroupid !== null && this.#selected_hostgroupid !== this.#null_id)) {
 				this.#clearFiltersClickedWithSelections = true;
 				this.#selected_items = [{ itemid: this.#null_id, name: null }];
 				this.#selected_hostid = this.#null_id;
+				this.#selected_hostgroupid = this.#null_id;
 			}
 
 			this.#isUserInitiatedFilterChange = true;
@@ -2927,6 +2962,7 @@ class CWidgetTableModuleRME extends CWidget {
 		if (this.#clearFiltersClickedWithSelections) {
 			this.#selected_items = [{ itemid: this.#null_id, name: null }];
 			this.#selected_hostid = this.#null_id;
+			this.#selected_hostgroupid = this.#null_id;
 			this.#clearFiltersClickedWithSelections = false;
 		}
 		else if (selectedItemsBefore.length > 0 && this.#selected_items.length === 0) {
@@ -3034,6 +3070,7 @@ class CWidgetTableModuleRME extends CWidget {
 			}
 		});
 		this.#filterTooltipIds.clear();
+		this.#filterCheckboxTooltip = null;
 	}
 
 	#resetPopupToInitialState(popup) {
@@ -3587,6 +3624,37 @@ class CWidgetTableModuleRME extends CWidget {
 				this.setReferenceInSession(this.#sessionKey, "hostids", this.#selected_hostid);
 			}
 		}
+		else if (dataset?.type === this.#dataset_hostgroup) {
+			// For mouse clicks event.target is the span; for keyboard nav via the grid
+			// event.target is the td itself, so fall back to the one visible span.
+			const clickedSpan = event?.target?.closest('[data-menu]')
+				?? cellInfo.td.querySelector('.rme-hostgroup-span:not(.rme-hg-hidden)');
+			if (!clickedSpan) return;
+
+			let spanData;
+			try {
+				spanData = JSON.parse(clickedSpan.dataset.menu);
+			}
+			catch (e) { return; }
+
+			const groupid = spanData.groupid;
+
+			// Toggle: clicking the same group again deselects it
+			if (this.#selected_hostgroupid === groupid) {
+				this.#selected_hostgroupid = this.#null_id;
+			}
+			else {
+				this.#selected_hostgroupid = groupid;
+			}
+
+			this.#promoteHostGroup(groupid);
+			this.#markHostGroupSelected();
+			this.#broadcast(
+				CWidgetsData.DATA_TYPE_HOST_GROUP_ID,
+				CWidgetsData.DATA_TYPE_HOST_GROUP_IDS,
+				this.#selected_hostgroupid
+			);
+		}
 
 		this.#lastClickedCell = tdClicked;
 	}
@@ -3967,6 +4035,386 @@ class CWidgetTableModuleRME extends CWidget {
 		cellSet.clear();
 	}
 
+	// Clears old host group span highlights then re-applies the gradient to every
+	// span whose groupid matches #selected_hostgroupid across all visible rows.
+	#markHostGroupSelected() {
+		// Clear previously highlighted spans (safe even if they left the DOM)
+		for (const span of this.#highlightedHostGroupSpans) {
+			span.style.background = '';
+			span.style.color = '';
+			span.removeAttribute('aria-selected');
+		}
+		this.#highlightedHostGroupSpans.clear();
+
+		if (!this.#selected_hostgroupid || this.#selected_hostgroupid === this.#null_id) {
+			return;
+		}
+
+		// Walk visible rows and highlight every matching host-group span
+		for (const rowObj of this.#visibleRows) {
+			const menuCells = this.#getMenuCells(rowObj.row);
+			for (const cellInfo of menuCells) {
+				if (cellInfo.dataset?.type !== this.#dataset_hostgroup) continue;
+
+				// The td may contain multiple [data-menu] spans (one per group)
+				const spans = cellInfo.td.querySelectorAll('[data-menu]');
+				for (const span of spans) {
+					try {
+						const spanData = JSON.parse(span.dataset.menu);
+						if (spanData.groupid === this.#selected_hostgroupid) {
+							span.style.background = 'linear-gradient(to right, #3a506b, #3d9e9c)';
+							span.style.color = '#f2f2f2';
+							span.setAttribute('aria-selected', 'true');
+							this.#highlightedHostGroupSpans.add(span);
+						}
+					}
+					catch (e) { /* skip malformed data-menu */ }
+				}
+			}
+		}
+	}
+
+	// Applies visibility classes and injects/refreshes the "+N" overflow badge for
+	// a single hostgroup td. Safe to call multiple times (re-runs after promotion).
+	#buildHostGroupCell(td) {
+		// Remove any stale badge from a previous build
+		td.querySelector('.rme-hg-badge')?.remove();
+
+		const spans = [...td.querySelectorAll('.rme-hostgroup-span')];
+		if (spans.length <= this.#HG_VISIBLE_THRESHOLD) {
+			spans.forEach(s => {
+				s.classList.remove('rme-hg-hidden');
+				this.#ensureVisibleSpanTruncation(s);
+			});
+			return;
+		}
+
+		spans.forEach((s, i) => {
+			const visible = i < this.#HG_VISIBLE_THRESHOLD;
+			s.classList.toggle('rme-hg-hidden', !visible);
+			if (visible) {
+				this.#ensureVisibleSpanTruncation(s);
+			}
+			else {
+				// Restore full text when demoted so the popover shows the complete name
+				const full = s.dataset.fullname || s.textContent;
+				if (!s.dataset.fullname) s.dataset.fullname = full;
+				s.textContent = full;
+			}
+		});
+
+		const overflowCount = spans.length - this.#HG_VISIBLE_THRESHOLD;
+		const badge = document.createElement('button');
+		badge.type = 'button';
+		badge.className = 'rme-hg-badge';
+		badge.textContent = `+${overflowCount}`;
+		badge.setAttribute('aria-haspopup', 'listbox');
+		badge.setAttribute('aria-expanded', 'false');
+		badge.setAttribute('aria-label', `Show ${overflowCount} more host group${overflowCount !== 1 ? 's' : ''}`);
+		td.appendChild(badge);
+	}
+
+	// Truncates a visible span's display text if it exceeds #HG_TRUNCATE_CHARS and
+	// attaches a custom hover tooltip showing the full name. Safe to call repeatedly
+	// — the data-fullname attribute is the source of truth; data-tooltipAttached
+	// prevents duplicate event listeners across multiple promotion cycles.
+	#ensureVisibleSpanTruncation(span) {
+		// PHP sets data-fullname on the initial visible span; for a span being
+		// promoted from hidden (where PHP stored only full textContent), seed it now.
+		if (!span.dataset.fullname) {
+			span.dataset.fullname = span.textContent;
+		}
+		const fullName = span.dataset.fullname;
+
+		if (fullName.length > this.#HG_TRUNCATE_CHARS) {
+			span.textContent = fullName.substring(0, this.#HG_TRUNCATE_CHARS) + '...';
+
+			if (!span.dataset.tooltipAttached) {
+				span.dataset.tooltipAttached = '1';
+				if (!this.#cellHgTooltip) {
+					this.#cellHgTooltip = this.#createTooltip();
+				}
+				const tooltip = this.#cellHgTooltip;
+				span.addEventListener('mouseover', e => {
+					tooltip.textContent = fullName;
+					tooltip.style.opacity = '1';
+					this.#positionTooltip(tooltip, e);
+				});
+				span.addEventListener('mousemove', e => {
+					if (tooltip.style.opacity === '1') this.#positionTooltip(tooltip, e);
+				});
+				span.addEventListener('mouseout', () => {
+					tooltip.style.opacity = '0';
+				});
+			}
+		}
+		else {
+			span.textContent = fullName;
+		}
+	}
+
+	// If the selected group was an overflow span (hidden), move it to the front of
+	// the td and rebuild the cell so it becomes immediately visible without
+	// requiring the user to open the popover again.
+	// Spans already within the visible threshold are left in place.
+	#promoteHostGroup(groupid) {
+		if (!groupid || groupid === this.#null_id) return;
+
+		for (const rowObj of this.#visibleRows) {
+			const menuCells = this.#getMenuCells(rowObj.row);
+			for (const cellInfo of menuCells) {
+				if (cellInfo.dataset?.type !== this.#dataset_hostgroup) continue;
+
+				const td = cellInfo.td;
+				const spans = [...td.querySelectorAll('.rme-hostgroup-span')];
+				if (spans.length <= this.#HG_VISIBLE_THRESHOLD) continue;
+
+				const idx = spans.findIndex(s => {
+					try { return JSON.parse(s.dataset.menu).groupid === groupid; }
+					catch (e) { return false; }
+				});
+
+				// Only promote if the span was beyond the visible threshold
+				if (idx >= this.#HG_VISIBLE_THRESHOLD) {
+					td.insertBefore(spans[idx], spans[0]);
+					this.#buildHostGroupCell(td);
+				}
+			}
+		}
+	}
+
+	// Opens (or closes) the overflow popover anchored to the badge element.
+	// isKeyboard should be true when triggered by Enter/Space so that the first
+	// item highlight matches the input modality (focus-visible vs is-pre-hovered).
+	#toggleHostGroupPopover(badge, td, isKeyboard = false) {
+		// Close any open filter popups using direct internal cleanup rather than
+		// simulating a cancel click. The cancel button handler has async focus
+		// restoration (setTimeout) that refocuses the column header filter icon
+		// to the right, causing a horizontal scroll jump after the badge opens.
+		// #cleanupAllPopups does the same state reset synchronously with no
+		// focus side effects. Must run first, before the toggle check below.
+		this.#cleanupAllPopups();
+
+		if (this.#hostGroupPopover && this.#hostGroupPopoverTd === td) {
+			this.#closeHostGroupPopover();
+			return;
+		}
+		this.#closeHostGroupPopover();
+
+		const hiddenSpans = [...td.querySelectorAll('.rme-hostgroup-span.rme-hg-hidden')];
+		if (hiddenSpans.length === 0) return;
+
+		const popoverId = `rme-hg-popover-${td.id || Math.random().toString(36).slice(2)}`;
+
+		const popover = document.createElement('div');
+		popover.id = popoverId;
+		popover.className = 'rme-hg-popover';
+		popover.setAttribute('role', 'listbox');
+		popover.setAttribute('aria-label', 'Host groups');
+
+		for (const realSpan of hiddenSpans) {
+			let spanData;
+			try { spanData = JSON.parse(realSpan.dataset.menu); }
+			catch (e) { continue; }
+
+			const item = document.createElement('div');
+			item.className = 'rme-hg-popover-item';
+			item.setAttribute('role', 'option');
+			item.setAttribute('tabindex', '-1');
+			item.textContent = realSpan.textContent;
+			item.dataset.groupid = spanData.groupid;
+
+			const isSelected = realSpan.getAttribute('aria-selected') === 'true';
+			item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+			if (isSelected) item.classList.add('is-selected');
+
+			item.addEventListener('mouseenter', () => item.focus());
+
+			item.addEventListener('click', e => {
+				e.stopPropagation();
+				const sourceTd = this.#hostGroupPopoverTd;
+				realSpan.click();
+				this.#closeHostGroupPopover();
+				sourceTd?.querySelector('.rme-hg-badge')?.focus();
+			});
+
+			popover.appendChild(item);
+		}
+
+		popover.addEventListener('keydown', e => {
+			// If the popover was mouse-opened, the first keystroke clears the
+			// pre-hovered highlight so keyboard focus becomes the sole visual cue.
+			popover.querySelector('.is-pre-hovered')?.classList.remove('is-pre-hovered');
+
+			const items = [...popover.querySelectorAll('[role="option"]')];
+			const idx = items.indexOf(document.activeElement);
+
+			switch (e.key) {
+				case 'ArrowDown': {
+					e.preventDefault();
+					const next = items[(idx + 1) % items.length];
+					next?.focus();
+					next?.scrollIntoView({ block: 'nearest' });
+					break;
+				}
+				case 'ArrowUp': {
+					e.preventDefault();
+					const prev = items[(idx - 1 + items.length) % items.length];
+					prev?.focus();
+					prev?.scrollIntoView({ block: 'nearest' });
+					break;
+				}
+				case 'Enter':
+				case ' ':
+					e.preventDefault();
+					items[idx]?.click();
+					break;
+				case 'Escape':
+					e.preventDefault();
+					this.#closeHostGroupPopover();
+					badge.focus();
+					break;
+				case 'Tab':
+					this.#closeHostGroupPopover();
+					break;
+			}
+		});
+
+		// Create the instant-hover tooltip; #attachTruncationTooltips wires it up
+		// only to items whose text is actually truncated by the popover's max-width.
+		const tooltip = this.#createTooltip();
+		this.#hostGroupTooltip = tooltip;
+
+		// Append popover before measuring so getBoundingClientRect is accurate.
+		document.body.appendChild(popover);
+
+		this.#attachTruncationTooltips(
+			popover.querySelectorAll('.rme-hg-popover-item'),
+			tooltip
+		);
+
+		// Smart flip: prefer below the badge, flip above if more room there.
+		const badgeRect = badge.getBoundingClientRect();
+		const popoverHeight = popover.getBoundingClientRect().height;
+		const spaceBelow = window.innerHeight - badgeRect.bottom - 8;
+		const spaceAbove = badgeRect.top - 8;
+
+		if (popoverHeight > spaceBelow && spaceAbove > spaceBelow) {
+			const constrainedHeight = Math.min(popoverHeight, spaceAbove);
+			popover.style.maxHeight = `${constrainedHeight}px`;
+			popover.style.top = `${badgeRect.top - constrainedHeight - 4}px`;
+		}
+		else {
+			popover.style.top = `${badgeRect.bottom + 4}px`;
+			if (popoverHeight > spaceBelow) {
+				popover.style.maxHeight = `${spaceBelow}px`;
+			}
+		}
+		popover.style.left = `${badgeRect.left}px`;
+
+		badge.setAttribute('aria-expanded', 'true');
+		badge.setAttribute('aria-controls', popoverId);
+
+		this.#hostGroupPopover = popover;
+		this.#hostGroupPopoverTd = td;
+		this.#hostGroupPopoverBadge = badge;
+
+		// Pause the widget refresh cycle while the popover is open. The
+		// _resumeUpdating override ensures external callers (e.g. column filter)
+		// can't prematurely lift this hold while the user is mid-selection.
+		this.#hgPopoverPausing = true;
+		this._pauseUpdating();
+
+		// Focus the first item. For mouse-opened popovers, is-pre-hovered gives
+		// a visual cue until the mouse moves (where :focus-visible doesn't fire).
+		// For keyboard-opened popovers, :focus-visible handles the highlight.
+		const firstItem = popover.querySelector('[role="option"]');
+		if (firstItem) {
+			firstItem.focus();
+			if (!isKeyboard) {
+				firstItem.classList.add('is-pre-hovered');
+				popover.addEventListener('mousemove', () => {
+					firstItem.classList.remove('is-pre-hovered');
+				}, { once: true });
+			}
+		}
+
+		setTimeout(() => {
+			document.addEventListener('click', this.#hostGroupPopoverDismiss);
+		}, 0);
+	}
+
+	// ── Shared instant-tooltip utilities ────────────────────────────────────────
+
+	// Creates a positioned tooltip element and appends it to body.
+	// Caller is responsible for removing it when the owning UI closes.
+	#createTooltip() {
+		const tooltip = document.createElement('div');
+		tooltip.className = 'rme-hg-tooltip';
+		document.body.appendChild(tooltip);
+		return tooltip;
+	}
+
+	// Wires instant-hover tooltips onto a list of elements.
+	// Only elements whose text is actually truncated (scrollWidth > clientWidth)
+	// get live handlers; all elements get aria-label for screen readers.
+	// Elements must already be in the DOM when this is called so that
+	// scrollWidth measurements are accurate.
+	#attachTruncationTooltips(elements, tooltip) {
+		elements.forEach(el => {
+			const text = el.textContent.trim();
+			if (!text) return;
+			el.setAttribute('aria-label', text);
+			if (el.scrollWidth > el.clientWidth) {
+				el.addEventListener('mouseover', e => {
+					tooltip.textContent = text;
+					tooltip.style.opacity = '1';
+					this.#positionTooltip(tooltip, e);
+				});
+				el.addEventListener('mousemove', e => {
+					if (tooltip.style.opacity === '1') this.#positionTooltip(tooltip, e);
+				});
+				el.addEventListener('mouseout', () => {
+					tooltip.style.opacity = '0';
+				});
+			}
+		});
+	}
+
+	#positionTooltip(tooltip, event) {
+		const padX = 12;
+		const padY = 20;
+		// Off-screen first so the rect measurement doesn't affect layout
+		tooltip.style.left = '-9999px';
+		tooltip.style.top = '-9999px';
+		const rect = tooltip.getBoundingClientRect();
+		let left = event.clientX + padX;
+		let top = event.clientY + padY;
+		if (left + rect.width > window.innerWidth) {
+			left = window.innerWidth - rect.width - padX;
+		}
+		if (top + rect.height > window.innerHeight) {
+			top = window.innerHeight - rect.height - padY;
+		}
+		tooltip.style.left = `${left}px`;
+		tooltip.style.top = `${top}px`;
+	}
+
+	#closeHostGroupPopover() {
+		if (this.#hostGroupPopover) {
+			this.#hostGroupPopover.remove();
+			this.#hostGroupPopover = null;
+			this.#hostGroupPopoverTd = null;
+			this.#hostGroupPopoverBadge?.setAttribute('aria-expanded', 'false');
+			this.#hostGroupPopoverBadge = null;
+			this.#hostGroupTooltip?.remove();
+			this.#hostGroupTooltip = null;
+			document.removeEventListener('click', this.#hostGroupPopoverDismiss);
+			this.#hgPopoverPausing = false;
+			this._resumeUpdating();
+		}
+	}
+
 	// Helper method to apply styles
 	#applyCellStyles(cellInfo, bgColor, fontColor) {
 		const { td, isNumericCellOfDoubleSpan, barGaugeTd } = cellInfo;
@@ -3975,7 +4423,7 @@ class CWidgetTableModuleRME extends CWidget {
 		if (isNumericCellOfDoubleSpan && barGaugeTd) {
 			const tdWasHidden = td.style.display === 'none';
 			const barGaugeWasHidden = barGaugeTd.style.display === 'none';
-			
+
 			td.style.background = barGaugeTd.style.backgroundColor = bgColor;
 			td.style.color = barGaugeTd.style.color = fontColor;
 			barGaugeTd.setAttribute('aria-selected', 'true');
@@ -4007,7 +4455,7 @@ class CWidgetTableModuleRME extends CWidget {
 				if (this._isBarGauge(barGaugeTd)) {
 					const tdWasHidden = td.style.display === 'none';
 					const barGaugeWasHidden = barGaugeTd.style.display === 'none';
-					
+
 					td.style.cssText = cachedStyle;
 					barGaugeTd.style.cssText = '';
 
@@ -4026,6 +4474,17 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 	}
 
+	// Block any external _resumeUpdating call while the host-group popover is
+	// holding a pause — e.g. the column filter's cancel calling resume before
+	// our popover is closed. _pauseUpdating is intentionally NOT overridden so
+	// the existing code's pause/resume pairs stay perfectly balanced.
+	_resumeUpdating() {
+		if (this.#hgPopoverPausing) {
+			return;
+		}
+		super._resumeUpdating();
+	}
+
 	checkAndRemarkSelected() {
 		if (this.#selected_hostid !== null) {
 			this.#broadcast(CWidgetsData.DATA_TYPE_HOST_ID, CWidgetsData.DATA_TYPE_HOST_IDS, this.#selected_hostid);
@@ -4041,6 +4500,23 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 		else if (this.#first_td_value_cell !== null && this._fields.autoselect_first) {
 			this.#first_td_value_cell.click();
+		}
+
+		// Always re-evaluate host group visibility after a filter/refresh cycle.
+		// #markHostGroupSelected only highlights spans present in #visibleRows, so
+		// #highlightedHostGroupSpans.size tells us whether the group is currently
+		// visible — mirrors how _markSelected uses hasHostMarking for hosts.
+		if (this.#selected_hostgroupid !== null) {
+			this.#promoteHostGroup(this.#selected_hostgroupid);
+			this.#markHostGroupSelected();
+			const broadcastId = this.#highlightedHostGroupSpans.size > 0
+				? this.#selected_hostgroupid
+				: this.#null_id;
+			this.#broadcast(
+				CWidgetsData.DATA_TYPE_HOST_GROUP_ID,
+				CWidgetsData.DATA_TYPE_HOST_GROUP_IDS,
+				broadcastId
+			);
 		}
 	}
 
@@ -5238,6 +5714,52 @@ class CWidgetTableModuleRME extends CWidget {
 
 		this.#cssStyleMap = newCssMap;
 
+		// PHP pre-renders rme-hostgroup-span, rme-hg-hidden, and rme-hg-badge on
+		// every refresh, so no per-cell JS setup is needed. Badge interaction is
+		// handled by a single capture-phase delegation listener registered once on
+		// the persistent widget container, covering both PHP-rendered and
+		// JS-rebuilt (post-promotion) badges without any per-refresh DOM walk.
+		if (!this.#hgDelegationSetup) {
+			this.#hgDelegationSetup = true;
+
+			// Prevent the browser's default mousedown behavior on the badge —
+			// without this the browser focuses the button on mousedown (before our
+			// click handler fires) and calls scrollIntoView, causing the page to
+			// jump to the badge's position.
+			this._target.addEventListener('mousedown', e => {
+				if (e.target.closest('.rme-hg-badge')) {
+					e.preventDefault();
+				}
+			}, true);
+
+			this._target.addEventListener('click', e => {
+				const badge = e.target.closest('.rme-hg-badge');
+				if (!badge) return;
+				e.stopPropagation();
+				// Restore focus explicitly without triggering scroll — mousedown
+				// preventDefault above suppressed the browser's auto-focus.
+				badge.focus({ preventScroll: true });
+				const td = badge.closest('td');
+				if (td) this.#toggleHostGroupPopover(badge, td, e.detail === 0);
+			}, true);
+			this._target.addEventListener('keydown', e => {
+				if (e.key !== 'Enter' && e.key !== ' ') return;
+				const badge = e.target.closest('.rme-hg-badge');
+				if (!badge) return;
+				e.preventDefault();
+				e.stopPropagation();
+				const td = badge.closest('td');
+				if (td) this.#toggleHostGroupPopover(badge, td, true);
+			}, true);
+		}
+
+		// Attach custom tooltips to PHP-rendered visible spans whose names were
+		// truncated (data-fullname present). Only long-named spans are touched —
+		// rows with short group names produce zero matches so this stays fast.
+		this.#values_table.querySelectorAll(
+			'.rme-hostgroup-span:not(.rme-hg-hidden)[data-fullname]'
+		).forEach(span => this.#ensureVisibleSpanTruncation(span));
+
 		this.allThs.forEach((th) => {
 			const colspan = th.hasAttribute('colspan') ? parseFloat(th.getAttribute('colspan')) : 1;
 			th.id = colIndex + colspan - 1;
@@ -5976,7 +6498,7 @@ class CWidgetTableModuleRME extends CWidget {
 			selectAllLabel.textContent = 'All columns';
 		});
 
-		// Initialise the master checkbox state from current column states
+		// Initialize the master checkbox state from current column states
 		updateSelectAll();
 
 		// Position: fixed, anchored to top-right of widget container
@@ -5984,6 +6506,14 @@ class CWidgetTableModuleRME extends CWidget {
 		// the container's layout or overflow behavior.
 		panel.style.visibility = 'hidden';
 		document.body.appendChild(panel);
+
+		// Panel is now in the DOM (visibility:hidden still participates in layout)
+		// so scrollWidth measurements on labels are accurate.
+		this.#colVisTooltip = this.#createTooltip();
+		this.#attachTruncationTooltips(
+			list.querySelectorAll('label'),
+			this.#colVisTooltip
+		);
 
 		const panelRect = panel.getBoundingClientRect();
 		const padding = 8;
@@ -6089,10 +6619,11 @@ class CWidgetTableModuleRME extends CWidget {
 
 	#hideColumnVisibilityPanel() {
 		if (this.#colVisibilityPanel) {
-			// Clean up drag state registered by makeDraggable
 			this.#draggableStates.delete(this.#colVisibilityPanel.id);
 			this.#colVisibilityPanel.remove();
 			this.#colVisibilityPanel = null;
+			this.#colVisTooltip?.remove();
+			this.#colVisTooltip = null;
 
 			// Return focus to the actions menu button, with fallback
 			const actionsButton = this.#parent_container?.querySelector('.dashboard-grid-widget-actions .js-widget-action');

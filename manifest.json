@@ -37,6 +37,12 @@
 				"type": "_hostids"
 			},
 			{
+				"type": "_hostgroupid"
+			},
+			{
+				"type": "_hostgroupids"
+			},
+			{
 				"type": "_timeperiod"
 			}
 		]
