@@ -63,6 +63,7 @@ class WidgetForm extends CWidgetForm {
 	public const DEFAULT_DELIMITER = ' / ';
 
 	public const RME_TABLE_MAX_ROWS = 20000;
+	public const HG_TRUNCATE_CHARS = 38;
 
 	public function addFields(): self {
 		return $this
@@ -297,8 +298,8 @@ class WidgetForm extends CWidgetForm {
 		if (!$this->isTemplateDashboard() &&
 				$this->getField('aggregate_all_hosts')->getValue() == 1 &&
 				count($item_groupings) == 1 &&
-				$item_groupings[0]['tag_name'] === '{HOST.HOST}') {
-			$errors[] = _s('Cannot group by {HOST.HOST} and aggregate by all hosts');
+				$item_groupings[0]['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
+			$errors[] = _s('Cannot group by \'Host name\' and aggregate by all hosts');
 			return $errors;
 		}
 

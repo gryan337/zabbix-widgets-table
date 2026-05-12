@@ -596,12 +596,14 @@ a.ext-btn:focus-visible {
 /* ========== Slim Scrollbars ========== */
 
 .filter-popup-scroll-container::-webkit-scrollbar,
+.rme-hg-popover::-webkit-scrollbar,
 .col-visibility-list::-webkit-scrollbar,
 .custom-select .list::-webkit-scrollbar {
   width: 12px;
 }
 
 .filter-popup-scroll-container::-webkit-scrollbar-track,
+.rme-hg-popover::-webkit-scrollbar-track,
 .col-visibility-list::-webkit-scrollbar-track,
 .custom-select .list::-webkit-scrollbar-track {
   background: var(--main-bg);
@@ -610,6 +612,7 @@ a.ext-btn:focus-visible {
 }
 
 .filter-popup-scroll-container::-webkit-scrollbar-thumb,
+.rme-hg-popover::-webkit-scrollbar-thumb,
 .col-visibility-list::-webkit-scrollbar-thumb,
 .custom-select .list::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
@@ -620,6 +623,7 @@ a.ext-btn:focus-visible {
 }
 
 .filter-popup-scroll-container::-webkit-scrollbar-thumb:hover,
+.rme-hg-popover::-webkit-scrollbar-thumb:hover,
 .col-visibility-list::-webkit-scrollbar-thumb:hover,
 .custom-select .list::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
@@ -1054,7 +1058,7 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
 
 .col-visibility-panel {
   position: fixed;
-  z-index: 10002;
+  z-index: 9999;
   background: var(--checkbox-bg);
   border: 1px solid #444;
   border-radius: 6px;
@@ -1311,6 +1315,117 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   flex: 1;
 }
 
+.rme-hostgroup-span {
+    border-radius: 4px;
+    padding: 1px 5px;
+}
+
+.rme-hostgroup-span:hover:not([aria-selected="true"]) {
+    background: rgba(91, 192, 190, 0.18);
+}
+
+.rme-hostgroup-span[aria-selected="true"] {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/* ── Host group overflow ── */
+
+.rme-hostgroup-span.rme-hg-hidden {
+    display: none;
+}
+
+/* +N badge — <button> element, sized to sit unobtrusively inline */
+.rme-hg-badge {
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: inherit;
+    display: inline-block;
+    font-size: 0.68em;
+    font-weight: 600;
+    padding: 0 3px;
+    border-radius: 10px;
+    color: var(--hg-badge-color);
+    background: var(--hg-badge-bg);
+    border: 1px solid var(--hg-badge-border);
+    vertical-align: middle;
+    margin-left: 2px;
+    transition: background 0.15s;
+    user-select: none;
+}
+
+.rme-hg-badge:hover,
+.rme-hg-badge:focus-visible {
+    background: var(--hg-badge-bg-hover);
+    color: currentColor;
+    outline: 2px solid var(--focus-outline-color);
+    outline-offset: 2px;
+}
+
+/* Floating popover panel */
+.rme-hg-popover {
+    position: fixed;
+    z-index: 9999;
+    min-width: 140px;
+    max-width: 240px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--main-bg);
+    color: var(--page-num);
+    border: 1px solid var(--frozen-border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    padding: 4px 0;
+}
+
+.rme-hg-popover-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rme-hg-popover-item:hover:not(.is-selected),
+.rme-hg-popover-item:focus-visible:not(.is-selected) {
+    background: var(--hg-popover-item-hover);
+    outline: none;
+}
+
+.rme-hg-popover-item.is-selected {
+    background: linear-gradient(to right, #3a506b, #3d9e9c);
+    color: #f2f2f2;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.rme-hg-popover-item:hover:not(.is-selected),
+.rme-hg-popover-item:focus-visible:not(.is-selected),
+.rme-hg-popover-item.is-pre-hovered:not(.is-selected) {
+    background: var(--hg-popover-item-hover);
+    outline: none;
+}
+
+/* Instant hover tooltip for truncated popover items */
+.rme-hg-tooltip {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    background: var(--main-bg);
+    color: var(--page-num);
+    border: 1px solid var(--frozen-border-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
+    max-width: 500px;
+    white-space: normal;
+    word-break: break-word;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    transition: opacity 0.05s;
+}
+
 /* ========== Theme Variables ========== */
 
 [theme="blue-theme"],
@@ -1351,6 +1466,11 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   --alert-box-bg: #ffffff;
   --alert-box-msg: #333333;
   --clear-btn-color: #0e0e0e;
+  --hg-badge-color: #1b5e5c;
+  --hg-badge-bg: rgba(61, 158, 156, 0.12);
+  --hg-badge-border: rgba(61, 158, 156, 0.5);
+  --hg-badge-bg-hover: rgba(61, 158, 156, 0.24);
+  --hg-popover-item-hover: rgba(61, 158, 156, 0.1);
   /* Focus colors */
   --focus-outline-color: #2563eb;
   --focus-ring-color: rgba(37, 99, 235, 0.2);
@@ -1407,6 +1527,11 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   --hide-button-container-bg: #000000;
   --header-text-hover: #a8d5f0;
   --loading-overlay: rgba(0, 0, 0, 1);
+  --hg-badge-color: #5dc8c6;
+  --hg-badge-bg: rgba(61, 158, 156, 0.15);
+  --hg-badge-border: rgba(61, 158, 156, 0.65);
+  --hg-badge-bg-hover: rgba(61, 158, 156, 0.28);
+  --hg-popover-item-hover: rgba(61, 158, 156, 0.12);
   /* Focus colors */
   --focus-outline-color: #60a5fa;
   --focus-ring-color: rgba(96, 165, 250, 0.3);
@@ -1451,6 +1576,11 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
   --hide-button-container-bg: #2b2b2b;
   --header-text-hover: #67b7dc;
   --loading-overlay: rgba(43, 43, 43, 1);
+  --hg-badge-color: #80cfce;
+  --hg-badge-bg: rgba(61, 158, 156, 0.18);
+  --hg-badge-border: rgba(61, 158, 156, 0.5);
+  --hg-badge-bg-hover: rgba(61, 158, 156, 0.32);
+  --hg-popover-item-hover: rgba(61, 158, 156, 0.15);
   /* Focus colors */
   --focus-outline-color: #3b82f6;
   --focus-ring-color: rgba(59, 130, 246, 0.25);
