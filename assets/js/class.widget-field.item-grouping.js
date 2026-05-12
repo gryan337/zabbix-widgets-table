@@ -1,7 +1,9 @@
 
+
 class RMETable_CWidgetFieldItemGrouping extends CWidgetField {
 
 	static GROUP_BY_ITEM_TAG_VALUE = 0;
+	static GROUP_BY_HOST_TAG_VALUE = 2;
 
 	/**
 	 * @type {HTMLTableElement}
@@ -62,7 +64,8 @@ class RMETable_CWidgetFieldItemGrouping extends CWidgetField {
 
 			const attribute_value = row.querySelector('[name$="[attribute]"]').value;
 
-			const is_tag_value = attribute_value == RMETable_CWidgetFieldItemGrouping.GROUP_BY_ITEM_TAG_VALUE;
+			const is_tag_value = attribute_value == RMETable_CWidgetFieldItemGrouping.GROUP_BY_ITEM_TAG_VALUE
+				|| attribute_value == RMETable_CWidgetFieldItemGrouping.GROUP_BY_HOST_TAG_VALUE;
 			const tag_name_input = row.querySelector('input[name$="[tag_name]"]');
 
 			tag_name_input.style.display = is_tag_value ? '' : 'none';
