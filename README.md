@@ -55,10 +55,46 @@ Classic `Metric | Host | Value` layout. Best for ranked views or true Top N / Bo
 One column per configured item pattern. This is the most flexible layout and the recommended choice for any metrics created by Low-Level Discovery. Each item added in the **`Items`** section creates a new column.
 
 Supports **`Item grouping`** by:
-- Item tags
-- Host name — produces a layout similar to a **`Horizontal`** layout table
+- **Item tags**
+- **Host name** — produces a layout similar to a **`Horizontal`** layout table
+- **Host tags**
+- **Host groups**
 
 > 💡 Heavy use of item tags unlocks the full power of this mode.
+
+#### Item Grouping: Item Tags
+
+When grouping by **Item tags**, each row's grouping cell displays the value of a specific tag attached to the item. This is the most powerful grouping mode and works especially well with Low-Level Discovery, where tag values naturally identify what each discovered item represents (e.g. interface name, mount point, application tier).
+
+- The cell displays the tag value for the configured tag key. If the tag value is absent on an item, the cell is empty.
+- Multiple item tag groupings can be stacked — each configured tag key extends the grouping. When multiple item tag keys are used, the values are combined into a single cell separated by the configured **`Delimiter`**, or split into individual columns when the **`split groupings`** checkbox is selected.
+- Item tag cells are **clickable** (rendered in blue with underline) when the row has associated item IDs (added when at least one item pattern has the **`Broadcast from grouped collumn`** checked. Clicking selects the row and **broadcasts the item ID(s)** to connected widgets. If the **`Split groupings`** checkbox is selected the item tag values will no longer be clickable and a separate column on the far left will be added with an orange icon that can be clicked instead.
+- **Multi-select is supported**: `Ctrl+Click` adds individual rows to the selection; `Shift+Click` selects a contiguous range. All selected item IDs are broadcast together, and their time periods are automatically merged (see [Time Period Broadcasting](#-time-period-broadcasting)).
+- Clicking an already-selected cell deselects it and clears the broadcast.
+
+> 💡 Pairing item tag grouping with **`Show item grouping only`** turns the widget into a pure tag-based filter that drives other widgets on the dashboard without displaying any metric values itself.
+
+#### Item Grouping: Host Name
+
+Each row's grouping cell shows the hostname of the row's host. Clicking a hostname cell selects it and **broadcasts the host ID** to connected widgets. Only one host can be selected at a time — `Ctrl+Click` and `Shift+Click` are not supported for host name cells. Clicking an already-selected cell deselects it.
+
+#### Item Grouping: Host Tags
+
+When grouping by **Host tags**, each row's grouping cell displays the value of a specific tag attached to the host rather than the item. Multiple host tag groupings can be stacked in the same way as item tags, and values are combined using the configured **`Delimiter`** when using multiple host tag groupings.
+
+Host tag cells are **display-only** — they carry no `data-menu` and produce no broadcast on click. They are purely informational, useful for visually organizing rows by host metadata (e.g. environment, region, team) without interfering with item or host selection elsewhere in the row.
+
+#### Item Grouping: Host Groups
+
+When grouping by **Host groups**, each row's grouping cell displays the host groups that the row's host belongs to. Because a single host can belong to many groups, the cell is designed to stay compact while keeping all groups accessible:
+
+- The **first host group** is always shown inline in the cell. If the name exceeds ~38 characters it is truncated with an ellipsis; hovering over it reveals the full name in an instant tooltip.
+- When a host belongs to **more than one group**, a **`+N` badge** appears next to the visible group name, where `N` is the number of additional groups. Clicking or pressing `Enter`/`Space` on the badge opens a **popover menu** listing all remaining groups.
+- **Selecting a host group** (either the inline name or an item from the popover) highlights it with a gradient and **broadcasts the host group ID** to any connected widgets that listen for host group broadcasts. Clicking the same group again deselects it and clears the broadcast.
+- When a group from the popover is selected it is **promoted to the front** of the cell so it remains visible without reopening the popover on subsequent interactions.
+- Only **one host group can be selected at a time** — multi-select is not supported for host group grouping.
+
+> 💡 Host group selection integrates with the same [Dashboard Communication Framework](#-dashboard-communication-framework) as host and item cell clicks. Connect a map widget, another table, or any host-group-aware widget to react to the selection in real time.
 
 <img src="screenshots/ColumnPerPattern.png" width="600" />
 
@@ -71,7 +107,7 @@ Supports **`Item grouping`** by:
 
 <br>
 
-This widget is fully integrated with the [Zabbix dynamic parameters framework](https://www.zabbix.com/documentation/7.4/en/manual/web_interface/frontend_sections/dashboards/widgets#dynamic-parameters).
+This widget is fully integrated with the [Zabbix dynamic parameters framework](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/dashboards/widgets#dynamic-parameters).
 
 **Receives broadcasts of:**
 - Host groups
@@ -82,6 +118,7 @@ This widget is fully integrated with the [Zabbix dynamic parameters framework](h
 **Broadcasts on cell click:**
 - Host IDs
 - Item IDs
+- Host Group IDs *(when grouping by Host groups)*
 - Time period (see [Time Period Broadcasting](#-time-period-broadcasting) below)
 - Multi-cell selection via `Ctrl+Click` or `Shift+Click` (item cells only) → broadcasts all selected item IDs and a merged time period
 
@@ -336,7 +373,7 @@ TODO: Describe column-level options — display type, aggregation, header macros
 
 ### 🔜 Q2 2026
 - [x] Broadcast time period to listening widgets
-- [ ] Add ability to group by Host tags
+- [x] Add ability to group by Host tags and Host groups
 - [x] Remove `{HOST.HOST}` in favor of an explicit option to group by `Hostname`
 - [ ] Add more aggregation functions for `Column patterns aggregation` and for the `Show footer row`
 - [ ] Crowd-sourced feature requests & community feedback (continuous)
