@@ -229,6 +229,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 								);
 
 								$cell[Widget::CELL_METADATA]['grouping_name'] = $name;
+								$cell[Widget::CELL_METADATA]['broadcast_tags'] = $this->computeBroadcastTags(
+									$db_items[$cell[Widget::CELL_ITEMID]]['tags'],
+									$this->fields_values['item_group_by'],
+									$db_hosts[$hostid] ?? []
+								);
 								if (!$name) {
 									unset($metrics[$cindex]);
 								}
@@ -385,14 +390,56 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		return sha1(serialize($normalized));
 	}
 
+	/**
+	 * Build the tag list used for broadcasting to listening widgets.
+	 * Only GROUP_BY_ITEM_TAG and GROUP_BY_HOST_NAME produce tag filters;
+	 * GROUP_BY_HOST_TAG and GROUP_BY_HOST_GROUP are intentionally excluded.
+	 * Tags whose value is empty (because the item does not carry that tag at all)
+	 * are skipped — an empty value would match every item with that tag name,
+	 * which is never the intended behaviour.
+	 */
+	private function computeBroadcastTags(array $item_tags, array $groupings, array $host_data = []): array {
+		$tags = [];
+
+		foreach ($groupings as $attrs) {
+			switch ($attrs['attribute']) {
+				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+					$tag_values = [];
+					foreach ($item_tags as $tag) {
+						if ($tag['tag'] === $attrs['tag_name'] && $tag['value'] !== '') {
+							$tag_values[] = $tag['value'];
+						}
+					}
+					sort($tag_values);
+					foreach ($tag_values as $tv) {
+						$tags[] = ['tag' => $attrs['tag_name'], 'value' => $tv];
+					}
+					break;
+
+				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
+					if (!empty($host_data['name'])) {
+						$tags[] = ['tag' => '{HOST.HOST}', 'value' => $host_data['name']];
+					}
+					break;
+			}
+		}
+
+		return $tags;
+	}
+
 	private function computeNameForPerColumn(array $item_tags, array $groupings, array $host_data = []): string {
 		$delimiter = $this->fields_values['grouping_delimiter'];
 
-		// Build lookup maps
+		// Build lookup maps — a tag name may appear more than once with different values,
+		// so store all values per tag in an array and sort for stable ordering.
 		$item_tag_map = [];
 		foreach ($item_tags as $tag) {
-			$item_tag_map[$tag['tag']] = $tag['value'];
+			$item_tag_map[$tag['tag']][] = $tag['value'];
 		}
+		foreach ($item_tag_map as &$vals) {
+			sort($vals);
+		}
+		unset($vals);
 
 		$host_tag_map = [];
 		foreach ($host_data['tags'] ?? [] as $tag) {
@@ -405,7 +452,9 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			foreach ($groupings as $attrs) {
 				switch ($attrs['attribute']) {
 					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-						$parts[] = $item_tag_map[$attrs['tag_name']] ?? '';
+						$parts[] = isset($item_tag_map[$attrs['tag_name']])
+							? implode(chr(30), $item_tag_map[$attrs['tag_name']])
+							: '';
 						break;
 
 					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
@@ -433,11 +482,17 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		foreach ($groupings as $attrs) {
 			switch ($attrs['attribute']) {
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
+					// Collect all values for this tag name (an item may carry the same
+					// tag key with multiple values).
+					$tag_values = [];
 					foreach ($item_tags as $values) {
 						if ($values['tag'] == $attrs['tag_name']) {
-							$name .= $values['value'] . $delimiter;
-							break;
+							$tag_values[] = $values['value'];
 						}
+					}
+					if (!empty($tag_values)) {
+						sort($tag_values); // stable ordering regardless of Zabbix return order
+						$name .= implode(chr(30), $tag_values) . $delimiter;
 					}
 					break;
 
