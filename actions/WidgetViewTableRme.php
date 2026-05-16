@@ -401,13 +401,27 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 	private function computeBroadcastTags(array $item_tags, array $groupings, array $host_data = []): array {
 		$tags = [];
 
+		$item_tag_map = [];
+		foreach ($item_tags as $tag) {
+			if (!isset($item_tag_map[$tag['tag']])) {
+				$item_tag_map[$tag['tag']] = [];
+			}
+			$item_tag_map[$tag['tag']][] = $tag['value'];
+		}
+		foreach ($item_tag_map as &$vals) {
+			sort($vals);
+			$vals = array_unique($vals);
+		}
+		unset($vals);
+
 		foreach ($groupings as $attrs) {
 			switch ($attrs['attribute']) {
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-					foreach ($item_tags as $tag) {
-						if ($tag['tag'] === $attrs['tag_name'] && $tag['value'] !== '') {
-							$tags[] = ['tag' => $attrs['tag_name'], 'value' => $tag['value']];
-							break;
+					if (isset($item_tag_map[$attrs['tag_name']]) && !empty($item_tag_map[$attrs['tag_name']])) {
+						foreach ($item_tag_map[$attrs['tag_name']] as $tag_value) {
+							if ($tag_value !== '') {
+								$tags[] = ['tag' => $attrs['tag_name'], 'value' => $tag_value];
+							}
 						}
 					}
 					break;
@@ -415,6 +429,24 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
 					if (!empty($host_data['name'])) {
 						$tags[] = ['tag' => '{HOST.HOST}', 'value' => $host_data['name']];
+					}
+					break;
+
+				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
+					if (isset($host_data['tags'])) {
+						foreach ($host_data['tags'] as $tag) {
+							if ($tag['tag'] === $attrs['tag_name'] && $tag['value'] !== '') {
+								$tags[] = ['tag' => $attrs['tag_name'], 'value' => $tag['value']];
+								break;
+							}
+						}
+					}
+					break;
+
+				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
+					$group_names = array_column($host_data['hostgroups'] ?? [], 'name');
+					if (!empty($group_names)) {
+						$tags[] = ['tag' => 'Host Groups', 'value' => implode(', ', $group_names)];
 					}
 					break;
 			}
@@ -430,10 +462,14 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		// so store all values per tag in an array and sort for stable ordering.
 		$item_tag_map = [];
 		foreach ($item_tags as $tag) {
+			if (!isset($item_tag_map[$tag['tag']])) {
+				$item_tag_map[$tag['tag']] = [];
+			}
 			$item_tag_map[$tag['tag']][] = $tag['value'];
 		}
 		foreach ($item_tag_map as &$vals) {
 			sort($vals);
+			$vals = array_unique($vals);
 		}
 		unset($vals);
 
@@ -448,9 +484,12 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			foreach ($groupings as $attrs) {
 				switch ($attrs['attribute']) {
 					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-						$parts[] = isset($item_tag_map[$attrs['tag_name']])
-							? implode(chr(30), $item_tag_map[$attrs['tag_name']])
-							: '';
+						if (isset($item_tag_map[$attrs['tag_name']]) && !empty($item_tag_map[$attrs['tag_name']])) {
+							$parts[] = implode(chr(30), $item_tag_map[$attrs['tag_name']]);
+						}
+						else {
+							$parts[] = '';
+						}
 						break;
 
 					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
