@@ -650,21 +650,7 @@ else {
 				) {
 					$grouping_name = $cell[Widget::CELL_METADATA]['grouping_name'];
 					$dmt['name'] = $grouping_name;
-					$tags = [];
-
-					foreach ($data['item_grouping'] as $index => $grouping) {
-						if ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG
-								|| $grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP) {
-							continue;
-						}
-						$grouping_name_parts = explode($data['delimiter'], $grouping_name);
-						$tag_value = $grouping_name_parts[$index] ?? '';
-						$tag_name = $grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME
-							? '{HOST.HOST}'
-							: $grouping['tag_name'];
-						$tags[] = ['tag' => $tag_name, 'value' => $tag_value];
-					}
-					$dmt['tags'] = json_encode($tags);
+					$dmt['tags'] = json_encode($cell[Widget::CELL_METADATA]['broadcast_tags'] ?? []);
 
 					$temp_itemids = explode(',', $cell[Widget::CELL_ITEMID]);
 					foreach ($temp_itemids as $titemids) {
@@ -768,8 +754,10 @@ else {
 					$grouping_parts = explode($data['delimiter'], $grouping_name);
 
 					foreach ($data['item_grouping'] as $grouping_index => $grouping) {
+						// Convert the internal chr(30) multi-value separator back to a
+						// human-readable ', ' for display.
 						$grouping_value = isset($grouping_parts[$grouping_index])
-							? trim($grouping_parts[$grouping_index])
+							? str_replace(chr(30), ', ', trim($grouping_parts[$grouping_index]))
 							: '';
 
 						switch ($grouping['attribute']) {
@@ -867,12 +855,16 @@ else {
 					}
 					$hostid = $hostids[0] ?? null;
 
-					// Build item tag lookup from first itemid
+					// Build item tag lookup from first itemid.
 					$item_tag_map = [];
 					if ($itemid && isset($data['db_items'][$itemid]['tags'])) {
 						foreach ($data['db_items'][$itemid]['tags'] as $tag) {
-							$item_tag_map[$tag['tag']] = $tag['value'];
+							$item_tag_map[$tag['tag']][] = $tag['value'];
 						}
+						foreach ($item_tag_map as &$vals) {
+							sort($vals);
+						}
+						unset($vals);
 					}
 
 					// Build host tag lookup from first hostid
@@ -888,7 +880,9 @@ else {
 					$host_tag_parts = [];
 					foreach ($data['item_grouping'] as $grouping) {
 						if ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG) {
-							$v = $item_tag_map[$grouping['tag_name']] ?? '';
+							$v = isset($item_tag_map[$grouping['tag_name']])
+								? implode(', ', $item_tag_map[$grouping['tag_name']])
+								: '';
 							if ($v !== '') {
 								$item_tag_parts[] = $v;
 							}
