@@ -404,15 +404,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		foreach ($groupings as $attrs) {
 			switch ($attrs['attribute']) {
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-					$tag_values = [];
 					foreach ($item_tags as $tag) {
 						if ($tag['tag'] === $attrs['tag_name'] && $tag['value'] !== '') {
-							$tag_values[] = $tag['value'];
+							$tags[] = ['tag' => $attrs['tag_name'], 'value' => $tag['value']];
+							break;
 						}
-					}
-					sort($tag_values);
-					foreach ($tag_values as $tv) {
-						$tags[] = ['tag' => $attrs['tag_name'], 'value' => $tv];
 					}
 					break;
 
@@ -482,17 +478,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		foreach ($groupings as $attrs) {
 			switch ($attrs['attribute']) {
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-					// Collect all values for this tag name (an item may carry the same
-					// tag key with multiple values).
-					$tag_values = [];
 					foreach ($item_tags as $values) {
-						if ($values['tag'] == $attrs['tag_name']) {
-							$tag_values[] = $values['value'];
+						if ($values['tag'] == $attrs['tag_name'] && $values['value'] !== '') {
+							$name .= $values['value'] . $delimiter;
+							break;
 						}
-					}
-					if (!empty($tag_values)) {
-						sort($tag_values); // stable ordering regardless of Zabbix return order
-						$name .= implode(chr(30), $tag_values) . $delimiter;
 					}
 					break;
 
