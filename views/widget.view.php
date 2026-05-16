@@ -880,11 +880,8 @@ else {
 					$host_tag_parts = [];
 					foreach ($data['item_grouping'] as $grouping) {
 						if ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG) {
-							$v = isset($item_tag_map[$grouping['tag_name']])
-								? implode(', ', $item_tag_map[$grouping['tag_name']])
-								: '';
-							if ($v !== '') {
-								$item_tag_parts[] = $v;
+							if (isset($item_tag_map[$grouping['tag_name']]) && !empty($item_tag_map[$grouping['tag_name']])) {
+								$item_tag_parts[] = $item_tag_map[$grouping['tag_name']][0];
 							}
 						}
 						elseif ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG) {
@@ -894,6 +891,7 @@ else {
 							}
 						}
 					}
+					
 					$item_tag_display = implode($data['delimiter'], $item_tag_parts);
 					$host_tag_display = implode($data['delimiter'], $host_tag_parts);
 
