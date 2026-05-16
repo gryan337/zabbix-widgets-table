@@ -170,6 +170,8 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		}
 		unset($item_cache);
 
+		$has_hostname_grouping = false;
+
 		if ($this->fields_values['layout'] == WidgetForm::LAYOUT_THREE_COL) {
 			$this->applyItemOrderingLimitThreeCol($column_tables);
 		}
@@ -182,8 +184,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				)
 			);
 
-			// Mixed path
-			$has_hostname_grouping = false;
 			foreach ($this->fields_values['item_group_by'] as $g) {
 				if ($g['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME) {
 					$has_hostname_grouping = true;
@@ -1341,17 +1341,29 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 	}
 
 	private function applyAggregation($method, $values) {
+		// COUNT operates on all values regardless of type.
+		if ($method === AGGREGATE_COUNT) {
+			return count($values);
+		}
+
+		// extra guard for non-numeric values
+		$numeric_values = array_values(array_filter($values, 'is_numeric'));
+
+		if (empty($numeric_values)) {
+			// No usable data for numeric aggregation – return null so the cell
+			// renders as empty rather than a misleading zero.
+			return null;
+		}
+
 		switch ($method) {
 			case AGGREGATE_SUM:
-				return array_sum($values);
+				return array_sum($numeric_values);
 			case AGGREGATE_MAX:
-				return max($values);
+				return max($numeric_values);
 			case AGGREGATE_MIN:
-				return min($values);
-			case AGGREGATE_COUNT:
-				return count($values);
+				return min($numeric_values);
 			case AGGREGATE_AVG:
-				return CMathHelper::safeAvg($values);
+				return CMathHelper::safeAvg($numeric_values);
 			default:
 				return null;
 		}
