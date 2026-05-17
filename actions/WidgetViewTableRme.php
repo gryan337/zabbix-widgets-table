@@ -93,16 +93,13 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				return ['error' => _('Make a Selection to Display Metrics')];
 			}
 
-			if ($this->fields_values['item_filter_type'] == WidgetForm::ITEM_FILTER_ITEMIDS &&
-					(empty($this->filteredItemids) || (count($this->filteredItemids) == 1 && $this->filteredItemids[0] == '000000'))) {
-				return ['error' => _('Make a Selection to Display Metrics')];
-			}
-
 			if ($this->fields_values['item_filter_type'] == WidgetForm::ITEM_FILTER_TAGS &&
 					empty($this->filteredTags)) {
 				return ['error' => _('Make a Selection to Display Metrics')];
 			}
 		}
+
+		$layout = $this->fields_values['layout'];
 
 		foreach ($columns as $column_index => $column) {
 			$cache_key = $this->normalizeColumnKey($column);
@@ -163,7 +160,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			}
 			else {
 				$db_values = self::getItemValues($db_column_items, $column);
-				$table = self::makeColumnizedTable($db_column_items, $column, $db_values, $db_sparkline_values, $this->fields_values['layout']);
+				$table = self::makeColumnizedTable($db_column_items, $column, $db_values, $db_sparkline_values, $layout);
 				unset($db_values);
 			}
 
@@ -171,8 +168,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			unset($db_column_items);
 
 			// Each pattern result must be ordered before applying limit.
-			if ($this->fields_values['layout'] == WidgetForm::LAYOUT_VERTICAL ||
-					$this->fields_values['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
+			if ($layout == WidgetForm::LAYOUT_VERTICAL || $layout == WidgetForm::LAYOUT_HORIZONTAL) {
 				$this->applyItemOrdering($table, $db_hosts);
 				$this->applyItemOrderingLimit($table);
 			}
@@ -209,9 +205,15 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 						$metrics = array_filter($metrics, function ($cell) {
 							return !empty($cell[Widget::CELL_ITEMID]);
 						});
-						
+
+						// Resolve the actual hostname once per host so the broadcast filter
+						// in the listening widget receives a concrete value, not a placeholder.
+						$host_name = $db_hosts[$hostid]['name'] ?? '';
 						foreach ($metrics as $cindex => &$cell) {
 							$cell[Widget::CELL_METADATA]['grouping_name'] = '{HOST.HOST}';
+							$cell[Widget::CELL_METADATA]['broadcast_tags'] = $host_name !== ''
+								? [['tag' => '{HOST.HOST}', 'value' => $host_name]]
+								: [];
 						}
 					}
 				}
@@ -222,19 +224,15 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 					foreach ($host_values as $hostid => &$metrics) {
 						foreach ($metrics as $cindex => &$cell) {
 							if ($cell[Widget::CELL_ITEMID]) {
-								$name = self::computeNameForPerColumn(
+								$grouping = $this->computeGroupingData(
 									$db_items[$cell[Widget::CELL_ITEMID]]['tags'],
 									$this->fields_values['item_group_by'],
 									$db_hosts[$hostid] ?? []
 								);
 
-								$cell[Widget::CELL_METADATA]['grouping_name'] = $name;
-								$cell[Widget::CELL_METADATA]['broadcast_tags'] = $this->computeBroadcastTags(
-									$db_items[$cell[Widget::CELL_ITEMID]]['tags'],
-									$this->fields_values['item_group_by'],
-									$db_hosts[$hostid] ?? []
-								);
-								if (!$name) {
+								$cell[Widget::CELL_METADATA]['grouping_name'] = $grouping['name'];
+								$cell[Widget::CELL_METADATA]['broadcast_tags'] = $grouping['broadcast_tags'];
+								if (!$grouping['name']) {
 									unset($metrics[$cindex]);
 								}
 								else {
@@ -391,80 +389,25 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 	}
 
 	/**
-	 * Build the tag list used for broadcasting to listening widgets.
-	 * Only GROUP_BY_ITEM_TAG and GROUP_BY_HOST_NAME produce tag filters;
-	 * GROUP_BY_HOST_TAG and GROUP_BY_HOST_GROUP are intentionally excluded.
-	 * Tags whose value is empty (because the item does not carry that tag at all)
-	 * are skipped — an empty value would match every item with that tag name,
-	 * which is never the intended behaviour.
+	 * Single-pass computation of both the grouping name (row key) and the broadcast
+	 * tags for the data-menu.
+	 *
+	 * Returns ['name' => string, 'broadcast_tags' => array].
+	 *
+	 * chr(30) (ASCII Record Separator) is the within-attribute multi-value separator
+	 * for the split path. It cannot appear in user-configured delimiters or tag values,
+	 * so it never collides with the grouping delimiter.
+	 *
+	 * Broadcast tags: empty values are omitted — an empty value would match every item
+	 * carrying that tag name in the listening widget, which is never the intent.
 	 */
-	private function computeBroadcastTags(array $item_tags, array $groupings, array $host_data = []): array {
-		$tags = [];
-
-		$item_tag_map = [];
-		foreach ($item_tags as $tag) {
-			if (!isset($item_tag_map[$tag['tag']])) {
-				$item_tag_map[$tag['tag']] = [];
-			}
-			$item_tag_map[$tag['tag']][] = $tag['value'];
-		}
-		foreach ($item_tag_map as &$vals) {
-			sort($vals);
-			$vals = array_unique($vals);
-		}
-		unset($vals);
-
-		foreach ($groupings as $attrs) {
-			switch ($attrs['attribute']) {
-				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-					if (isset($item_tag_map[$attrs['tag_name']]) && !empty($item_tag_map[$attrs['tag_name']])) {
-						foreach ($item_tag_map[$attrs['tag_name']] as $tag_value) {
-							if ($tag_value !== '') {
-								$tags[] = ['tag' => $attrs['tag_name'], 'value' => $tag_value];
-							}
-						}
-					}
-					break;
-
-				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
-					if (!empty($host_data['name'])) {
-						$tags[] = ['tag' => '{HOST.HOST}', 'value' => $host_data['name']];
-					}
-					break;
-
-				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
-					if (isset($host_data['tags'])) {
-						foreach ($host_data['tags'] as $tag) {
-							if ($tag['tag'] === $attrs['tag_name'] && $tag['value'] !== '') {
-								$tags[] = ['tag' => $attrs['tag_name'], 'value' => $tag['value']];
-								break;
-							}
-						}
-					}
-					break;
-
-				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
-					$group_names = array_column($host_data['hostgroups'] ?? [], 'name');
-					if (!empty($group_names)) {
-						$tags[] = ['tag' => 'Host Groups', 'value' => implode(', ', $group_names)];
-					}
-					break;
-			}
-		}
-
-		return $tags;
-	}
-
-	private function computeNameForPerColumn(array $item_tags, array $groupings, array $host_data = []): string {
+	private function computeGroupingData(array $item_tags, array $groupings, array $host_data = []): array {
 		$delimiter = $this->fields_values['grouping_delimiter'];
 
-		// Build lookup maps — a tag name may appear more than once with different values,
-		// so store all values per tag in an array and sort for stable ordering.
+		// Build item-tag lookup once. Collect all values per tag name (an item may carry
+		// the same key with multiple values), sort for stable keys, and deduplicate.
 		$item_tag_map = [];
 		foreach ($item_tags as $tag) {
-			if (!isset($item_tag_map[$tag['tag']])) {
-				$item_tag_map[$tag['tag']] = [];
-			}
 			$item_tag_map[$tag['tag']][] = $tag['value'];
 		}
 		foreach ($item_tag_map as &$vals) {
@@ -478,48 +421,70 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			$host_tag_map[$tag['tag']] = $tag['value'];
 		}
 
+		$broadcast_tags = [];
+
 		if ($this->fields_values['split_groupings']) {
 			$parts = [];
 
 			foreach ($groupings as $attrs) {
 				switch ($attrs['attribute']) {
 					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-						if (isset($item_tag_map[$attrs['tag_name']]) && !empty($item_tag_map[$attrs['tag_name']])) {
-							$parts[] = implode(chr(30), $item_tag_map[$attrs['tag_name']]);
-						}
-						else {
-							$parts[] = '';
+						$tag_vals = $item_tag_map[$attrs['tag_name']] ?? [];
+						$parts[] = $tag_vals ? implode(chr(30), $tag_vals) : '';
+						foreach ($tag_vals as $tv) {
+							if ($tv !== '') {
+								$broadcast_tags[] = ['tag' => $attrs['tag_name'], 'value' => $tv];
+							}
 						}
 						break;
 
 					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
 						$parts[] = $host_data['name'] ?? '';
+						if (!empty($host_data['name'])) {
+							$broadcast_tags[] = ['tag' => '{HOST.HOST}', 'value' => $host_data['name']];
+						}
 						break;
 
 					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG:
 						$parts[] = $host_tag_map[$attrs['tag_name']] ?? '';
+						if (isset($host_data['tags'])) {
+							foreach ($host_data['tags'] as $tag) {
+								if ($tag['tag'] === $attrs['tag_name'] && $tag['value'] !== '') {
+									$broadcast_tags[] = ['tag' => $attrs['tag_name'], 'value' => $tag['value']];
+									break;
+								}
+							}
+						}
 						break;
 
 					case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
 						$group_names = array_column($host_data['hostgroups'] ?? [], 'name');
 						$parts[] = implode(', ', $group_names);
+						if (!empty($group_names)) {
+							$broadcast_tags[] = ['tag' => 'Host Groups', 'value' => implode(', ', $group_names)];
+						}
 						break;
 				}
 			}
 
-			return implode($delimiter, $parts);
+			return ['name' => implode($delimiter, $parts), 'broadcast_tags' => $broadcast_tags];
 		}
 
-		// Non-split: concatenate with delimiter
+		// Non-split: concatenate parts with delimiter.
+		// Reuses $item_tag_map (already built and sorted above) for GROUP_BY_ITEM_TAG
+		// instead of re-iterating raw $item_tags for every grouping attribute.
 		$delimiter_length = mb_strlen($delimiter, 'UTF-8');
 		$name = '';
 
 		foreach ($groupings as $attrs) {
 			switch ($attrs['attribute']) {
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-					foreach ($item_tags as $values) {
-						if ($values['tag'] == $attrs['tag_name'] && $values['value'] !== '') {
-							$name .= $values['value'] . $delimiter;
+					// Take the first (sorted, deduplicated) non-empty value for the grouping key.
+					$tag_vals = $item_tag_map[$attrs['tag_name']] ?? [];
+					foreach ($tag_vals as $tv) {
+						if ($tv !== '') {
+							$name .= $tv . $delimiter;
+							$broadcast_tags[] = ['tag' => $attrs['tag_name'], 'value' => $tv];
 							break;
 						}
 					}
@@ -528,6 +493,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_NAME:
 					if (!empty($host_data['name'])) {
 						$name .= $host_data['name'] . $delimiter;
+						$broadcast_tags[] = ['tag' => '{HOST.HOST}', 'value' => $host_data['name']];
 					}
 					break;
 
@@ -535,23 +501,25 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 					$tag_value = $host_tag_map[$attrs['tag_name']] ?? '';
 					if ($tag_value !== '') {
 						$name .= $tag_value . $delimiter;
+						$broadcast_tags[] = ['tag' => $attrs['tag_name'], 'value' => $tag_value];
 					}
 					break;
 
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
 					$group_names = array_column($host_data['hostgroups'] ?? [], 'name');
 					if (!empty($group_names)) {
-						$name .= implode(', ', $group_names) . $delimiter;
+						$joined = implode(', ', $group_names);
+						$name .= $joined . $delimiter;
+						$broadcast_tags[] = ['tag' => 'Host Groups', 'value' => $joined];
 					}
 					break;
 			}
 		}
 
-		if ($name === '') {
-			return '';
-		}
-
-		return substr($name, 0, -$delimiter_length);
+		return [
+			'name'           => $name !== '' ? substr($name, 0, -$delimiter_length) : '',
+			'broadcast_tags' => $broadcast_tags,
+		];
 	}
 
 	private function getHosts(): array {
@@ -961,7 +929,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		}
 
 		$table_column_index = -1;
-		$hostids = array_keys(array_column($db_items, 'hostid', 'hostid'));
+		$hostids = array_unique(array_column($db_items, 'hostid'));
 		$table = [];
 		foreach ($result_columns as $name => $column_value_types) {
 			foreach ($column_value_types as $hosts_columns) {
@@ -988,24 +956,18 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 							Widget::CELL_ITEMID => $itemid,
 							Widget::CELL_VALUE => $value,
 							Widget::CELL_SPARKLINE_VALUE => $sparkline_value,
-							Widget::CELL_METADATA => [
-								'name' => $name,
-								'column_index' => $column['column_index'],
-								'original_name' => ($itemid !== null &&
-										array_key_exists($itemid, $db_items) &&
-										array_key_exists('original_name', $db_items[$itemid]))
-									? $db_items[$itemid]['original_name']
-									: $name,
-								'units' => ($itemid !== null &&
-										array_key_exists($itemid, $db_items) &&
-										array_key_exists('units', $db_items[$itemid]))
-									? $db_items[$itemid]['units']
-									: '',
-								'key_' => ($itemid !== null && array_key_exists($itemid, $db_items))
-									? $db_items[$itemid]['key_']
-									: ''
-								
-							]
+							Widget::CELL_METADATA => (static function() use ($itemid, $db_items, $name, $column): array {
+								// Single lookup: resolve $db_items[$itemid] once instead of three
+								// separate array_key_exists calls for the same key.
+								$item = ($itemid !== null && isset($db_items[$itemid])) ? $db_items[$itemid] : null;
+								return [
+									'name'          => $name,
+									'column_index'  => $column['column_index'],
+									'original_name' => $item['original_name'] ?? $name,
+									'units'         => $item['units'] ?? '',
+									'key_'          => $item['key_'] ?? '',
+								];
+							})()
 						];
 					}
 				}
@@ -1460,7 +1422,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 									];
 								}
 
-								$buckets[$bucketIndex]['values'] = array_merge($buckets[$bucketIndex]['values'], $values);
+								array_push($buckets[$bucketIndex]['values'], ...$values); // avoids allocating a new array per iteration
 
 								if ($timestamp > $buckets[$bucketIndex]['max_clock']) {
 									$buckets[$bucketIndex]['max_clock'] = $timestamp;
@@ -1607,7 +1569,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		$column_min = [];
 		$column_max = [];
 
-		function updateColumnMinMax($cell, &$column_min, &$column_max) {
+		$updateMinMax = function (array $cell) use (&$column_min, &$column_max): void {
 			$column_index = $cell[Widget::CELL_METADATA]['column_index'];
 			$value = $cell[Widget::CELL_VALUE];
 			if ($value === null) {
@@ -1621,19 +1583,19 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			if (!array_key_exists($column_index, $column_max) || $column_max[$column_index] < $value) {
 				$column_max[$column_index] = $value;
 			}
-		}
+		};
 
 		if (!$this->isTemplateDashboard() &&
 				$this->fields_values['layout'] == WidgetForm::LAYOUT_COLUMN_PER &&
 				$this->fields_values['aggregate_all_hosts']) {
 			foreach ($table as $cell) {
-				updateColumnMinMax($cell, $column_min, $column_max);
+				$updateMinMax($cell);
 			}
 		}
 		else {
 			foreach ($table as $row) {
 				foreach ($row as $cell) {
-					updateColumnMinMax($cell, $column_min, $column_max);
+					$updateMinMax($cell);
 				}
 			}
 		}
