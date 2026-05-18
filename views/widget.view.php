@@ -240,7 +240,7 @@ else {
 							$col_hint  = 'Host tag: '.$grouping['tag_name'];
 							break;
 						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
-							$col_title = 'Host Group(s)';
+							$col_title = 'Host group(s)';
 							$col_hint  = 'Host group';
 							break;
 						default:
@@ -272,7 +272,7 @@ else {
 							break;
 
 						case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
-							$header[] = (new CColHeader(_('Host Group(s)')))->setTitle('Host group');
+							$header[] = (new CColHeader(_('Host group(s)')))->setTitle('Host group');
 							break;
 					}
 				}
@@ -880,8 +880,9 @@ else {
 					$host_tag_parts = [];
 					foreach ($data['item_grouping'] as $grouping) {
 						if ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG) {
-							if (isset($item_tag_map[$grouping['tag_name']]) && !empty($item_tag_map[$grouping['tag_name']])) {
-								$item_tag_parts[] = $item_tag_map[$grouping['tag_name']][0];
+							$tag_vals = array_filter($item_tag_map[$grouping['tag_name']] ?? [], fn($v) => $v !== '');
+							if ($tag_vals) {
+								$item_tag_parts[] = implode(', ', $tag_vals);
 							}
 						}
 						elseif ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG) {
