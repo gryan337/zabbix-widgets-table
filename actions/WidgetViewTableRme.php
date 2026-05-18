@@ -467,13 +467,11 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		foreach ($groupings as $attrs) {
 			switch ($attrs['attribute']) {
 				case CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG:
-					// Take the first (sorted, deduplicated) non-empty value for the grouping key.
-					$tag_vals = $item_tag_map[$attrs['tag_name']] ?? [];
-					foreach ($tag_vals as $tv) {
-						if ($tv !== '') {
-							$name .= $tv . $delimiter;
+					$tag_vals = array_filter($item_tag_map[$attrs['tag_name']] ?? [], fn($v) => $v !== '');
+					if ($tag_vals) {
+						$name .= implode(chr(30), $tag_vals) . $delimiter;
+						foreach ($tag_vals as $tv) {
 							$broadcast_tags[] = ['tag' => $attrs['tag_name'], 'value' => $tv];
-							break;
 						}
 					}
 					break;
