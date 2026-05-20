@@ -593,14 +593,14 @@ a.ext-btn:focus-visible {
 /* ========== Slim Scrollbars ========== */
 
 .filter-popup-scroll-container::-webkit-scrollbar,
-.rme-hg-popover::-webkit-scrollbar,
+.rme-hg-popover-content::-webkit-scrollbar,
 .col-visibility-list::-webkit-scrollbar,
 .custom-select .list::-webkit-scrollbar {
   width: 12px;
 }
 
 .filter-popup-scroll-container::-webkit-scrollbar-track,
-.rme-hg-popover::-webkit-scrollbar-track,
+.rme-hg-popover-content::-webkit-scrollbar-track,
 .col-visibility-list::-webkit-scrollbar-track,
 .custom-select .list::-webkit-scrollbar-track {
   background: var(--main-bg);
@@ -609,7 +609,7 @@ a.ext-btn:focus-visible {
 }
 
 .filter-popup-scroll-container::-webkit-scrollbar-thumb,
-.rme-hg-popover::-webkit-scrollbar-thumb,
+.rme-hg-popover-content::-webkit-scrollbar-thumb,
 .col-visibility-list::-webkit-scrollbar-thumb,
 .custom-select .list::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
@@ -620,7 +620,7 @@ a.ext-btn:focus-visible {
 }
 
 .filter-popup-scroll-container::-webkit-scrollbar-thumb:hover,
-.rme-hg-popover::-webkit-scrollbar-thumb:hover,
+.rme-hg-popover-content::-webkit-scrollbar-thumb:hover,
 .col-visibility-list::-webkit-scrollbar-thumb:hover,
 .custom-select .list::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
@@ -1360,20 +1360,39 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
     outline-offset: 2px;
 }
 
+.rme-hg-popover-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 12px;
+    background: var(--main-bg);
+    border-bottom: 1px solid var(--frozen-border-color);
+    font-weight: bold;
+    font-size: 13px;
+    border-radius: 6px 6px 0 0;
+}
+
 /* Floating popover panel */
 .rme-hg-popover {
     position: fixed;
     z-index: 9999;
     min-width: 140px;
-    max-width: 240px;
+    max-width: 400px;
     max-height: 320px;
-    overflow-y: auto;
+    overflow: visible;
     background: var(--main-bg);
     color: var(--page-num);
     border: 1px solid var(--frozen-border-color);
     border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
     padding: 4px 0;
+}
+
+.rme-hg-popover-content {
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 4px 0;
+    background: var(--checkbox-bg);
 }
 
 .rme-hg-popover-item {
