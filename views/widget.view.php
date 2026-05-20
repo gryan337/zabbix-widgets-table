@@ -762,45 +762,61 @@ else {
 
 						switch ($grouping['attribute']) {
 							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
-								$hostid = null;
+								// Collect all hostids from aggregated cells
+								$hostids = [];
 								foreach ($data_row as $cell) {
 									if ($cell && $cell[Widget::CELL_HOSTID]) {
-										$hostid = $cell[Widget::CELL_HOSTID];
-										break;
+										// Split comma-separated hostids if present
+										$cell_hostids = array_map('trim', explode(',', (string)$cell[Widget::CELL_HOSTID]));
+										foreach ($cell_hostids as $hid) {
+											if ($hid !== '' && !in_array($hid, $hostids)) {
+												$hostids[] = $hid;
+											}
+										}
 									}
 								}
-								// HG_VISIBLE_THRESHOLD = 1 (must match #HG_VISIBLE_THRESHOLD in class_widget.js)
+							
+								// Collect unique host groups from all hosts
 								$group_spans = [];
+								$seen_groupids = [];
 								$span_index = 0;
-								if ($hostid && !empty($data['db_hosts'][$hostid]['hostgroups'])) {
-									foreach ($data['db_hosts'][$hostid]['hostgroups'] as $hg) {
-										$hg_attributes = ['type' => 'hostgroup', 'groupid' => $hg['groupid']];
-										if ($span_index === 0) {
-											// Visible span: truncate long names; JS reads data-fullname for the
-											// custom tooltip and to restore full text on demotion.
-											$display_name = mb_strlen($hg['name']) > WidgetForm::HG_TRUNCATE_CHARS
-												? mb_substr($hg['name'], 0, WidgetForm::HG_TRUNCATE_CHARS) . '...'
-												: $hg['name'];
-											$span = (new CSpan($display_name))
-												->addClass(ZBX_STYLE_CURSOR_POINTER)
-												->addClass('rme-hostgroup-span')
-												->addStyle('text-decoration: underline; margin-right: 4px;')
-												->setAttribute('data-menu', json_encode($hg_attributes))
-												->setAttribute('data-fullname', $hg['name']);
+
+								foreach ($hostids as $hostid) {
+									if (!empty($data['db_hosts'][$hostid]['hostgroups'])) {
+										foreach ($data['db_hosts'][$hostid]['hostgroups'] as $hg) {
+											if (!in_array($hg['groupid'], $seen_groupids)) {
+												$seen_groupids[] = $hg['groupid'];
+												$hg_attributes = ['type' => 'hostgroup', 'groupid' => $hg['groupid']];
+											
+												if ($span_index === 0) {
+													// Visible span: truncate long names; JS reads data-fullname for the
+													// custom tooltip and to restore full text on demotion.
+													$display_name = mb_strlen($hg['name']) > WidgetForm::HG_TRUNCATE_CHARS
+														? mb_substr($hg['name'], 0, WidgetForm::HG_TRUNCATE_CHARS) . '...'
+														: $hg['name'];
+													$span = (new CSpan($display_name))
+														->addClass(ZBX_STYLE_CURSOR_POINTER)
+														->addClass('rme-hostgroup-span')
+														->addStyle('text-decoration: underline; margin-right: 4px;')
+														->setAttribute('data-menu', json_encode($hg_attributes))
+														->setAttribute('data-fullname', $hg['name']);
+												}
+												else {
+													// Hidden spans: full text so the popover shows untruncated names
+													$span = (new CSpan($hg['name']))
+														->addClass(ZBX_STYLE_CURSOR_POINTER)
+														->addClass('rme-hostgroup-span')
+														->addClass('rme-hg-hidden')
+														->addStyle('text-decoration: underline; margin-right: 4px;')
+														->setAttribute('data-menu', json_encode($hg_attributes));
+												}
+												$group_spans[] = $span;
+												$span_index++;
+											}
 										}
-										else {
-											// Hidden spans: full text so the popover shows untruncated names
-											$span = (new CSpan($hg['name']))
-												->addClass(ZBX_STYLE_CURSOR_POINTER)
-												->addClass('rme-hostgroup-span')
-												->addClass('rme-hg-hidden')
-												->addStyle('text-decoration: underline; margin-right: 4px;')
-												->setAttribute('data-menu', json_encode($hg_attributes));
-										}
-										$group_spans[] = $span;
-										$span_index++;
 									}
 								}
+						
 								$overflow_count = count($group_spans) - 1;
 								if ($overflow_count > 0) {
 									$overflow_label = 'Show ' . $overflow_count . ' more host group' . ($overflow_count !== 1 ? 's' : '');
@@ -935,16 +951,18 @@ else {
 								break;
 
 							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
-								// HG_VISIBLE_THRESHOLD = 1 (must match #HG_VISIBLE_THRESHOLD in class_widget.js)
+								// Collect all hostids from aggregated cells
 								$group_spans = [];
 								$seen_groupids = [];
 								$span_index = 0;
+							
 								foreach ($hostids as $hid) {
 									if (!empty($data['db_hosts'][$hid]['hostgroups'])) {
 										foreach ($data['db_hosts'][$hid]['hostgroups'] as $hg) {
 											if (!in_array($hg['groupid'], $seen_groupids)) {
 												$seen_groupids[] = $hg['groupid'];
 												$hg_attributes = ['type' => 'hostgroup', 'groupid' => $hg['groupid']];
+													
 												if ($span_index === 0) {
 													// Visible span: truncate long names and attach Zabbix hint for full text
 													$display_name = mb_strlen($hg['name']) > WidgetForm::HG_TRUNCATE_CHARS
@@ -972,6 +990,7 @@ else {
 										}
 									}
 								}
+							
 								$overflow_count = count($group_spans) - 1;
 								if ($overflow_count > 0) {
 									$overflow_label = 'Show ' . $overflow_count . ' more host group' . ($overflow_count !== 1 ? 's' : '');
