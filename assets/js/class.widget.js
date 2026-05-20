@@ -4212,6 +4212,16 @@ class CWidgetTableModuleRME extends CWidget {
 		popover.setAttribute('role', 'listbox');
 		popover.setAttribute('aria-label', 'Host groups');
 
+		// Add header
+		const header = document.createElement('div');
+		header.className = 'rme-hg-popover-header';
+		header.textContent = 'Other host groups';
+		popover.appendChild(header);
+
+		// Create content container for scrollable items
+		const content = document.createElement('div');
+		content.className = 'rme-hg-popover-content';
+
 		for (const realSpan of hiddenSpans) {
 			let spanData;
 			try { spanData = JSON.parse(realSpan.dataset.menu); }
@@ -4238,15 +4248,18 @@ class CWidgetTableModuleRME extends CWidget {
 				sourceTd?.querySelector('.rme-hg-badge')?.focus();
 			});
 
-			popover.appendChild(item);
+			content.appendChild(item);
 		}
+
+		// Add content container to popover after all items
+		popover.appendChild(content);
 
 		popover.addEventListener('keydown', e => {
 			// If the popover was mouse-opened, the first keystroke clears the
 			// pre-hovered highlight so keyboard focus becomes the sole visual cue.
 			popover.querySelector('.is-pre-hovered')?.classList.remove('is-pre-hovered');
 
-			const items = [...popover.querySelectorAll('[role="option"]')];
+			const items = [...content.querySelectorAll('[role="option"]')];
 			const idx = items.indexOf(document.activeElement);
 
 			switch (e.key) {
