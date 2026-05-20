@@ -1543,9 +1543,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		$numeric_values = array_values(array_filter($values, 'is_numeric'));
 
 		if (empty($numeric_values)) {
-			// No usable data for numeric aggregation – return null so the cell
-			// renders as empty rather than a misleading zero.
-			return null;
+			return $values[0];
 		}
 
 		switch ($method) {
