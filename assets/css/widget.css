@@ -1380,7 +1380,7 @@ div.dashboard-widget-tablemodulerme .list-table td.col-frozen-last {
     position: fixed;
     z-index: 9999;
     min-width: 140px;
-    max-width: 400px;
+    max-width: 500px;
     max-height: 320px;
     overflow: visible;
     background: var(--main-bg);
