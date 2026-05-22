@@ -4112,13 +4112,15 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 
 		const overflowCount = spans.length - this.#HG_VISIBLE_THRESHOLD;
+		const overflowLabel = `Show ${overflowCount} more host group${overflowCount !== 1 ? 's' : ''}`;
 		const badge = document.createElement('button');
 		badge.type = 'button';
 		badge.className = 'rme-hg-badge';
 		badge.textContent = `+${overflowCount}`;
+		badge.title = overflowLabel;
 		badge.setAttribute('aria-haspopup', 'listbox');
 		badge.setAttribute('aria-expanded', 'false');
-		badge.setAttribute('aria-label', `Show ${overflowCount} more host group${overflowCount !== 1 ? 's' : ''}`);
+		badge.setAttribute('aria-label', overflowLabel);
 		td.appendChild(badge);
 	}
 
