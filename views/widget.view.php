@@ -823,6 +823,7 @@ else {
 									$badge = (new CTag('button', true, '+' . $overflow_count))
 										->setAttribute('type', 'button')
 										->addClass('rme-hg-badge')
+										->setTitle($overflow_label)
 										->setAttribute('aria-haspopup', 'listbox')
 										->setAttribute('aria-expanded', 'false')
 										->setAttribute('aria-label', $overflow_label);
@@ -997,6 +998,7 @@ else {
 									$badge = (new CTag('button', true, '+' . $overflow_count))
 										->setAttribute('type', 'button')
 										->addClass('rme-hg-badge')
+										->setTitle($overflow_label)
 										->setAttribute('aria-haspopup', 'listbox')
 										->setAttribute('aria-expanded', 'false')
 										->setAttribute('aria-label', $overflow_label);
