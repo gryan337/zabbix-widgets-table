@@ -1291,6 +1291,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 					$groupingName = $data[Widget::CELL_METADATA]['grouping_name'];
 					$columnIndex = $data[Widget::CELL_METADATA]['column_index'];
 					$key = $groupingName.chr(31).$columnIndex;
+					$method = $columns[$columnIndex]['column_agg_method'];
 
 					if (!isset($aggregatedArray[$key])) {
 						$aggregatedArray[$key] = [
@@ -1311,12 +1312,23 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 								$isNumeric = is_numeric($data[Widget::CELL_VALUE]);
 								$aggregatedArray[$key]['_is_numeric'] = $isNumeric;
 
-								if ($isNumeric && is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
-									// Only split on comma if it's a numeric csv string
-									$aggregatedArray[$key]['_all_values'] = explode(',', $data[Widget::CELL_VALUE]);
+								// For COUNT aggregation, collect all values
+								if ($method == AGGREGATE_COUNT) {
+									if (is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
+										$aggregatedArray[$key]['_all_values'] = explode(',', $data[Widget::CELL_VALUE]);
+									}
+									else {
+										$aggregatedArray[$key]['_all_values'] = [$data[Widget::CELL_VALUE]];
+									}
 								}
-								else {
-									$aggregatedArray[$key]['_all_values'] = [$data[Widget::CELL_VALUE]];
+								// For other aggregations, only process numeric values
+								elseif ($isNumeric) {
+									if (is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
+										$aggregatedArray[$key]['_all_values'] = explode(',', $data[Widget::CELL_VALUE]);
+									}
+									else {
+										$aggregatedArray[$key]['_all_values'] = [$data[Widget::CELL_VALUE]];
+									}
 								}
 							}
 
@@ -1349,10 +1361,22 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 								$aggregatedArray[$key]['_is_numeric'] = is_numeric($data[Widget::CELL_VALUE]);
 							}
 
-							// Only process if we're dealing with numeric values
-							if ($aggregatedArray[$key]['_is_numeric'] && is_numeric($data[Widget::CELL_VALUE])) {
+							// For COUNT aggregation, collect all values regardless of type
+							if ($method == AGGREGATE_COUNT) {
 								if (is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
-									// Only split on comma if it's a numeric CSV string
+									$newValues = explode(',', $data[Widget::CELL_VALUE]);
+									$aggregatedArray[$key]['_all_values'] = array_merge(
+										$aggregatedArray[$key]['_all_values'],
+										$newValues
+									);
+								}
+								else {
+									$aggregatedArray[$key]['_all_values'][] = $data[Widget::CELL_VALUE];
+								}
+							}
+							// For other aggregations, only process numeric values
+							elseif ($aggregatedArray[$key]['_is_numeric'] && is_numeric($data[Widget::CELL_VALUE])) {
+								if (is_string($data[Widget::CELL_VALUE]) && strpos($data[Widget::CELL_VALUE], ',') !== false) {
 									$newValues = explode(',', $data[Widget::CELL_VALUE]);
 									$aggregatedArray[$key]['_all_values'] = array_merge(
 										$aggregatedArray[$key]['_all_values'],
@@ -1389,7 +1413,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 				if (!$this->fields_values['show_grouping_only']) {
 					// Apply aggregation to all collect CELL_VALUE values - only if we have numeric values
-					if (!empty($agg['_all_values']) && $agg['_is_numeric']) {
+					if (!empty($agg['_all_values'])) {
 						$agg[Widget::CELL_VALUE] = $this->applyAggregation($method, $agg['_all_values']);
 					}
 					else if (empty($agg['_all_values'])) {
@@ -1535,7 +1559,7 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 
 	private function applyAggregation($method, $values) {
 		// COUNT operates on all values regardless of type.
-		if ($method === AGGREGATE_COUNT) {
+		if ($method == AGGREGATE_COUNT) {
 			return count($values);
 		}
 
