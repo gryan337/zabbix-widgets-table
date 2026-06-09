@@ -552,7 +552,6 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			'evaltype' => $evaltype,
 			'monitored_hosts' => true,
 			'with_monitored_items' => true,
-			'limit' => CSettingsHelper::get(CSettingsHelper::SEARCH_LIMIT),
 			'selectHostGroups' => 'extend',
 			'selectTags' => 'extend',
 			'preservekeys' => true
