@@ -115,15 +115,26 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 			
 			$iname_strip = $this->fields_values['item_name_strip'];
 			if ($iname_strip) {
+				$batch_size = 10000;
 				$new_db_column_items = [];
-				foreach ($db_column_items as $itemid => $values) {
-					$resolved_label = CMacrosResolverHelper::resolveItemBasedWidgetMacros(
-						[$itemid => $values + ['label' => $this->fields_values['item_name_strip']]],
+				$item_batches = array_chunk($db_column_items, $batch_size, true);
+
+				foreach ($item_batches as $batch) {
+					$batch_with_labels = [];
+					foreach ($batch as $itemid => $values) {
+						$batch_with_labels[$itemid] = $values + ['label' => $this->fields_values['item_name_strip']];
+					}
+
+					$resolved_batch = CMacrosResolverHelper::resolveItemBasedWidgetMacros(
+						$batch_with_labels,
 						['label' => 'label']
 					);
-					$values['original_name'] = $values['name'];
-					$values['name'] = $resolved_label[$values['itemid']]['label'];
-					$new_db_column_items[$itemid] = $values;
+
+					foreach ($batch as $itemid => $values) {
+						$values['original_name'] = $values['name'];
+						$values['name'] = $resolved_batch[$itemid]['label'];
+						$new_db_column_items[$itemid] = $values;
+					}
 				}
 				$db_column_items = $new_db_column_items;
 			}
