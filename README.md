@@ -29,7 +29,7 @@ A powerful, feature-rich table widget for Zabbix dashboards — built to fill th
 ```bash
 # Clone into Zabbix modules directory
 git clone -b 7.0 https://github.com/gryan337/zabbix-widgets-table \
-  /usr/share/zabbix/modules/
+  /usr/share/zabbix/modules/zabbix-widgets-table
 ```
 
 Then in Zabbix UI:  
