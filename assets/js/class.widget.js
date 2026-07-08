@@ -2424,16 +2424,18 @@ class CWidgetTableModuleRME extends CWidget {
 		const openPopup = () => {
 			let popup = document.getElementById(`${this.#values_table.id}-${this._widgetid}-popup-${columnId}`);
 
+			let columnInfo = this.#getColumnData(columnId);
+			columnInfo.cachedSortedValues = this.#getPossibleValuesForColumn(columnId);
+			let sortedValues = columnInfo.cachedSortedValues;
+
 			// Lazy create popup on first click
 			if (!popup) {
-				const columnInfo = this.#getColumnData(columnId);
-				// Lazy cache: only calculate sorted values on first popup open
-				if (!columnInfo.cachedSortedValues) {
-					columnInfo.cachedSortedValues = this.#getPossibleValuesForColumn(columnId);
-				}
-				const sortedValues = columnInfo.cachedSortedValues;
 				popup = this.#createFilterPopup(columnId, sortedValues, columnInfo.columnType);
 				document.body.appendChild(popup);
+			}
+			else {
+				// Update the popup with new values
+				this.#updateFilterPopupValues(popup, columnId, sortedValues, columnInfo.filterState);
 			}
 
 			popup._triggerElement = filterIcon;
@@ -2537,6 +2539,14 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		const filterState = this.#getFilterState(columnId);
+		const columnInfo = this.#getColumnData(columnId);
+
+		// Always recalculate possible values when opening the popup
+		columnInfo.cachedSortedValues = this.#getPossibleValuesForColumn(columnId);
+		const sortedValues = columnInfo.cachedSortedValues;
+		this.#updateFilterPopupValues(popup, columnId, sortedValues, filterState);
+
+		// Mark that this popup has been opened
 		popup.dataset.hasBeenOpened = 'true';
 
 		// STORE INITIAL STATE in popup's dataset
