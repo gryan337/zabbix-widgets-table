@@ -62,7 +62,7 @@ class WidgetForm extends CWidgetForm {
 
 	public const DEFAULT_DELIMITER = ' / ';
 
-	public const RME_TABLE_MAX_ROWS = 20000;
+	public const RME_TABLE_MAX_ROWS = 100000;
 	public const HG_TRUNCATE_CHARS = 38;
 
 	public function addFields(): self {
