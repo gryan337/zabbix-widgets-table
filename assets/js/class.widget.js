@@ -2029,12 +2029,12 @@ class CWidgetTableModuleRME extends CWidget {
 				return this.#matchesFilter(text, query, filterTypeSelect.value, false, columnType);
 			});
 
-			const filteredValuesLowercase = filteredValues.map(v => String(v).toLowerCase());
-			filterState.checked = filterState.checked.filter(v => filteredValuesLowercase.includes(v));
+			const filteredValuesSet = new Set(filteredValues.map(v => String(v).toLowerCase()));
+			filterState.checked = filterState.checked.filter(v => filteredValuesSet.has(v));
 			filterState.search = query;
 
 			isAllSelected = filteredValues.length > 0 &&
-				filteredValues.every(v => filterState.checked.includes(String(v).toLowerCase()));
+				filteredValues.length === filterState.checked.length;
 
 			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 
@@ -2083,8 +2083,9 @@ class CWidgetTableModuleRME extends CWidget {
 			const valuesToCheck = filteredValues.length !== sortedValues.length ?
 				filteredValues : sortedValues;
 
+			const checkedSet = new Set(filterState.checked);
 			isAllSelected = valuesToCheck.length > 0 &&
-				valuesToCheck.every(value => filterState.checked.includes(String(value).toLowerCase()));
+				valuesToCheck.every(value => checkedSet.has(String(value).toLowerCase()));
 
 			if (isAllSelected) {
 				filterState.checked = [];
@@ -2143,14 +2144,22 @@ class CWidgetTableModuleRME extends CWidget {
 				const lastCheckedIndex = getIndexOfCheckbox(lastCheckedCheckbox);
 				if (lastCheckedIndex !== -1) {
 					const [from, to] = [Math.min(lastCheckedIndex, checkboxIndex), Math.max(lastCheckedIndex, checkboxIndex)];
+					const shouldCheck = cb.checked;
+					const checkedSet = new Set(filterState.checked);
 
 					for (let j = from; j <= to; j++) {
 						const value = filteredValues[j];
 						const elementVal = String(value).toLowerCase();
-						if (!filterState.checked.includes(elementVal)) {
-							filterState.checked.push(elementVal);
+
+						if (shouldCheck) {
+							checkedSet.add(elementVal);
+						}
+						else {
+							checkedSet.delete(elementVal);
 						}
 					}
+
+					filterState.checked = Array.from(checkedSet);
 
 					renderVisibleCheckboxes();
 					updateSummary();
@@ -2159,6 +2168,7 @@ class CWidgetTableModuleRME extends CWidget {
 				}
 			}
 
+			lastCheckedCheckbox = cb;
 			isAllSelected = (filterState.checked?.length === filteredValues.length);
 			toggleButton.textContent = isAllSelected ? 'Uncheck All' : 'Select All';
 		});
@@ -2433,15 +2443,11 @@ class CWidgetTableModuleRME extends CWidget {
 				popup = this.#createFilterPopup(columnId, sortedValues, columnInfo.columnType);
 				document.body.appendChild(popup);
 			}
-			else {
-				// Update the popup with new values
-				this.#updateFilterPopupValues(popup, columnId, sortedValues, columnInfo.filterState);
-			}
 
 			popup._triggerElement = filterIcon;
 			filterIcon.setAttribute('aria-expanded', popup.style.display === 'flex' ? 'false' : 'true');
 
-			this.#toggleFilterPopup(popup, filterIcon, columnId);
+			this.#toggleFilterPopup(popup, filterIcon, columnId, sortedValues);
 		};
 
 		filterIcon.addEventListener('click', (e) => {
@@ -2519,7 +2525,7 @@ class CWidgetTableModuleRME extends CWidget {
 		});
 	}
 
-	#toggleFilterPopup(popup, filterIcon, columnId) {
+	#toggleFilterPopup(popup, filterIcon, columnId, sortedValues) {
 		// Close all other popups and reset their state
 		document.querySelectorAll('.filter-popup').forEach(p => {
 			if (p !== popup && p.style.display === 'flex') {
@@ -2539,11 +2545,13 @@ class CWidgetTableModuleRME extends CWidget {
 		}
 
 		const filterState = this.#getFilterState(columnId);
-		const columnInfo = this.#getColumnData(columnId);
+		// Use passed sortedValues or recalculate only if not provided
+		if (!sortedValues) {
+			const columnInfo = this.#getColumnData(columnId);
+			columnInfo.cachedSortedValues = this.#getPossibleValuesForColumn(columnId);
+			sortedValues = columnInfo.cachedSortedValues;
+		}
 
-		// Always recalculate possible values when opening the popup
-		columnInfo.cachedSortedValues = this.#getPossibleValuesForColumn(columnId);
-		const sortedValues = columnInfo.cachedSortedValues;
 		this.#updateFilterPopupValues(popup, columnId, sortedValues, filterState);
 
 		// Mark that this popup has been opened
@@ -2666,7 +2674,7 @@ class CWidgetTableModuleRME extends CWidget {
 		// Update toggle button text
 		if (toggleButton) {
 			const isAllSelected = sortedValues.length > 0 &&
-				sortedValues.every(v => filterState.checked.includes(String(v).toLowerCase()));
+				sortedValues.length === filterState.checked.length;
 			toggleButton.textContent = isAllSelected ? 'Uncheck All': 'Select All';
 		}
 	}
@@ -4484,11 +4492,19 @@ class CWidgetTableModuleRME extends CWidget {
 			const cachedStyle = this.#cssStyleMap.get(cell_key);
 			if (cachedStyle !== undefined) {
 				if (this._isBarGauge(barGaugeTd) || this._isSparkLine(barGaugeTd)) {
+					const tdIsFrozen = td.classList.contains('col-frozen');
+					const tdFrozenLeft = tdIsFrozen ? td.style.left : null;
 					const tdWasHidden = td.style.display === 'none';
+
+					const barIsFrozen = barGaugeTd.classList.contains('col-frozen');
+					const barFrozenLeft = barIsFrozen ? barGaugeTd.style.left : null;
 					const barGaugeWasHidden = barGaugeTd.style.display === 'none';
 
 					td.style.cssText = cachedStyle;
 					barGaugeTd.style.cssText = '';
+
+					if (tdIsFrozen && tdFrozenLeft) td.style.left = tdFrozenLeft;
+					if (barIsFrozen && barFrozenLeft) barGaugeTd.style.left = barFrozenLeft;
 
 					if (tdWasHidden) td.style.display = 'none';
 					if (barGaugeWasHidden) barGaugeTd.style.display = 'none'
@@ -4498,8 +4514,13 @@ class CWidgetTableModuleRME extends CWidget {
 		else {
 			const cachedStyle = this.#cssStyleMap.get(cell_key);
 			if (cachedStyle !== undefined) {
+				const isFrozen = td.classList.contains('col-frozen');
+				const frozenLeft = isFrozen ? td.style.left : null;
 				const wasHidden = td.style.display === 'none';
+				
 				td.style.cssText = cachedStyle;
+
+				if (isFrozen && frozenLeft) td.style.left = frozenLeft;
 				if (wasHidden) td.style.display = 'none';
 			}
 		}
