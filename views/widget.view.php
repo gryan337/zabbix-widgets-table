@@ -1315,14 +1315,12 @@ function topBottomNColPerPattern($data) {
 	$names_to_keep = [];
 	foreach ($groupedRows as $columnIndex => $rows) {
 		foreach ($rows as $row) {
-			if (!in_array($row[Widget::CELL_METADATA]['name'], $names_to_keep)) {
-				$names_to_keep[] = $row[Widget::CELL_METADATA]['name'];
-			}
+			$named_to_keep[$row[CELL_METADATA]['name']] = true;
 		}
 	}
 
 	$reducedData = array_filter($data['rows'], function($k) use ($names_to_keep) {
-		return in_array($k, $names_to_keep);
+		return isset($names_to_keep[$k]);
 	}, ARRAY_FILTER_USE_KEY);
 
 	return $reducedData;
