@@ -9,6 +9,11 @@ use Modules\TableModuleRME\Includes\{
 use Modules\TableModuleRME\Actions\WidgetViewTableRme;
 use Modules\TableModuleRME\Widget;
 
+const CELL_ITEMID = Widget::CELL_ITEMID;
+const CELL_HOSTID = Widget::CELL_HOSTID;
+const CELL_VALUE = Widget::CELL_VALUE;
+const CELL_METADATA = Widget::CELL_METADATA;
+
 class DateConverter {
 	private static $cache = [];
 	private static $cacheSize = 0;
@@ -76,24 +81,12 @@ class DateConverter {
 		}
 
 		// Month name check
-		if (stripos($dateString, 'jan') !== false ||
-			stripos($dateString, 'feb') !== false ||
-			stripos($dateString, 'mar') !== false ||
-			stripos($dateString, 'apr') !== false ||
-			stripos($dateString, 'may') !== false ||
-			stripos($dateString, 'jun') !== false ||
-			stripos($dateString, 'jul') !== false ||
-			stripos($dateString, 'aug') !== false ||
-			stripos($dateString, 'sep') !== false ||
-			stripos($dateString, 'oct') !== false ||
-			stripos($dateString, 'nov') !== false ||
-			stripos($dateString, 'dec') !== false) {
+		if (preg_match('/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i', $dateString)) {
 			goto parse_date;
 		}
 
 		// Timezone indicators.
-		if ($len > 3 && (stripos($dateString, 'gmt') !== false ||
-				stripos($dateString, 'utc') !== false)) {
+		if ($len > 3 && preg_match('/(gmt|utc)/i', $dateString)) {
 			goto parse_date;
 		}
 
@@ -158,9 +151,9 @@ else {
 		$header[] = new CColHeader(_($item_header));
 
 		foreach ($data['rows'][0] as $cell) {
-			$hostid = $cell[Widget::CELL_HOSTID];
+			$hostid = $cell[CELL_HOSTID];
 			$title = $data['db_hosts'][$hostid]['name'];
-			['is_view_value_in_row' => $is_view_value] = $cell[Widget::CELL_METADATA];
+			['is_view_value_in_row' => $is_view_value] = $cell[CELL_METADATA];
 			$header[] = (new CColHeader(
 				($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
 					? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
@@ -173,7 +166,7 @@ else {
 		$header[] = new CColHeader(_($host_header));
 
 		foreach ($data['rows'][0] as $cell) {
-			['name' => $title, 'is_view_value_in_column' => $is_view_value] = $cell[Widget::CELL_METADATA];
+			['name' => $title, 'is_view_value_in_column' => $is_view_value] = $cell[CELL_METADATA];
 			$header[] = (new CColHeader(
 				($data['show_column_header'] == WidgetForm::COLUMN_HEADER_VERTICAL
 					? (class_exists('CVertical') ? (new CVertical($title)) : (new CSpan($title))->addClass(ZBX_STYLE_TEXT_VERTICAL))
@@ -191,7 +184,7 @@ else {
 				break;
 			}
 			foreach ($values as $index => $cell) {
-				['is_view_value_in_row' => $is_view_value] = $cell[Widget::CELL_METADATA];
+				['is_view_value_in_row' => $is_view_value] = $cell[CELL_METADATA];
 				if ($is_view_value) {
 					break;
 				}
@@ -302,9 +295,9 @@ else {
 
 		foreach ($data['rows'] as $row_index => &$cell) {
 			foreach ($cell as $mindex => &$metrics) {
-				$column_index = $metrics[Widget::CELL_METADATA]['column_index'];
-				$metrics[Widget::CELL_METADATA]['is_view_value_in_column'] = $is_view_value[$column_index];
-				$metrics[Widget::CELL_METADATA]['is_view_value_in_row'] = $is_view_value[$column_index];
+				$column_index = $metrics[CELL_METADATA]['column_index'];
+				$metrics[CELL_METADATA]['is_view_value_in_column'] = $is_view_value[$column_index];
+				$metrics[CELL_METADATA]['is_view_value_in_row'] = $is_view_value[$column_index];
 			}
 		}
 
@@ -330,15 +323,15 @@ else {
 		$new_rows = [];
 		foreach ($data['rows'] as &$cell) {
 			foreach ($cell as &$metrics) {
-				$itemid = $metrics[Widget::CELL_ITEMID];
-				$column_index = $metrics[Widget::CELL_METADATA]['column_index'];
-				$name = $metrics[Widget::CELL_METADATA]['grouping_name'];
+				$itemid = $metrics[CELL_ITEMID];
+				$column_index = $metrics[CELL_METADATA]['column_index'];
+				$name = $metrics[CELL_METADATA]['grouping_name'];
 				if (!$name) {
 					continue;
 				}
 
 				if ((count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host) {
-					$name .= chr(31).$metrics[Widget::CELL_HOSTID];
+					$name .= chr(31).$metrics[CELL_HOSTID];
 				}
 
 				if (!array_key_exists($name, $new_rows)) {
@@ -346,7 +339,7 @@ else {
 					$new_rows[$name] = array_fill_keys($keys, '');
 				}
 
-				$metrics[Widget::CELL_METADATA]['name'] = $name;
+				$metrics[CELL_METADATA]['name'] = $name;
 
 				$new_rows[$name][$column_index] = $metrics;
 			}
@@ -356,7 +349,7 @@ else {
 			foreach ($new_rows as $n => $c) {
 				$has = false;
 				foreach ($c as $ri => $r) {
-					if ($r && $r[Widget::CELL_ITEMID]) {
+					if ($r && $r[CELL_ITEMID]) {
 						$has = true;
 						break;
 					}
@@ -385,22 +378,22 @@ else {
 					continue;
 				}
 
-				if ($data_row[Widget::CELL_ITEMID]) {
+				if ($data_row[CELL_ITEMID]) {
 					if ($is_view_value) {
-						$data_row[Widget::CELL_METADATA]['is_view_value_in_row'] = 1;
+						$data_row[CELL_METADATA]['is_view_value_in_row'] = 1;
 					}
 					$three_column_layout[] = $data_row;
 				}
-				$column_index = $data_row[Widget::CELL_METADATA]['column_index'];
+				$column_index = $data_row[CELL_METADATA]['column_index'];
 
-				$value = $data_row[Widget::CELL_VALUE];
+				$value = $data_row[CELL_VALUE];
 				if (!is_numeric($value)) {
 					continue;
 				}
 
 				if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL) {
 					$column_index = 0;
-					$key = $data_row[Widget::CELL_HOSTID];
+					$key = $data_row[CELL_HOSTID];
 				}
 				elseif ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
 					$column_index = 0;
@@ -410,7 +403,7 @@ else {
 					$key = 'None';
 				}
 				else {
-					$key = $data_row[Widget::CELL_METADATA]['name'];
+					$key = $data_row[CELL_METADATA]['name'];
 				}
 
 				if (!array_key_exists($column_index, $min_max_sum)) {
@@ -434,7 +427,7 @@ else {
 
 		if ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
 			CArrayHelper::sort($three_column_layout, [[
-				'field' => Widget::CELL_VALUE,
+				'field' => CELL_VALUE,
 				'order' => $data['item_order'] == WidgetForm::ORDER_TOP_N ? ZBX_SORT_DOWN : ZBX_SORT_UP
 			]]);
 			$data['rows'] = $three_column_layout;
@@ -448,16 +441,16 @@ else {
 					continue;
 				}
 
-				$value = $data_row[Widget::CELL_VALUE];
+				$value = $data_row[CELL_VALUE];
 				if (!is_numeric($value)) {
 					continue;
 				}
 				
 				if ($data['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
-					$key = $data_row[Widget::CELL_HOSTID];
+					$key = $data_row[CELL_HOSTID];
 				}
 				else {
-					$key = $data_row[Widget::CELL_METADATA]['name'];
+					$key = $data_row[CELL_METADATA]['name'];
 				}
 
 				if (array_key_exists($key, $min_max_sum)) {
@@ -491,21 +484,23 @@ else {
 		if ($data['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
 			$reset_row[] = new CCol($host_cell_values);
 			foreach ($data['rows'][0] as $row) {
-				if ($row[Widget::CELL_METADATA]['is_view_value_in_column']) {
-					$reset_row = [...$reset_row, ...[(new CCol()), (new CCol())]];
+				if ($row[CELL_METADATA]['is_view_value_in_column']) {
+					$reset_row[] = new CCol();
+					$reset_row[] = new CCol();
 				}
 				else {
-					$reset_row = [...$reset_row, ...[(new CCol())]];
+					$reset_row[] = new CCol();
 				}
 			}
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
 			$reset_row = [(new CCol()), (new CCol($host_cell_values))];
-			if ($data['rows'][0][Widget::CELL_METADATA]['is_view_value_in_row']) {
-				$reset_row = [...$reset_row, ...[(new CCol()), (new CCol())]];
+			if ($data['rows'][0][CELL_METADATA]['is_view_value_in_row']) {
+				$reset_row[] = new CCol();
+				$reset_row[] = new CCol();
 			}
 			else {
-				$reset_row = [...$reset_row, ...[(new CCol())]];
+				$reset_row[] = new CCol();
 			}
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER
@@ -578,15 +573,40 @@ else {
 			if (!$data['show_grouping_only']) {
 				foreach ($is_view_value as $vv) {
 					if ($vv) {
-						$reset_row = [...$reset_row, ...[(new CCol()), (new CCol())]];
+						$reset_row[] = new CCol();
+						$reset_row[] = new CCol();
 					}
 					else {
-						$reset_row = [...$reset_row, ...[(new CCol())]];
+						$reset_row[] = new CCol();
 					}
 				}
 			}
 		}
 		$table->addRow($reset_row);
+	}
+
+	// Cache configuration lookups and common values
+	$config_cache = [];
+	$sparkline_cache = [];
+	$empty_tags_json = '[]';
+	$tags_cache = [];
+
+	foreach ($data['configuration'] as $idx => $config) {
+		$config_cache[$idx] = [
+			'broadcast_in_group_row' => $config['broadcast_in_group_row'] ?? false,
+			'display' => $config['display'] ?? null,
+			'column_index' => $idx,
+			'base_color' => $config['base_color'] ?? '',
+			'show_grouping_only' => $data['show_grouping_only']
+		];
+
+		if ($config['display'] === CWidgetFieldColumnsList::DISPLAY_SPARKLINE) {
+			$sparkline_cache[$idx] = [
+				'color' => $config['sparkline']['color'] ?? 'FF0000',
+				'width' => $config['sparkline']['width'] ?? 1,
+				'fill' => $config['sparkline']['fill'] ?? 1
+			];
+		}
 	}
 
 	$bottom_row = [];
@@ -609,7 +629,7 @@ else {
 				}
 			}
 
-			['name' => $title] = $data_row[0][Widget::CELL_METADATA];
+			['name' => $title] = $data_row[0][CELL_METADATA];
 			$table_row[] = new CCol($title);
 		}
 		elseif ($data['layout'] == WidgetForm::LAYOUT_THREE_COL) {
@@ -619,9 +639,9 @@ else {
 				$bottom_row = buildBottomRow($bottom_row, $data_row, $brindex, $data);
 			}
 
-			['name' => $title] = $data_row[Widget::CELL_METADATA];
+			['name' => $title] = $data_row[CELL_METADATA];
 			$table_row[] = new CCol($title);
-			$host_attributes['hostid'] = $data_row[Widget::CELL_HOSTID];
+			$host_attributes['hostid'] = $data_row[CELL_HOSTID];
 
 			$host_cell_values = (new CSpan($data['db_hosts'][$host_attributes['hostid']]['name']));
 			if (!$data['no_broadcast_hostid']) {
@@ -641,25 +661,42 @@ else {
 			$grouping_name = '';
 
 			foreach ($data_row as $index => $cell) {
-				if ($cell
-					&& (
-						$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['broadcast_in_group_row']
-						|| $data['show_grouping_only']
-					)
-					&& $cell[Widget::CELL_ITEMID]
-				) {
-					$grouping_name = $cell[Widget::CELL_METADATA]['grouping_name'];
-					$dmt['name'] = $grouping_name;
-					$dmt['tags'] = json_encode($cell[Widget::CELL_METADATA]['broadcast_tags'] ?? []);
+				if (!$cell) {
+					continue;
+				}
 
-					$temp_itemids = explode(',', $cell[Widget::CELL_ITEMID]);
-					foreach ($temp_itemids as $titemids) {
-						$dm_itemids[] = [
-							'itemid' => $titemids,
-							'color' => $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['display'] === CWidgetFieldColumnsList::DISPLAY_SPARKLINE
-								? $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['sparkline']['color']
-								: $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['base_color']
-						];
+				$col_idx = $cell[CELL_METADATA]['column_index'];
+				$cached_config = $config_cache[$col_idx];
+
+				if ($cached_config['broadcast_in_group_row'] || $cached_config['show_grouping_only']) {
+					if ($cell[CELL_ITEMID]) {
+						$grouping_name = $cell[CELL_METADATA]['grouping_name'];
+						$dmt['name'] = $grouping_name;
+
+						// Use cached JSON encoding
+						$raw_tags = $cell[CELL_METADATA]['broadcast_tags'] ?? null;
+						if ($raw_tags === null) {
+							$dmt['tags'] = $empty_tags_json;
+						}
+						else {
+							$cache_key = md5(serialize($raw_tags));
+							if (!isset($tags_cache[$cache_key])) {
+								$tags_cache[$cache_key] = json_encode($raw_tags);
+							}
+							$dmt['tags'] = $tags_cache[$cache_key];
+						}
+
+						$temp_itemids = explode(',', $cell[CELL_ITEMID]);
+						foreach ($temp_itemids as $titemids) {
+							$color = $cached_config['display'] === CWidgetFieldColumnsList::DISPLAY_SPARKLINE
+								? $sparkline_cache[$col_idx]['color']
+								: $cached_config['base_color'];
+
+							$dm_itemids[] = [
+								'itemid' => $titemids,
+								'color' => $color
+							];
+						}
 					}
 				}
 			}
@@ -710,8 +747,8 @@ else {
 			// Extract grouping name from row_index or from first non-empty cell
 			if ($grouping_name) {
 				foreach ($data_row as $cell) {
-					if ($cell && isset($cell[Widget::CELL_METADATA]['grouping_name'])) {
-						$grouping_name = $cell[Widget::CELL_METADATA]['grouping_name'];
+					if ($cell && isset($cell[CELL_METADATA]['grouping_name'])) {
+						$grouping_name = $cell[CELL_METADATA]['grouping_name'];
 						break;
 					}
 				}
@@ -763,18 +800,18 @@ else {
 						switch ($grouping['attribute']) {
 							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
 								// Collect all hostids from aggregated cells
-								$hostids = [];
+								$hostids_set = [];
 								foreach ($data_row as $cell) {
-									if ($cell && $cell[Widget::CELL_HOSTID]) {
-										// Split comma-separated hostids if present
-										$cell_hostids = array_map('trim', explode(',', (string)$cell[Widget::CELL_HOSTID]));
-										foreach ($cell_hostids as $hid) {
-											if ($hid !== '' && !in_array($hid, $hostids)) {
-												$hostids[] = $hid;
+									if ($cell && $cell[CELL_HOSTID]) {
+										foreach (explode(',', $cell[CELL_HOSTID]) as $hid) {
+											$hid = trim($hid);
+											if ($hid !== '') {
+												$hostids_set[$hid] = true;
 											}
 										}
 									}
 								}
+								$hostids = array_keys($hostids_set);
 							
 								// Collect unique host groups from all hosts
 								$group_spans = [];
@@ -852,53 +889,69 @@ else {
 				else {
 					// In aggregate_all_hosts path CELL_HOSTID and CELL_ITEMID are comma-separated.
 					// Split and use first valid value for tag lookups; collect all hostids for host group rendering.
-					$hostids = [];
+					$hostids_map = [];
 					$itemid = null;
+					$has_cell_data = false;
+					
 					foreach ($data_row as $cell) {
-						if ($cell && $cell[Widget::CELL_HOSTID]) {
-							foreach (explode(',', (string)$cell[Widget::CELL_HOSTID]) as $hid) {
+						if (empty($cell)) continue;
+
+						$has_cell_data = true;
+
+						// Collect hostids using hash map
+						if (!empty($cell[CELL_HOSTID])) {
+							foreach (explode(',', $cell[CELL_HOSTID]) as $hid) {
 								$hid = trim($hid);
-								if ($hid !== '' && !in_array($hid, $hostids)) {
-									$hostids[] = $hid;
+								if ($hid !== '') {
+									$hostids_map[$hid] = true;
 								}
 							}
-							if ($cell[Widget::CELL_ITEMID] && $itemid === null) {
-								$parts = explode(',', (string)$cell[Widget::CELL_ITEMID]);
-								$itemid = trim($parts[0]);
+						}
+
+						// Get first itemid
+						if ($itemid === null && !empty($cell[CELL_ITEMID])) {
+							$first_item = trim(strtok($cell[CELL_ITEMID], ','));
+							if ($first_item !== '') {
+								$itemid = $first_item;
 							}
-							break;
 						}
 					}
+
+					$hostids = array_keys($hostids_map);
 					$hostid = $hostids[0] ?? null;
 
-					// Build item tag lookup from first itemid.
 					$item_tag_map = [];
+					$host_tag_map = [];
+					
 					if ($itemid && isset($data['db_items'][$itemid]['tags'])) {
 						foreach ($data['db_items'][$itemid]['tags'] as $tag) {
 							$item_tag_map[$tag['tag']][] = $tag['value'];
 						}
 						foreach ($item_tag_map as &$vals) {
-							sort($vals);
+							if (count($vals) > 1) {
+								sort($vals);
+							}
 						}
 						unset($vals);
 					}
 
-					// Build host tag lookup from first hostid
-					$host_tag_map = [];
 					if ($hostid && isset($data['db_hosts'][$hostid]['tags'])) {
 						foreach ($data['db_hosts'][$hostid]['tags'] as $tag) {
 							$host_tag_map[$tag['tag']] = $tag['value'];
 						}
 					}
 
-					// Pre-collect item tag and host tag display values
 					$item_tag_parts = [];
 					$host_tag_parts = [];
+					
 					foreach ($data['item_grouping'] as $grouping) {
 						if ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_ITEM_TAG) {
 							$tag_vals = array_filter($item_tag_map[$grouping['tag_name']] ?? [], fn($v) => $v !== '');
-							if ($tag_vals) {
-								$item_tag_parts[] = implode(', ', $tag_vals);
+							if (isset($item_tag_map[$grouping['tag_name']])) {
+								$tag_vals = array_filter($item_tag_map[$grouping['tag_name']], fn($v) => $v !== '');
+								if ($tag_vals) {
+									$item_tag_parts[] = implode(', ', $tag_vals);
+								}
 							}
 						}
 						elseif ($grouping['attribute'] == CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_TAG) {
@@ -912,7 +965,6 @@ else {
 					$item_tag_display = implode($data['delimiter'], $item_tag_parts);
 					$host_tag_display = implode($data['delimiter'], $host_tag_parts);
 
-					// Render columns in configured order
 					$first_item_tag_rendered = false;
 					$first_host_tag_rendered = false;
 
@@ -951,44 +1003,46 @@ else {
 								break;
 
 							case CWidgetFieldTableModuleItemGrouping::GROUP_BY_HOST_GROUP:
-								// Collect all hostids from aggregated cells
 								$group_spans = [];
 								$seen_groupids = [];
 								$span_index = 0;
 							
 								foreach ($hostids as $hid) {
-									if (!empty($data['db_hosts'][$hid]['hostgroups'])) {
-										foreach ($data['db_hosts'][$hid]['hostgroups'] as $hg) {
-											if (!in_array($hg['groupid'], $seen_groupids)) {
-												$seen_groupids[] = $hg['groupid'];
-												$hg_attributes = ['type' => 'hostgroup', 'groupid' => $hg['groupid']];
-													
-												if ($span_index === 0) {
-													// Visible span: truncate long names and attach Zabbix hint for full text
-													$display_name = mb_strlen($hg['name']) > WidgetForm::HG_TRUNCATE_CHARS
-														? mb_substr($hg['name'], 0, WidgetForm::HG_TRUNCATE_CHARS) . '...'
-														: $hg['name'];
-													$span = (new CSpan($display_name))
-														->addClass(ZBX_STYLE_CURSOR_POINTER)
-														->addClass('rme-hostgroup-span')
-														->addStyle('text-decoration: underline; margin-right: 4px;')
-														->setAttribute('data-menu', json_encode($hg_attributes))
-														->setAttribute('data-fullname', $hg['name']);
-												}
-												else {
-													// Hidden spans: full text so the popover shows untruncated names
-													$span = (new CSpan($hg['name']))
-														->addClass(ZBX_STYLE_CURSOR_POINTER)
-														->addClass('rme-hostgroup-span')
-														->addClass('rme-hg-hidden')
-														->addStyle('text-decoration: underline; margin-right: 4px;')
-														->setAttribute('data-menu', json_encode($hg_attributes));
-												}
-												$group_spans[] = $span;
-												$span_index++;
-											}
-										}
+									if (empty($data['db_hosts'][$hid]['hostgroups'])) {
+										continue;
 									}
+									
+									foreach ($data['db_hosts'][$hid]['hostgroups'] as $hg) {
+										if (isset($seen_groupids[$hg['groupid']])) {
+											continue;
+										}
+										
+										$seen_groupids[$hg['groupid']] = true;
+										$hg_attributes = ['type' => 'hostgroup', 'groupid' => $hg['groupid']];
+													
+										if ($span_index === 0) {
+											$display_name = mb_strlen($hg['name']) > WidgetForm::HG_TRUNCATE_CHARS
+												? mb_substr($hg['name'], 0, WidgetForm::HG_TRUNCATE_CHARS) . '...'
+												: $hg['name'];
+											$span = (new CSpan($display_name))
+												->addClass(ZBX_STYLE_CURSOR_POINTER)
+												->addClass('rme-hostgroup-span')
+												->addStyle('text-decoration: underline; margin-right: 4px;')
+												->setAttribute('data-menu', json_encode($hg_attributes))
+												->setAttribute('data-fullname', $hg['name']);
+										}
+										else {
+											$span = (new CSpan($hg['name']))
+												->addClass(ZBX_STYLE_CURSOR_POINTER)
+												->addClass('rme-hostgroup-span')
+												->addClass('rme-hg-hidden')
+												->addStyle('text-decoration: underline; margin-right: 4px;')
+												->setAttribute('data-menu', json_encode($hg_attributes));
+										}
+										
+										$group_spans[] = $span;
+										$span_index++;
+									}   
 								}
 							
 								$overflow_count = count($group_spans) - 1;
@@ -1005,6 +1059,7 @@ else {
 								else {
 									$cell_content = $group_spans ?: '';
 								}
+							
 								$table_row[] = (new CCol($cell_content))
 									->addStyle('white-space: nowrap;');
 								break;
@@ -1016,8 +1071,8 @@ else {
 			// Add host column after grouping columns
 			if ((count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host) {
 				foreach ($data_row as $row) {
-					if ($row && $row[Widget::CELL_HOSTID]) {
-						$host_attributes['hostid'] = $row[Widget::CELL_HOSTID];
+					if ($row && $row[WCELL_HOSTID]) {
+						$host_attributes['hostid'] = $row[CELL_HOSTID];
 						break;
 					}
 				}
@@ -1061,7 +1116,7 @@ else {
 				}
 			}
 
-			$host_attributes['hostid'] = $data_row[0][Widget::CELL_HOSTID];
+			$host_attributes['hostid'] = $data_row[0][CELL_HOSTID];
 			$host_name = $data['db_hosts'][$host_attributes['hostid']]['name'];
 
 			$host_cell_values = (new CSpan($host_name));
@@ -1075,7 +1130,6 @@ else {
 			$host_context_button = makeHostContextButton($host_context_msg, $host_attributes);
 
 			$table_row[] = new CCol([$host_cell_values, $host_context_button]);
-
 		}
 
 		if ($data['layout'] == WidgetForm::LAYOUT_VERTICAL ||
@@ -1119,7 +1173,6 @@ else {
 			}
 		}
 	}
-
 }
 
 (new CWidgetView($data))
@@ -1156,7 +1209,7 @@ function getActionColumnIcon() {
 }
 
 function makeUrl($cell, $column) {
-	$urlItemids = array_map('trim', explode(',', $cell[Widget::CELL_ITEMID]));
+	$urlItemids = array_map('trim', explode(',', $cell[CELL_ITEMID]));
 
 	$url = (new CUrl('history.php'))
 		->setArgument('itemids', $urlItemids)
@@ -1223,7 +1276,7 @@ function topBottomNColPerPattern($data) {
 
 	$groupedRows = [];
 	foreach ($allRows as $row) {
-		$columnIndex = $row[Widget::CELL_METADATA]['column_index'];
+		$columnIndex = $row[CELL_METADATA]['column_index'];
 		if (!isset($groupedRows[$columnIndex])) {
 			$groupedRows[$columnIndex] = [];
 		}
@@ -1236,14 +1289,14 @@ function topBottomNColPerPattern($data) {
 		$column_keys = [];
 		foreach ($groupedRows as $column) {
 			foreach ($column as $cell) {
-				$column_index = $cell[Widget::CELL_METADATA]['column_index'];
+				$column_index = $cell[CELL_METADATA]['column_index'];
 				if (!isset($column_names[$column_index])) {
 					$column_names[$column_index] = [];
 					$column_keys[$column_index] = [];
 				}
 
-				$column_names[$column_index][] = $cell[Widget::CELL_METADATA]['original_name'];
-				$column_keys[$column_index][] = $cell[Widget::CELL_METADATA]['key_'];
+				$column_names[$column_index][] = $cell[CELL_METADATA]['original_name'];
+				$column_keys[$column_index][] = $cell[CELL_METADATA]['key_'];
 			}
 		}
 
@@ -1292,12 +1345,12 @@ function topBottomNColPerPattern($data) {
 		foreach ($groupedRows as &$rows) {
 			if ($data['item_order_by'] === WidgetForm::ORDERBY_ITEM_NAME) {
 				usort($rows, function($a, $b) {
-					return $b[Widget::CELL_METADATA]['grouping_name'] <=> $a[Widget::CELL_METADATA]['grouping_name'];
+					return $b[CELL_METADATA]['grouping_name'] <=> $a[CELL_METADATA]['grouping_name'];
 				});
 			}
 			elseif ($data['item_order_by'] === WidgetForm::ORDERBY_ITEM_VALUE) {
 				usort($rows, function($a, $b) {
-					return $b[Widget::CELL_VALUE] <=> $a[Widget::CELL_VALUE];
+					return $b[CELL_VALUE] <=> $a[CELL_VALUE];
 				});
 			}
 
@@ -1331,11 +1384,11 @@ function compareRows($a, $b, $ordering_column_index, $host_order) {
 		return 0;
 	}
 
-	$a_value = isset($a[$ordering_column_index][Widget::CELL_VALUE])
-		? $a[$ordering_column_index][Widget::CELL_VALUE]
+	$a_value = isset($a[$ordering_column_index][CELL_VALUE])
+		? $a[$ordering_column_index][CELL_VALUE]
 		: null;
-	$b_value = isset($b[$ordering_column_index][Widget::CELL_VALUE])
-		? $b[$ordering_column_index][Widget::CELL_VALUE]
+	$b_value = isset($b[$ordering_column_index][CELL_VALUE])
+		? $b[$ordering_column_index][CELL_VALUE]
 		: null;
 
 	if ($a_value === null && $b_value === null) {
@@ -1581,22 +1634,22 @@ function buildBottomRow(array $bottom_row, array|string $r, string $i, array $da
 	}
 
 	if ($r) {
-		$bottom_row[$i]['values'][] = is_numeric($r[Widget::CELL_VALUE]) ? $r[Widget::CELL_VALUE] : null;
-		$bottom_row[$i]['units'][] = $r[Widget::CELL_METADATA]['units'];
+		$bottom_row[$i]['values'][] = is_numeric($r[CELL_VALUE]) ? $r[CELL_VALUE] : null;
+		$bottom_row[$i]['units'][] = $r[CELL_METADATA]['units'];
 		switch ($data['layout']) {
 			case WidgetForm::LAYOUT_VERTICAL:
-				$bottom_row[$i]['is_view_value'][] = $r[Widget::CELL_METADATA]['is_view_value_in_row'];
+				$bottom_row[$i]['is_view_value'][] = $r[CELL_METADATA]['is_view_value_in_row'];
 				break;
 			case WidgetForm::LAYOUT_COLUMN_PER:
 				$bottom_row[$i]['is_view_value'][] = $is_view_value[$i];
 				break;
 			case WidgetForm::LAYOUT_THREE_COL:
 				if (!$bottom_row[$i]['is_view_value'][$i]) {
-					$bottom_row[$i]['is_view_value'][$i] = $r[Widget::CELL_METADATA]['is_view_value_in_row'];
+					$bottom_row[$i]['is_view_value'][$i] = $r[CELL_METADATA]['is_view_value_in_row'];
 				}
 				break;
 			case WidgetForm::LAYOUT_HORIZONTAL:
-				$bottom_row[$i]['is_view_value'][] = $r[Widget::CELL_METADATA]['is_view_value_in_column'];
+				$bottom_row[$i]['is_view_value'][] = $r[CELL_METADATA]['is_view_value_in_column'];
 				break;
 		}
 	}
@@ -1613,16 +1666,16 @@ function buildBottomRow(array $bottom_row, array|string $r, string $i, array $da
 
 function makeTableCellViews(array $cell, array $data): array {
 	$is_view_value = ($data['layout'] == WidgetForm::LAYOUT_VERTICAL || $data['layout'] == WidgetForm::LAYOUT_THREE_COL)
-		? $cell[Widget::CELL_METADATA]['is_view_value_in_row']
-		: $cell[Widget::CELL_METADATA]['is_view_value_in_column'];
+		? $cell[CELL_METADATA]['is_view_value_in_row']
+		: $cell[CELL_METADATA]['is_view_value_in_column'];
 
-	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
-	$itemid = $cell[Widget::CELL_ITEMID];
-	$value = $cell[Widget::CELL_VALUE];
+	$column = $data['configuration'][$cell[CELL_METADATA]['column_index']];
+	$itemid = $cell[CELL_ITEMID];
+	$value = $cell[CELL_VALUE];
 
 	$units = [];
 	if ($itemid) {
-		$final_unit = $cell[Widget::CELL_METADATA]['units'];
+		$final_unit = $cell[CELL_METADATA]['units'];
 	}
 
 	if ($itemid === null || $value === null) {
@@ -1662,10 +1715,10 @@ function makeTableCellViews(array $cell, array $data): array {
 
 function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
 	global $min_max_sum;
-	$column_index = $cell[Widget::CELL_METADATA]['column_index'];
-	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
+	$column_index = $cell[CELL_METADATA]['column_index'];
+	$itemid = explode(',', $cell[CELL_ITEMID])[0];
 	$item = $data['db_items'][$itemid];
-	$value = $cell[Widget::CELL_VALUE];
+	$value = $cell[CELL_VALUE];
 	$column = $data['configuration'][$column_index];
 	$color = $column['base_color'];
 	$font_color = $column['font_color'];
@@ -1675,7 +1728,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			$data['layout'] == WidgetForm::LAYOUT_VERTICAL &&
 			$data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_COLUMN) {
 		$subArrayKeys = array_keys($min_max_sum[0]);
-		$position = array_search($cell[Widget::CELL_HOSTID], $subArrayKeys);
+		$position = array_search($cell[CELL_HOSTID], $subArrayKeys);
 		$column_pos = $position !== false
 			? $position
 			: $column_index;
@@ -1825,8 +1878,8 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 				->setAttribute('column-id', $column_pos);
 
 			if ($data['layout'] == WidgetForm::LAYOUT_COLUMN_PER) {
-				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
-					if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
+				if ($data['configuration'][$column_index]['column_agg_method'] !== AGGREGATE_NONE) {
+					if (!$data['configuration'][$column_index]['include_itemids']) {
 						return [$sparkline_cell, $value_cell];
 					}
 				}
@@ -1843,7 +1896,7 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			switch ($data['layout']) {
 				case WidgetForm::LAYOUT_VERTICAL:
 					$column_index = 0;
-					$key = $cell[Widget::CELL_HOSTID];
+					$key = $cell[CELL_HOSTID];
 					break;
 				case WidgetForm::LAYOUT_THREE_COL:
 					$column_index = 0;
@@ -1853,16 +1906,16 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 					$key = 'None';
 					break;
 				default:
-					$key = $cell[Widget::CELL_METADATA]['name'];
+					$key = $cell[CELL_METADATA]['name'];
 					break;
 			}
 
 			if ($data['bar_gauge_layout'] === WidgetForm::BAR_GAUGE_LAYOUT_ROW && $data['layout'] !== WidgetForm::LAYOUT_THREE_COL) {
 				if ($data['layout'] == WidgetForm::LAYOUT_HORIZONTAL) {
-					$key = $cell[Widget::CELL_HOSTID];
+					$key = $cell[CELL_HOSTID];
 				}
 				else {
-					$key = $cell[Widget::CELL_METADATA]['name'];
+					$key = $cell[CELL_METADATA]['name'];
 				}
 			}
 
@@ -1934,8 +1987,8 @@ function makeTableCellViewsNumeric(array $cell, array $data, $formatted_value, b
 			}
 
 			if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
-				if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
-					if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
+				if ($data['configuration'][$column_index]['column_agg_method'] !== AGGREGATE_NONE) {
+					if (!$data['configuration'][$column_index]['include_itemids']) {
 						return [$bar_gauge_cell, $value_cell];
 					}
 				}
@@ -1973,15 +2026,15 @@ function handleValueMapOverrideConfig(string $input, string $mode) {
 }
 
 function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
-	$original_name = $cell[Widget::CELL_METADATA]['original_name'];
-	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
-	$value = $cell[Widget::CELL_VALUE];
-	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
+	$original_name = $cell[CELL_METADATA]['original_name'];
+	$itemid = explode(',', $cell[CELL_ITEMID])[0];
+	$value = $cell[CELL_VALUE];
+	$column = $data['configuration'][$cell[CELL_METADATA]['column_index']];
 	$color = $column['base_color'];
 	$font_color = $column['font_color'];
 	$item = $data['db_items'][$itemid];
-	$item['units'] = array_key_exists('units', $cell[Widget::CELL_METADATA])
-		? $cell[Widget::CELL_METADATA]['units']
+	$item['units'] = array_key_exists('units', $cell[CELL_METADATA])
+		? $cell[CELL_METADATA]['units']
 		: $item['units'];
 
 	if ($item['value_type'] == ITEM_VALUE_TYPE_BINARY) {
@@ -2015,8 +2068,8 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 
 	$is_multiple_itemids = false;
 	if ($data['layout'] === WidgetForm::LAYOUT_COLUMN_PER) {
-		if ($data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
-			if (!$data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['include_itemids']) {
+		if ($data['configuration'][$cell[CELL_METADATA]['column_index']]['column_agg_method'] !== AGGREGATE_NONE) {
+			if (!$data['configuration'][$cell[CELL_METADATA]['column_index']]['include_itemids']) {
 				return (new CSpan($formatted_value));
 			}
 			else {
@@ -2031,18 +2084,18 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 	];
 
 	if ($is_multiple_itemids) {
-		$temp_itemids = explode(',', $cell[Widget::CELL_ITEMID]);
+		$temp_itemids = explode(',', $cell[CELL_ITEMID]);
 		$dm_itemids = [];
 		foreach ($temp_itemids as $titemids) {
 			$dm_itemids[] = [
 				'itemid' => $titemids,
-				'color' => $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']]['base_color']
+				'color' => $data['configuration'][$cell[CELL_METADATA]['column_index']]['base_color']
 			];
 		}
 		$dmp['itemid'] = json_encode($dm_itemids);
 	}
 	else {
-		$dmp['itemid'] = $cell[Widget::CELL_ITEMID];
+		$dmp['itemid'] = $cell[CELL_ITEMID];
 	}
 
 	return (new CSpan($formatted_value))
@@ -2051,9 +2104,9 @@ function makeTableCellViewFormattedValue(array $cell, array $data): CSpan {
 }
 
 function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
-	$value = $cell[Widget::CELL_VALUE];
-	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
-	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
+	$value = $cell[CELL_VALUE];
+	$column = $data['configuration'][$cell[CELL_METADATA]['column_index']];
+	$itemid = explode(',', $cell[CELL_ITEMID])[0];
 	$item = $data['db_items'][$itemid];
 
 	$color = $column['base_color'];
@@ -2142,10 +2195,10 @@ function makeTableCellViewsText(array $cell, array $data, $formatted_value, bool
 }
 
 function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool $is_view_value, string $units): array {
-	$hostid = $cell[Widget::CELL_HOSTID];
-	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
-	$value = $cell[Widget::CELL_VALUE];
-	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
+	$hostid = $cell[CELL_HOSTID];
+	$itemid = explode(',', $cell[CELL_ITEMID])[0];
+	$value = $cell[CELL_VALUE];
+	$column = $data['configuration'][$cell[CELL_METADATA]['column_index']];
 	$color = $column['base_color'];
 	$font_color = $column['font_color'];
 
@@ -2216,9 +2269,9 @@ function makeTableCellViewsUrl(array $cell, array $data, $formatted_value, bool 
 }
 
 function makeTableCellViewsTrigger(array $cell, array $trigger, $formatted_value, bool $is_view_value, string $units, array $data): array {
-	$value = $cell[Widget::CELL_VALUE];
-	$column = $data['configuration'][$cell[Widget::CELL_METADATA]['column_index']];
-	$itemid = explode(',', $cell[Widget::CELL_ITEMID])[0];
+	$value = $cell[CELL_VALUE];
+	$column = $data['configuration'][$cell[CELL_METADATA]['column_index']];
+	$itemid = explode(',', $cell[CELL_ITEMID])[0];
 	$item = $data['db_items'][$itemid];
 
 	if ($trigger['problem']['acknowledged'] == EVENT_ACKNOWLEDGED) {
