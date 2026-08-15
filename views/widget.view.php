@@ -1071,7 +1071,7 @@ else {
 			// Add host column after grouping columns
 			if ((count($data['num_hosts']) > 1 && !$has_hostname_grouping) || $groupby_host) {
 				foreach ($data_row as $row) {
-					if ($row && $row[WCELL_HOSTID]) {
+					if ($row && $row[CELL_HOSTID]) {
 						$host_attributes['hostid'] = $row[CELL_HOSTID];
 						break;
 					}
@@ -1368,7 +1368,7 @@ function topBottomNColPerPattern($data) {
 	$names_to_keep = [];
 	foreach ($groupedRows as $columnIndex => $rows) {
 		foreach ($rows as $row) {
-			$named_to_keep[$row[CELL_METADATA]['name']] = true;
+			$names_to_keep[$row[CELL_METADATA]['name']] = true;
 		}
 	}
 
