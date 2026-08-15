@@ -1147,12 +1147,12 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 		}
 
 		function shouldAddToRowsWithViewValues($cell, $columns) {
-			['column_index' => $column_index] = $cell[WidgetView::CELL_METADATA];
+			['column_index' => $column_index] = $cell[WidgetViewTableRme::CELL_METADATA];
 			$column = $columns[$column_index];
 
 			return $column['display_value_as'] == CWidgetFieldColumnsList::DISPLAY_VALUE_AS_NUMERIC
 					&& $column['display'] != CWidgetFieldColumnsList::DISPLAY_AS_IS
-					&& $cell[WidgetView::CELL_VALUE] !== null;
+					&& $cell[WidgetViewTableRme::CELL_VALUE] !== null;
 		}
 
 		$columns_with_view_values = [];
