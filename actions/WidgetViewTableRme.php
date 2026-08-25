@@ -1385,14 +1385,14 @@ class WidgetViewTableRme extends CControllerDashboardWidgetView {
 							$isMultiValue = is_string($data[self::CELL_VALUE]) && strpos($data[self::CELL_VALUE], ',') !== false;
 							
 							if ($method == AGGREGATE_COUNT) {
-								$newValues = $isMultiValue ? explode(',', $data[self::CELL_VALUE]) : $data[self::CELL_VALUE];
+								$newValues = $isMultiValue ? explode(',', $data[self::CELL_VALUE]) : [$data[self::CELL_VALUE]];
 								$aggregatedArray[$key]['_all_values'] = array_merge(
 									$aggregatedArray[$key]['_all_values'],
 									$newValues
 								);
 							}
 							elseif ($aggregatedArray[$key]['_is_numeric'] && is_numeric($data[self::CELL_VALUE])) {
-								$newValues = $isMultiValue ? explode(',', $data[self::CELL_VALUE]) : $data[self::CELL_VALUE];
+								$newValues = $isMultiValue ? explode(',', $data[self::CELL_VALUE]) : [$data[self::CELL_VALUE]];
 								$aggregatedArray[$key]['_all_values'] = array_merge(
 									$aggregatedArray[$key]['_all_values'],
 									$newValues
