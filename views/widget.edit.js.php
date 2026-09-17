@@ -110,6 +110,22 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 	}
 
 	/**
+	 * Widget-multiselect fields (groupids/hostids) may hold a typed reference
+	 * ({_reference: 'ABCDE._groupids'}) instead of concrete ids when bound to a
+	 * Dashboard/Widget data source. patternselect.get -> getSubGroups() cannot
+	 * resolve references and stock jsrpc.php 500s on a non-numeric groupid.
+	 * Return only numeric ids, or undefined when nothing usable remains so the
+	 * caller drops the scope filter entirely.
+	 */ 
+	#idsOnly(v) {
+		if (v === undefined) {
+			return undefined;
+		}
+		const ids = Object.values(v).filter((id) => /^\d+$/.test(String(id)));
+		return ids.length ? ids : undefined;
+	}
+
+	/**
 	 * Updates widget column configuration form field visibility,
 	 * enable/disable state and available options.
 	 */
@@ -228,18 +244,20 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 		const url_host = new Curl(jQuery(host_select).multiSelect('getOption', 'url'));
 		const url_item = new Curl(jQuery(item_select).multiSelect('getOption', 'url'));
 		const form_fields = getFormFields(this.#form);
+		const form_groupids = this.#idsOnly(form_fields.groupids);
+		const form_hostids = this.#idsOnly(form_fields.hostids);
 
-		if (form_fields.groupids !== undefined) {
-			url_host.args.groupids = form_fields.groupids;
-			url_item.args.groupids = form_fields.groupids;
+		if (form_groupids !== undefined) {
+			url_host.args.groupids = form_groupids;
+			url_item.args.groupids = form_groupids;
 		}
 		else {
 			delete url_host.args.groupids;
 			delete url_item.args.groupids;
 		}
 
-		if (form_fields.hostids !== undefined) {
-			url_item.args.hostids = form_fields.hostids;
+		if (form_hostids !== undefined) {
+			url_item.args.hostids = form_hostids;
 		}
 		else {
 			delete url_item.args.hostids;
@@ -275,8 +293,8 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 					'widget.tablemodulerme.column.edit',
 					{
 						templateid: this.#templateid,
-						groupids: form_fields.groupids,
-						hostids: form_fields.hostids
+						groupids: this.#idsOnly(form_fields.groupids),
+						hostids: this.#idsOnly(form_fields.hostids)
 					},
 					{
 						dialogueid: 'tablemodulerme-column-edit-overlay',
@@ -304,8 +322,8 @@ window.widget_tablemodulerme_form = new class extends CWidgetForm {
 						...form_fields.columns[column_index],
 						edit: 1,
 						templateid: this.#templateid,
-						groupids: form_fields.groupids,
-						hostids: form_fields.hostids
+						groupids: this.#idsOnly(form_fields.groupids),
+						hostids: this.#idsOnly(form_fields.hostids)
 					}, {
 						dialogueid: 'tablemodulerme-column-edit-overlay',
 						dialogue_class: 'modal-popup-generic'
